@@ -230,4 +230,4 @@ CODIGOS_EMERGENCIA = {
 # ---------------------------------------------------------------------------
 # 13) TOKEN DEL BOT
 # ---------------------------------------------------------------------------
-TOKEN = "TU_TOKEN_AQUI"
+TOKEN = "MTU0OTMxMzIzNzA5MzMyNjkzOA.G8MaRR.VLseBVpF8Rp704dhEDsKaGiiyZqeHQ7WPQWsx8"
