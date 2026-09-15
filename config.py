@@ -44,7 +44,7 @@ JERARQUIA_KEYS = [
     "STAFF",
     "SUPERVISOR",
     "JEFE_DEPARTAMENTO",
-    "DIRECTOR",
+    "DIRECCIÓN",
     "JUNTA_DIRECTIVA",
     "JEFE_JUNTA_DIRECTIVA",
     "OWNER",
@@ -230,4 +230,4 @@ CODIGOS_EMERGENCIA = {
 # ---------------------------------------------------------------------------
 # 13) TOKEN DEL BOT
 # ---------------------------------------------------------------------------
-TOKEN = "MTU0OTMxMzIzNzA5MzMyNjkzOA.G8MaRR.VLseBVpF8Rp704dhEDsKaGiiyZqeHQ7WPQWsx8"
+TOKEN = "MTU0OTMxMzIzNzA5MzMyNjkzOA.GY508j.li5Gf6JeUgb6MPhi6FSLSneLPO2K1Ru8OzPDvY"
