@@ -230,4 +230,4 @@ CODIGOS_EMERGENCIA = {
 # ---------------------------------------------------------------------------
 # 13) TOKEN DEL BOT
 # ---------------------------------------------------------------------------
-TOKEN = "MTU0OTMxMzIzNzA5MzMyNjkzOA.GY508j.li5Gf6JeUgb6MPhi6FSLSneLPO2K1Ru8OzPDvY"
+TOKEN = os.getenv("DISCORD_TOKEN")
