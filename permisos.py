@@ -76,12 +76,21 @@ def puede_actuar_sobre(emisor: discord.Member, objetivo: discord.Member) -> bool
 
 
 def require_key(*keys: str):
-    """Decorador: exige al menos una de las keys indicadas (OWNER siempre pasa)."""
+    """Decorador: exige al menos una de las keys indicadas (OWNER siempre pasa).
+    Excepción de arranque: si NINGUNA key ha sido configurada todavía
+    (roles_ids.json vacío), el dueño del servidor de Discord puede pasar
+    cualquier check, para poder correr /configurar_roles la primera vez."""
 
     async def predicate(interaction: discord.Interaction) -> bool:
         member = interaction.user
         if not isinstance(member, discord.Member):
             return False
+
+        # --- Bootstrap ---
+        if not roles_store.todas_las_keys_configuradas():
+            if member.id == interaction.guild.owner_id:
+                return True
+
         if member_tiene_alguna_key(member, *keys):
             return True
         raise SinPermiso(keys)
