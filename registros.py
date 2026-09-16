@@ -89,3 +89,89 @@ def historial_cargos_de(user_id: int) -> list:
 def expediente_completo(user_id: int) -> dict:
     data = _cargar()
     return data.get(str(user_id), {})
+
+# --- Quitar advertencia -----------------------------------------------------
+def quitar_advertencia(user_id: int, indice: int) -> dict | None:
+    """Elimina una advertencia por su índice (0 = la más antigua). None si no existe."""
+    data = _cargar()
+    perfil = data.get(str(user_id), {})
+    lista = perfil.get("advertencias", [])
+    if indice < 0 or indice >= len(lista):
+        return None
+    eliminada = lista.pop(indice)
+    perfil["advertencias"] = lista
+    data[str(user_id)] = perfil
+    _guardar(data)
+    return eliminada
+
+
+# --- Sanciones formales (cuentan para degrado de rango) ---------------------
+LIMITE_SANCIONES_DEGRADO = 3
+
+
+def registrar_sancion(user_id: int, motivo: str, autor_id: int):
+    _agregar(user_id, "sanciones", {"motivo": motivo, "autor_id": autor_id, "fecha": _ahora()})
+
+
+def sanciones_de(user_id: int) -> list:
+    return _lista(user_id, "sanciones")
+
+
+def quitar_sancion(user_id: int, indice: int) -> dict | None:
+    data = _cargar()
+    perfil = data.get(str(user_id), {})
+    lista = perfil.get("sanciones", [])
+    if indice < 0 or indice >= len(lista):
+        return None
+    eliminada = lista.pop(indice)
+    perfil["sanciones"] = lista
+    data[str(user_id)] = perfil
+    _guardar(data)
+    return eliminada
+
+
+# --- Ficha de contratación actual (personal activo) --------------------------
+def set_contratacion(user_id: int, rango: str, area: str, autor_id: int):
+    data = _cargar()
+    perfil = data.setdefault(str(user_id), {})
+    perfil["contratacion"] = {
+        "rango": rango, "area": area, "autor_id": autor_id, "fecha": _ahora()
+    }
+    data[str(user_id)] = perfil
+    _guardar(data)
+
+
+def actualizar_contratacion(user_id: int, rango: str = None, area: str = None) -> dict | None:
+    data = _cargar()
+    perfil = data.get(str(user_id), {})
+    contratacion = perfil.get("contratacion")
+    if not contratacion:
+        return None
+    if rango is not None:
+        contratacion["rango"] = rango
+    if area is not None:
+        contratacion["area"] = area
+    perfil["contratacion"] = contratacion
+    data[str(user_id)] = perfil
+    _guardar(data)
+    return contratacion
+
+
+def eliminar_contratacion(user_id: int):
+    data = _cargar()
+    perfil = data.get(str(user_id), {})
+    if "contratacion" in perfil:
+        del perfil["contratacion"]
+        data[str(user_id)] = perfil
+        _guardar(data)
+
+
+def contratacion_de(user_id: int) -> dict | None:
+    data = _cargar()
+    return data.get(str(user_id), {}).get("contratacion")
+
+
+def personal_activo() -> list:
+    """Lista de (user_id, contratacion) de todos los que tienen ficha activa."""
+    data = _cargar()
+    return [(int(uid), p["contratacion"]) for uid, p in data.items() if p.get("contratacion")]
