@@ -91,6 +91,36 @@ DEPARTAMENTOS = {
         "director_key": "DIRECTOR_LOGISTICA",
         "escalafon_nombres": ["Auxiliar de Logística", "Supervisor de Logística", "Jefe de Logística"],
     },
+        "farmacia": {
+        "nombre": "Farmacia",
+        "director_key": "DIRECTOR_LOGISTICA",
+        "escalafon_nombres": ["Auxiliar de Farmacia", "Supervisor de Farmacia", "Jefe de Farmacia"],
+    },
+    "psiquiatria": {
+        "nombre": "Psiquiatría",
+        "director_key": "DIRECTOR_MEDICO",
+        "escalafon_nombres": ["Psicólogo/a Residente", "Psicólogo/a Adjunto/a", "Jefe de Psiquiatría"],
+    },
+    "laboratorio": {
+        "nombre": "Laboratorio",
+        "director_key": "DIRECTOR_MEDICO",
+        "escalafon_nombres": ["Técnico de Laboratorio", "Supervisor de Laboratorio", "Jefe de Laboratorio"],
+    },
+    "admisiones": {
+        "nombre": "Admisiones / Recepción",
+        "director_key": "DIRECTOR_ADMINISTRATIVO",
+        "escalafon_nombres": ["Recepcionista", "Supervisor de Admisiones", "Jefe de Admisiones"],
+    },
+    "traslados": {
+        "nombre": "Traslados / Camillería",
+        "director_key": "DIRECTOR_LOGISTICA",
+        "escalafon_nombres": ["Camillero/a", "Supervisor de Traslados", "Jefe de Traslados"],
+    },
+    "cirugia": {
+        "nombre": "Cirugía",
+        "director_key": "DIRECTOR_MEDICO",
+        "escalafon_nombres": ["Cirujano/a Residente", "Cirujano/a Adjunto/a", "Jefe de Cirugía"],
+    },
 }
 
 # ---------------------------------------------------------------------------
