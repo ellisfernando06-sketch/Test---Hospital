@@ -125,20 +125,43 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
     # Posición del bot es la máxima que podemos tocar.
     base_pos = bot_top.position - 1
     positions = {}
+    # BUG CORREGIDO: antes, cuando había más roles gestionables que espacio
+    # disponible entre el rol del bot y la posición 1, todos los roles
+    # "sobrantes" se fijaban a la MISMA posición (1), porque el código
+    # hacía "if nueva < 1: nueva = 1". Pasarle a Discord varios roles con
+    # la posición duplicada en un mismo edit_role_positions produce un
+    # orden final inconsistente/arbitrario para esos roles. Ahora, en vez
+    # de forzar la posición 1 para todos, simplemente se dejan de mover
+    # los roles que ya no entran en el espacio disponible (se avisa en el
+    # resumen) y se conserva su posición actual.
+    roles_omitidos: List[discord.Role] = []
     for i, rol in enumerate(roles_ordenados):
         nueva = base_pos - i
         if nueva < 1:
-            nueva = 1
+            roles_omitidos.append(rol)
+            continue
         positions[rol] = nueva
+
+    if not positions:
+        resumen.append("⚠️ No hay espacio de posiciones disponible para reordenar (rol del bot demasiado bajo).")
+        return resumen
 
     try:
         await guild.edit_role_positions(positions=positions, reason="Orden por categorías (bot hospital)")
-        resumen.append(f"✅ Roles reordenados ({len(roles_ordenados)} roles).")
+        resumen.append(f"✅ Roles reordenados ({len(positions)} roles).")
         # Detalle por categoría
         resumen.append("")
         resumen.append("**Orden aplicado (arriba → abajo):**")
         for r in roles_ordenados:
-            resumen.append(f"  • {r.name}")
+            if r in positions:
+                resumen.append(f"  • {r.name}")
+        if roles_omitidos:
+            resumen.append("")
+            resumen.append(
+                f"⚠️ {len(roles_omitidos)} rol(es) no se pudieron reordenar por falta de espacio de "
+                "posiciones (sube el rol del bot más arriba para incluirlos): "
+                + ", ".join(r.name for r in roles_omitidos)
+            )
     except discord.Forbidden:
         resumen.append("❌ Sin permisos para reordenar roles. Sube el rol del bot por encima de los roles a ordenar.")
     except Exception as e:
