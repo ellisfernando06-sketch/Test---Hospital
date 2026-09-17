@@ -1932,4 +1932,112 @@ async def estado_hospital(interaction: discord.Interaction):
 
 
 # ===========================================================================
+
+# ===========================================================================
+# CONTROL OPERATIVO BOT - NUEVO
+# ===========================================================================
+BOT_VERSION = "2.1.0"
+BOT_START_TIME = time.time()
+BOT_MAINTENANCE = False
+BOT_POWER = True
+STATUS_MESSAGE = None
+
+def _owner_ids():
+    vals = []
+    for name in ("OWNER_ID", "OWNER"):
+        v = getattr(config, name, None)
+        if v is not None:
+            try: vals.append(int(v))
+            except (ValueError, TypeError): pass
+    return vals
+
+def _is_owner(interaction):
+    return interaction.user.id in _owner_ids()
+
+def owner_check():
+    async def predicate(interaction):
+        return _is_owner(interaction)
+    return app_commands.check(predicate)
+
+def _uptime():
+    s=int(time.time()-BOT_START_TIME); d,s=divmod(s,86400); h,s=divmod(s,3600); m,s=divmod(s,60)
+    return f"{d}d {h}h {m}m {s}s"
+
+def _status_embed():
+    if not BOT_POWER: state="🔴 APAGADO"
+    elif BOT_MAINTENANCE: state="🟡 MANTENIMIENTO"
+    else: state="🟢 ONLINE"
+    e=discord.Embed(title="📡 Estado del Bot", description=state, timestamp=discord.utils.utcnow())
+    e.add_field(name="Versión", value=BOT_VERSION, inline=True)
+    e.add_field(name="Latencia", value=f"{round(bot.latency*1000)} ms", inline=True)
+    e.add_field(name="Uptime", value=_uptime(), inline=True)
+    e.add_field(name="Comandos", value=str(len(bot.tree.get_commands())), inline=True)
+    e.set_footer(text="Panel automático")
+    return e
+
+async def _refresh_status():
+    global STATUS_MESSAGE
+    if STATUS_MESSAGE:
+        try: await STATUS_MESSAGE.edit(embed=_status_embed())
+        except discord.HTTPException: STATUS_MESSAGE=None
+
+@bot.tree.command(name="estado_bot", description="Muestra el estado actual del bot.")
+@owner_check()
+async def estado_bot(interaction):
+    await interaction.response.send_message(embed=_status_embed(), ephemeral=True)
+
+@bot.tree.command(name="panel_estado_bot", description="Publica el panel automático de estado.")
+@owner_check()
+async def panel_estado_bot(interaction):
+    global STATUS_MESSAGE
+    STATUS_MESSAGE=await interaction.channel.send(embed=_status_embed())
+    await interaction.response.send_message("✅ Panel creado y actualizado automáticamente.", ephemeral=True)
+
+@bot.tree.command(name="mantenimiento", description="Activa o desactiva el mantenimiento.")
+@app_commands.describe(activar="True activa; False desactiva")
+@owner_check()
+async def mantenimiento(interaction, activar: bool):
+    global BOT_MAINTENANCE
+    BOT_MAINTENANCE=activar
+    await interaction.response.send_message(
+        "🟡 Mantenimiento activado." if activar else "🟢 Mantenimiento desactivado.",
+        ephemeral=True)
+    await _refresh_status()
+
+@bot.tree.command(name="apagar_bot", description="Apaga lógicamente el bot.")
+@owner_check()
+async def apagar_bot(interaction):
+    global BOT_POWER
+    BOT_POWER=False
+    await interaction.response.send_message("🔴 Bot apagado lógicamente. Usa /encender_bot para activarlo.", ephemeral=True)
+    await _refresh_status()
+
+@bot.tree.command(name="encender_bot", description="Enciende el bot.")
+@owner_check()
+async def encender_bot(interaction):
+    global BOT_POWER, BOT_MAINTENANCE
+    BOT_POWER=True; BOT_MAINTENANCE=False
+    await interaction.response.send_message("🟢 Bot encendido y operativo.", ephemeral=True)
+    await _refresh_status()
+
+@bot.tree.command(name="reiniciar_bot", description="Reinicia el proceso del bot.")
+@owner_check()
+async def reiniciar_bot(interaction):
+    await interaction.response.send_message("🔄 Reiniciando...", ephemeral=True)
+    await bot.close()
+    os._exit(0)
+
+@bot.tree.command(name="actualizar_bot", description="Sincroniza comandos y reinicia.")
+@owner_check()
+async def actualizar_bot(interaction):
+    await interaction.response.defer(ephemeral=True)
+    synced=await bot.tree.sync()
+    await interaction.followup.send(f"🔄 {len(synced)} comandos sincronizados. Reiniciando...", ephemeral=True)
+    await bot.close()
+    os._exit(0)
+
+TOKEN = os.getenv("DISCORD_TOKEN") or getattr(config, "TOKEN", None)
+if not TOKEN:
+    raise RuntimeError("No se encontró DISCORD_TOKEN en Railway.")
+    
 TOKEN = os.getenv("DISCORD_TOKEN")
