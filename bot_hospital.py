@@ -1864,10 +1864,9 @@ async def estado_bot(interaction: discord.Interaction):
 
 
 # ===========================================================================
-if not config.TOKEN:
-    raise SystemExit(
-        "No hay TOKEN. En Railway ve a Variables y crea TOKEN "
-        "(o DISCORD_TOKEN / BOT_TOKEN) con el token del bot. "
-        "No lo pongas en config.py."
-    )
-bot.run(config.TOKEN)
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+if not TOKEN:
+    raise RuntimeError("No se encontró DISCORD_TOKEN en Railway.")
+
+bot.run(TOKEN)
