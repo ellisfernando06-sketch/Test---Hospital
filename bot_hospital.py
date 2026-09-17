@@ -1127,8 +1127,12 @@ async def asignar_tarea(interaction: discord.Interaction, usuario: discord.Membe
 @app_commands.describe(departamento="Área destinataria", asunto="Asunto de la carta")
 @app_commands.choices(departamento=SOLICITUD_CHOICES)
 async def carta_solicitud(interaction: discord.Interaction, departamento: app_commands.Choice[str], asunto: str):
+    # BUG CORREGIDO: se llamaba a CartaSolicitudModal(asunto, departamento.value,
+    # departamento.name) — 3 argumentos en el orden equivocado respecto al
+    # constructor de la clase (departamento_slug, departamento_nombre,
+    # asunto_sugerido), lo que hacía truenar el comando con TypeError.
     await interaction.response.send_modal(
-        CartaSolicitudModal(asunto, departamento.value, departamento.name)
+        CartaSolicitudModal(departamento.value, departamento.name, asunto)
     )
 
 
@@ -1773,6 +1777,30 @@ async def postulacion_mias(interaction: discord.Interaction):
     await interaction.response.send_message("📋 Tus postulaciones:\n" + "\n".join(lineas), ephemeral=True)
 
 
+@grupo_postulacion.command(name="resolver", description="Aprueba o rechaza una postulación pendiente")
+@app_commands.describe(id_postulacion="Número de la postulación (visible en /postulacion pendientes)", estado="Resultado")
+@app_commands.choices(estado=[
+    app_commands.Choice(name="Aprobada", value="aprobada"),
+    app_commands.Choice(name="Rechazada", value="rechazada"),
+])
+@require_key("DIRECTOR", "DIRECTOR_RRHH", "JEFE_JUNTA_DIRECTIVA", "OWNER")
+async def postulacion_resolver(interaction: discord.Interaction, id_postulacion: int, estado: app_commands.Choice[str]):
+    # BUG CORREGIDO: postulaciones.resolver() existía en postulaciones.py
+    # pero ningún comando la llamaba, así que el staff no tenía forma de
+    # aprobar o rechazar postulaciones — quedaban "pendiente" para siempre.
+    if not postulaciones.resolver(id_postulacion, estado.value):
+        await interaction.response.send_message(f"❌ No existe la postulación #{id_postulacion}.", ephemeral=True)
+        return
+    await interaction.response.send_message(
+        f"✅ Postulación #{id_postulacion} marcada como **{estado.value}**."
+    )
+    await enviar_log("log_postulaciones", crear_embed(
+        "exito" if estado.value == "aprobada" else "error",
+        "Postulación resuelta",
+        f"**{interaction.user}** marcó la postulación #{id_postulacion} como **{estado.value}**.",
+    ))
+
+
 bot.tree.add_command(grupo_postulacion)
 
 
@@ -1864,9 +1892,10 @@ async def estado_bot(interaction: discord.Interaction):
 
 
 # ===========================================================================
-TOKEN = os.getenv("DISCORD_TOKEN")
-
-if not TOKEN:
-    raise RuntimeError("No se encontró DISCORD_TOKEN en Railway.")
-
-bot.run(TOKEN)
+if not config.TOKEN:
+    raise SystemExit(
+        "No hay TOKEN. En Railway ve a Variables y crea TOKEN "
+        "(o DISCORD_TOKEN / BOT_TOKEN) con el token del bot. "
+        "No lo pongas en config.py."
+    )
+bot.run(config.TOKEN)
