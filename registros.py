@@ -82,6 +82,16 @@ def registrar_advertencia(uid: int, motivo: str, autor_id: int) -> None:
     _save(data)
 
 
+def advertencias_de(uid: int) -> List[dict]:
+    """
+    BUG CORREGIDO: bot_hospital.py llama a registros.advertencias_de() en
+    /historial_advertencias, pero esta función no existía, lo que causaba
+    un AttributeError y hacía truenar el comando.
+    """
+    data = _load()
+    return _user(data, uid).get("advertencias", [])
+
+
 def registrar_asistencia(uid: int, tipo: str, detalle: str = "") -> None:
     data = _load()
     u = _user(data, uid)
