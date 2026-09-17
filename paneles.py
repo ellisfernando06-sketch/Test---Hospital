@@ -4,11 +4,14 @@ paneles.py — Vistas persistentes de tickets y acciones.
 """
 from __future__ import annotations
 
+import asyncio
+
 import discord
 from discord import ui
 
 import config
 import permisos
+import roles_store
 from estilos import crear_embed
 
 
@@ -28,16 +31,20 @@ class AbrirTicketView(ui.View):
             guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True),
         }
         # Staff keys
+        # BUG CORREGIDO: antes se usaba __import__("roles_store") dos veces
+        # dentro del bucle en lugar de importar el módulo una sola vez arriba.
+        # Funcionaba, pero era frágil e ineficiente; ahora se usa el import
+        # normal (roles_store) ya declarado al inicio del archivo.
         for key in config.TICKET_STAFF_KEYS:
             if key == "DIRECTOR":
                 for dk in config.DIRECTOR_KEYS:
-                    rid = __import__("roles_store").obtener_id_key(dk)
+                    rid = roles_store.obtener_id_key(dk)
                     if rid:
                         rol = guild.get_role(rid)
                         if rol:
                             overwrites[rol] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
             else:
-                rid = __import__("roles_store").obtener_id_key(key)
+                rid = roles_store.obtener_id_key(key)
                 if rid:
                     rol = guild.get_role(rid)
                     if rol:
@@ -74,6 +81,10 @@ class CerrarTicketView(ui.View):
                 await interaction.response.send_message("❌ Solo staff puede cerrar tickets.", ephemeral=True)
                 return
         await interaction.response.send_message("🔒 Cerrando ticket en 3 segundos…")
+        # BUG CORREGIDO: el mensaje decía "en 3 segundos" pero el canal se
+        # borraba inmediatamente después, sin esperar nada. Ahora sí se
+        # espera el tiempo anunciado antes de borrar.
+        await asyncio.sleep(3)
         try:
             await interaction.channel.delete(reason=f"Cerrado por {interaction.user}")
         except Exception:
