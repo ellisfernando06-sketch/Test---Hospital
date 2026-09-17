@@ -204,10 +204,20 @@ async def on_ready():
 
     print(f"Conectado como {bot.user} (ID: {bot.user.id})")
     try:
+        # Sincronización global + sincronización inmediata para el servidor
+        # indicado en DISCORD_GUILD_ID. La de guild hace que los comandos
+        # aparezcan inmediatamente, sin esperar la propagación global de Discord.
         sincronizados = await bot.tree.sync()
-        print(f"Sincronizados {len(sincronizados)} comandos slash.")
+        print(f"Sincronizados globalmente {len(sincronizados)} comandos slash.")
+
+        guild_id = os.getenv("DISCORD_GUILD_ID")
+        if guild_id:
+            guild = discord.Object(id=int(guild_id))
+            bot.tree.copy_global_to(guild=guild)
+            guild_commands = await bot.tree.sync(guild=guild)
+            print(f"Sincronizados en servidor {guild_id}: {len(guild_commands)} comandos slash.")
     except Exception as e:
-        print(f"Error al sincronizar comandos: {e}")
+        print(f"Error al sincronizar comandos: {type(e).__name__}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -1942,17 +1952,8 @@ BOT_MAINTENANCE = False
 BOT_POWER = True
 STATUS_MESSAGE = None
 
-def _owner_ids():
-    vals = []
-    for name in ("OWNER_ID", "OWNER"):
-        v = getattr(config, name, None)
-        if v is not None:
-            try: vals.append(int(v))
-            except (ValueError, TypeError): pass
-    return vals
-
 def _is_owner(interaction):
-    return interaction.user.id in _owner_ids()
+    return _es_owner(interaction.user)
 
 def owner_check():
     async def predicate(interaction):
@@ -2039,5 +2040,5 @@ async def actualizar_bot(interaction):
 TOKEN = os.getenv("DISCORD_TOKEN") or getattr(config, "TOKEN", None)
 if not TOKEN:
     raise RuntimeError("No se encontró DISCORD_TOKEN en Railway.")
-    
+
 TOKEN = os.getenv("DISCORD_TOKEN")
