@@ -43,6 +43,14 @@ def modificar_balance(uid: int, delta: float) -> float:
     key = str(uid)
     actual = float(data["balances"].get(key, 0.0))
     nuevo = actual + delta
+    # BUG CORREGIDO: antes esta función nunca validaba fondos suficientes y
+    # dejaba que el balance quedara en negativo sin avisar. bot_hospital.py
+    # (en /retirar y /transferir) espera que se lance ValueError cuando no
+    # alcanza el saldo, y lo captura con "except ValueError" — pero como
+    # nunca se lanzaba, cualquiera podía retirar o transferir más dinero
+    # del que realmente tenía. Ahora se valida antes de guardar.
+    if nuevo < 0:
+        raise ValueError("Fondos insuficientes.")
     data["balances"][key] = nuevo
     _save(data)
     return nuevo
@@ -61,10 +69,40 @@ def registrar_movimiento(tipo: str, de_id: int, a_id: int, monto: float, motivo:
     _save(data)
 
 
-def historial(uid: int, limite: int = 15) -> List[dict]:
+def ultimos_movimientos(uid: int, limite: int = 15) -> List[dict]:
+    """
+    Últimos movimientos financieros de un usuario (como emisor o receptor).
+    BUG CORREGIDO: bot_hospital.py llama a economia.ultimos_movimientos()
+    en /historial_financiero, pero esta función no existía (antes se
+    llamaba historial()), lo que causaba un AttributeError y hacía
+    truenar el comando. Se renombró y se conserva historial() como alias
+    por compatibilidad.
+    """
     data = _load()
     movs = [
         m for m in data["movimientos"]
         if m.get("de_id") == uid or m.get("a_id") == uid
     ]
     return movs[-limite:]
+
+
+def historial(uid: int, limite: int = 15) -> List[dict]:
+    """Alias retrocompatible de ultimos_movimientos()."""
+    return ultimos_movimientos(uid, limite)
+
+
+def resumen_general(limite_movimientos: int = 10) -> dict:
+    """
+    Resumen financiero general del hospital.
+    BUG CORREGIDO: bot_hospital.py llama a economia.resumen_general() en
+    /balance_general, pero la función no existía en absoluto, lo que
+    causaba un AttributeError y hacía truenar el comando.
+    """
+    data = _load()
+    total_en_circulacion = sum(float(v) for v in data["balances"].values())
+    cuentas_activas = sum(1 for v in data["balances"].values() if float(v) != 0)
+    return {
+        "total_en_circulacion": total_en_circulacion,
+        "cuentas_activas": cuentas_activas,
+        "ultimos_movimientos": data["movimientos"][-limite_movimientos:],
+    }
