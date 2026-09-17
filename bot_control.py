@@ -152,10 +152,19 @@ async def _ejecutar_accion(
     if accion == "apagar":
         set_mode("offline", extra or "Bot apagado por el OWNER.", por)
         await publicar_estado(bot)
-        if interaction and not interaction.response.is_done():
-            await interaction.followup.send("🔴 Bot marcado como **offline**. Cerrando conexión…")
-        elif interaction:
-            await interaction.followup.send("🔴 Bot marcado como **offline**. Cerrando conexión…")
+        # BUG CORREGIDO: antes se llamaba a interaction.followup.send() incluso
+        # cuando la interacción todavía NO tenía una respuesta inicial enviada
+        # (interaction.response.is_done() == False). followup.send() requiere
+        # que ya exista una respuesta previa (send_message o defer); si no,
+        # Discord devuelve un error (webhook token no válido) y el mensaje
+        # nunca llega. Ahora se elige el método correcto según el estado real
+        # de la interacción, igual que en las demás acciones.
+        msg = "🔴 Bot marcado como **offline**. Cerrando conexión…"
+        if interaction:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg)
+            else:
+                await interaction.response.send_message(msg)
         await asyncio.sleep(1.5)
         await bot.close()
 
