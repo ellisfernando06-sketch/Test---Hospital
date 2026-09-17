@@ -60,12 +60,19 @@ async def enviar_solicitud(
                 except discord.Forbidden:
                     continue
             if not mencionado:
-                # Fallback: responder en el canal con mención
+                # BUG CORREGIDO: aquí se usaba interaction.followup.send(...).
+                # Todos los llamadores de enviar_solicitud() lo hacen ANTES de
+                # responder la interacción (interaction.response.send_message
+                # se llama después). Un followup solo funciona si ya se envió
+                # una respuesta inicial (send_message o defer); si no, Discord
+                # rechaza el envío (el except Exception lo tragaba en
+                # silencio y el aviso simplemente nunca llegaba a nadie).
+                # Se usa interaction.channel.send() en su lugar, que no
+                # depende del estado de la respuesta de la interacción.
                 try:
-                    await interaction.followup.send(
+                    await interaction.channel.send(
                         content=f"{rol.mention} — nueva solicitud",
                         embed=embed,
-                        ephemeral=False,
                     )
                     mencionado = True
                 except Exception:
