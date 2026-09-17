@@ -35,7 +35,7 @@ import asyncio
 import subprocess
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 import capacitaciones
 import codigos
@@ -201,6 +201,10 @@ async def on_ready():
     bot.add_view(CerrarTicketView())
     bot.add_view(PanelAccionesView())
     bot.add_view(PanelEstadoView())
+    bot.add_view(PanelControlBotView())
+
+    if not _auto_refrescar_panel.is_running():
+        _auto_refrescar_panel.start()
 
     print(f"Conectado como {bot.user} (ID: {bot.user.id})")
     try:
@@ -253,7 +257,7 @@ async def configurar_roles(interaction: discord.Interaction):
     bloques = [texto[i:i + 3800] for i in range(0, len(texto), 3800)] or ["(sin roles definidos)"]
     for i, bloque in enumerate(bloques):
         embed = crear_embed(
-            "exito",
+            "exito" if i == 0 else "exito",
             "✅ Roles configurados" if i == 0 else "✅ Roles configurados (cont.)",
             bloque,
         )
@@ -1944,98 +1948,191 @@ async def estado_hospital(interaction: discord.Interaction):
 # ===========================================================================
 
 # ===========================================================================
-# CONTROL OPERATIVO BOT - NUEVO
+# CONTROL OPERATIVO DEL BOT (solo OWNER)
 # ===========================================================================
-BOT_VERSION = "2.1.0"
-BOT_START_TIME = time.time()
-BOT_MAINTENANCE = False
-BOT_POWER = True
-STATUS_MESSAGE = None
 
-def _is_owner(interaction):
-    return _es_owner(interaction.user)
+def _actualizar_estado(modo: str, motivo: str, autor: discord.abc.User):
+    ESTADO_BOT["modo"] = modo
+    ESTADO_BOT["motivo"] = motivo
+    ESTADO_BOT["actualizado_por"] = str(autor)
+    _guardar_estado_bot()
 
-def owner_check():
-    async def predicate(interaction):
-        return _is_owner(interaction)
-    return app_commands.check(predicate)
 
-def _uptime():
-    s=int(time.time()-BOT_START_TIME); d,s=divmod(s,86400); h,s=divmod(s,3600); m,s=divmod(s,60)
-    return f"{d}d {h}h {m}m {s}s"
+class PanelControlBotView(discord.ui.View):
+    """Vista persistente con los controles rápidos del bot (solo OWNER)."""
 
-def _status_embed():
-    if not BOT_POWER: state="🔴 APAGADO"
-    elif BOT_MAINTENANCE: state="🟡 MANTENIMIENTO"
-    else: state="🟢 ONLINE"
-    e=discord.Embed(title="📡 Estado del Bot", description=state, timestamp=discord.utils.utcnow())
-    e.add_field(name="Versión", value=BOT_VERSION, inline=True)
-    e.add_field(name="Latencia", value=f"{round(bot.latency*1000)} ms", inline=True)
-    e.add_field(name="Uptime", value=_uptime(), inline=True)
-    e.add_field(name="Comandos", value=str(len(bot.tree.get_commands())), inline=True)
-    e.set_footer(text="Panel automático")
-    return e
+    def __init__(self):
+        super().__init__(timeout=None)
 
-async def _refresh_status():
-    global STATUS_MESSAGE
-    if STATUS_MESSAGE:
-        try: await STATUS_MESSAGE.edit(embed=_status_embed())
-        except discord.HTTPException: STATUS_MESSAGE=None
+    async def _solo_owner(self, interaction: discord.Interaction) -> bool:
+        if not _es_owner(interaction.user):
+            await interaction.response.send_message(
+                "❌ Solo el OWNER puede usar estos controles.", ephemeral=True
+            )
+            return False
+        return True
 
-@bot.tree.command(name="estado_bot", description="Muestra el estado actual del bot.")
-@owner_check()
-async def estado_bot(interaction):
-    await interaction.response.send_message(embed=_status_embed(), ephemeral=True)
+    @discord.ui.button(label="Encender", style=discord.ButtonStyle.success, emoji="🟢", custom_id="hospital:bot_encender")
+    async def encender(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._solo_owner(interaction):
+            return
+        _actualizar_estado("online", "", interaction.user)
+        await interaction.response.send_message("🟢 Bot encendido.", ephemeral=True)
+        await _refrescar_panel_bot()
 
-@bot.tree.command(name="panel_estado_bot", description="Publica el panel automático de estado.")
-@owner_check()
-async def panel_estado_bot(interaction):
-    global STATUS_MESSAGE
-    STATUS_MESSAGE=await interaction.channel.send(embed=_status_embed())
-    await interaction.response.send_message("✅ Panel creado y actualizado automáticamente.", ephemeral=True)
+    @discord.ui.button(label="Apagar", style=discord.ButtonStyle.danger, emoji="🔴", custom_id="hospital:bot_apagar")
+    async def apagar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._solo_owner(interaction):
+            return
+        _actualizar_estado("apagado", "Apagado manualmente por el OWNER.", interaction.user)
+        await interaction.response.send_message("🔴 Bot apagado lógicamente.", ephemeral=True)
+        await _refrescar_panel_bot()
 
-@bot.tree.command(name="mantenimiento", description="Activa o desactiva el mantenimiento.")
-@app_commands.describe(activar="True activa; False desactiva")
-@owner_check()
-async def mantenimiento(interaction, activar: bool):
-    global BOT_MAINTENANCE
-    BOT_MAINTENANCE=activar
-    await interaction.response.send_message(
-        "🟡 Mantenimiento activado." if activar else "🟢 Mantenimiento desactivado.",
-        ephemeral=True)
-    await _refresh_status()
+    @discord.ui.button(label="Mantenimiento", style=discord.ButtonStyle.secondary, emoji="🟡", custom_id="hospital:bot_mantenimiento")
+    async def mantenimiento_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._solo_owner(interaction):
+            return
+        if ESTADO_BOT.get("modo") == "mantenimiento":
+            _actualizar_estado("online", "", interaction.user)
+            await interaction.response.send_message("🟢 Mantenimiento desactivado.", ephemeral=True)
+        else:
+            _actualizar_estado("mantenimiento", "Se están realizando tareas de mantenimiento.", interaction.user)
+            await interaction.response.send_message("🟡 Mantenimiento activado.", ephemeral=True)
+        await _refrescar_panel_bot()
 
-@bot.tree.command(name="apagar_bot", description="Apaga lógicamente el bot.")
-@owner_check()
-async def apagar_bot(interaction):
-    global BOT_POWER
-    BOT_POWER=False
-    await interaction.response.send_message("🔴 Bot apagado lógicamente. Usa /encender_bot para activarlo.", ephemeral=True)
-    await _refresh_status()
+    @discord.ui.button(label="Reiniciar", style=discord.ButtonStyle.primary, emoji="🔄", custom_id="hospital:bot_reiniciar")
+    async def reiniciar_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._solo_owner(interaction):
+            return
+        await interaction.response.send_message("🔄 Reiniciando el bot...", ephemeral=True)
+        await _reiniciar_proceso()
 
-@bot.tree.command(name="encender_bot", description="Enciende el bot.")
-@owner_check()
-async def encender_bot(interaction):
-    global BOT_POWER, BOT_MAINTENANCE
-    BOT_POWER=True; BOT_MAINTENANCE=False
+    @discord.ui.button(label="Actualizar", style=discord.ButtonStyle.primary, emoji="⬆️", custom_id="hospital:bot_actualizar")
+    async def actualizar_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not await self._solo_owner(interaction):
+            return
+        await interaction.response.defer(ephemeral=True)
+        await _actualizar_bot(interaction)
+
+
+async def _refrescar_panel_bot():
+    canal_id = ESTADO_BOT.get("panel_channel_id")
+    mensaje_id = ESTADO_BOT.get("panel_message_id")
+    if not canal_id or not mensaje_id:
+        return
+    canal = bot.get_channel(canal_id)
+    if not canal:
+        return
+    try:
+        mensaje = await canal.fetch_message(mensaje_id)
+        await mensaje.edit(embed=construir_embed_estado_bot(canal.guild))
+    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+        pass
+
+
+async def _reiniciar_proceso():
+    _guardar_estado_bot()
+    await bot.close()
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
+async def _actualizar_bot(interaction: discord.Interaction):
+    salida_git = ""
+    try:
+        resultado = subprocess.run(["git", "pull"], capture_output=True, text=True, timeout=60)
+        salida_git = (resultado.stdout + resultado.stderr).strip() or "Sin cambios nuevos."
+    except Exception as e:
+        salida_git = f"No se pudo actualizar el código (git pull): {e}"
+
+    try:
+        sincronizados = await bot.tree.sync()
+        extra = ""
+        guild_id = os.getenv("DISCORD_GUILD_ID")
+        if guild_id:
+            guild = discord.Object(id=int(guild_id))
+            bot.tree.copy_global_to(guild=guild)
+            guild_commands = await bot.tree.sync(guild=guild)
+            extra = f" y {len(guild_commands)} en el servidor local"
+        resumen_comandos = f"✅ {len(sincronizados)} comandos sincronizados globalmente{extra}."
+    except Exception as e:
+        resumen_comandos = f"⚠️ Error al sincronizar comandos: {e}"
+
+    texto = f"{resumen_comandos}\n\n📦 Git:\n```{salida_git[:1500]}```\n🔄 Reiniciando para aplicar los cambios..."
+    if interaction.response.is_done():
+        await interaction.followup.send(texto, ephemeral=True)
+    else:
+        await interaction.response.send_message(texto, ephemeral=True)
+
+    _actualizar_estado(ESTADO_BOT.get("modo", "online"), "Reiniciando por actualización", interaction.user)
+    await asyncio.sleep(1)
+    await _reiniciar_proceso()
+
+
+@tasks.loop(minutes=2)
+async def _auto_refrescar_panel():
+    await _refrescar_panel_bot()
+
+
+@bot.tree.command(name="panel_estado_bot", description="Publica el panel de control y estado en vivo del bot (solo OWNER)")
+@require_key("OWNER")
+async def panel_estado_bot(interaction: discord.Interaction):
+    embed = construir_embed_estado_bot(interaction.guild)
+    await interaction.response.send_message(embed=embed, view=PanelControlBotView())
+    mensaje = await interaction.original_response()
+    ESTADO_BOT["panel_channel_id"] = mensaje.channel.id
+    ESTADO_BOT["panel_message_id"] = mensaje.id
+    _guardar_estado_bot()
+
+
+@bot.tree.command(name="estado_bot", description="Muestra el estado actual del bot (solo OWNER)")
+@require_key("OWNER")
+async def estado_bot(interaction: discord.Interaction):
+    await interaction.response.send_message(embed=construir_embed_estado_bot(interaction.guild), ephemeral=True)
+
+
+@bot.tree.command(name="encender_bot", description="Enciende el bot (solo OWNER)")
+@require_key("OWNER")
+async def encender_bot(interaction: discord.Interaction):
+    _actualizar_estado("online", "", interaction.user)
     await interaction.response.send_message("🟢 Bot encendido y operativo.", ephemeral=True)
-    await _refresh_status()
+    await _refrescar_panel_bot()
 
-@bot.tree.command(name="reiniciar_bot", description="Reinicia el proceso del bot.")
-@owner_check()
-async def reiniciar_bot(interaction):
-    await interaction.response.send_message("🔄 Reiniciando...", ephemeral=True)
-    await bot.close()
-    os._exit(0)
 
-@bot.tree.command(name="actualizar_bot", description="Sincroniza comandos y reinicia.")
-@owner_check()
-async def actualizar_bot(interaction):
+@bot.tree.command(name="apagar_bot", description="Apaga lógicamente el bot (solo OWNER)")
+@app_commands.describe(motivo="Motivo del apagado (opcional)")
+@require_key("OWNER")
+async def apagar_bot(interaction: discord.Interaction, motivo: str = ""):
+    _actualizar_estado("apagado", motivo or "El bot está temporalmente apagado.", interaction.user)
+    await interaction.response.send_message("🔴 Bot apagado lógicamente. Usa `/encender_bot` para reactivarlo.", ephemeral=True)
+    await _refrescar_panel_bot()
+
+
+@bot.tree.command(name="mantenimiento", description="Activa o desactiva el modo mantenimiento (solo OWNER)")
+@app_commands.describe(activar="True activa; False desactiva", motivo="Motivo del mantenimiento (opcional)")
+@require_key("OWNER")
+async def mantenimiento(interaction: discord.Interaction, activar: bool, motivo: str = ""):
+    if activar:
+        _actualizar_estado("mantenimiento", motivo or "Se están realizando tareas de mantenimiento.", interaction.user)
+        await interaction.response.send_message("🟡 Mantenimiento activado.", ephemeral=True)
+    else:
+        _actualizar_estado("online", "", interaction.user)
+        await interaction.response.send_message("🟢 Mantenimiento desactivado.", ephemeral=True)
+    await _refrescar_panel_bot()
+
+
+@bot.tree.command(name="reiniciar_bot", description="Reinicia el proceso del bot (solo OWNER)")
+@require_key("OWNER")
+async def reiniciar_bot(interaction: discord.Interaction):
+    await interaction.response.send_message("🔄 Reiniciando el bot...", ephemeral=True)
+    await _reiniciar_proceso()
+
+
+@bot.tree.command(name="actualizar_bot", description="Actualiza el código, sincroniza comandos y reinicia el bot (solo OWNER)")
+@require_key("OWNER")
+async def actualizar_bot(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
-    synced=await bot.tree.sync()
-    await interaction.followup.send(f"🔄 {len(synced)} comandos sincronizados. Reiniciando...", ephemeral=True)
-    await bot.close()
-    os._exit(0)
+    await _actualizar_bot(interaction)
+
 
 TOKEN = os.getenv("DISCORD_TOKEN") or getattr(config, "TOKEN", None)
 if not TOKEN:
