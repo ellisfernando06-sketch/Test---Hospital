@@ -89,10 +89,20 @@ class CartaSolicitudModal(discord.ui.Modal, title="Carta de solicitud"):
     asunto = discord.ui.TextInput(label="Asunto", max_length=100)
     contenido = discord.ui.TextInput(label="Contenido", style=discord.TextStyle.paragraph, max_length=1500)
 
-    def __init__(self, departamento_slug: str, departamento_nombre: str):
+    def __init__(self, departamento_slug: str, departamento_nombre: str, asunto_sugerido: str = ""):
         super().__init__()
         self.departamento_slug = departamento_slug
         self.departamento_nombre = departamento_nombre
+        # BUG CORREGIDO: bot_hospital.py llamaba a este modal como
+        # CartaSolicitudModal(asunto, departamento.value, departamento.name),
+        # es decir, con 3 argumentos y en el orden equivocado respecto a este
+        # __init__ (que solo aceptaba 2). Eso hacía que /carta_solicitud
+        # truene con TypeError apenas se ejecutaba. Ahora el __init__ acepta
+        # también el "asunto" que el usuario ya escribió en el comando y lo
+        # precarga como valor por defecto del campo del modal, en vez de
+        # pedírselo dos veces.
+        if asunto_sugerido:
+            self.asunto.default = asunto_sugerido[:100]
 
     async def on_submit(self, interaction: discord.Interaction):
         if self.departamento_slug and self.departamento_slug in config.DEPARTAMENTOS:
@@ -108,8 +118,24 @@ class CartaSolicitudModal(discord.ui.Modal, title="Carta de solicitud"):
 class SolicitudDescargoModal(discord.ui.Modal, title="Solicitud de descargo"):
     motivo = discord.ui.TextInput(label="Motivo del descargo", style=discord.TextStyle.paragraph, max_length=1000)
 
+    def __init__(self, usuario: discord.Member, cargo_actual: str, cargo_propuesto: str):
+        super().__init__()
+        # BUG CORREGIDO: esta clase no tenía __init__ propio, pero
+        # bot_hospital.py la instanciaba como
+        # SolicitudDescargoModal(usuario, cargo_actual, cargo_propuesto).
+        # discord.ui.Modal.__init__ no acepta argumentos posicionales, así
+        # que /solicitud_descargo truena con TypeError apenas se ejecuta.
+        # Además, aunque no tronara, esos tres datos nunca se usaban en el
+        # mensaje final. Ahora se guardan y se incluyen en el embed.
+        self.usuario = usuario
+        self.cargo_actual = cargo_actual
+        self.cargo_propuesto = cargo_propuesto
+
     async def on_submit(self, interaction: discord.Interaction):
         embed = crear_embed("aviso", "📝 Solicitud de descargo", str(self.motivo), autor=interaction.user)
+        embed.add_field(name="Afectado", value=self.usuario.mention)
+        embed.add_field(name="Cargo actual", value=self.cargo_actual)
+        embed.add_field(name="Cargo propuesto", value=self.cargo_propuesto)
         await enviar_solicitud(interaction, config.RRHH_KEY, embed, "log_solicitudes")
         await interaction.response.send_message("✅ Solicitud de descargo enviada a RRHH.", ephemeral=True)
 
@@ -119,9 +145,27 @@ class SolicitudPermisoModal(discord.ui.Modal, title="Solicitud de permiso"):
     hasta = discord.ui.TextInput(label="Hasta (fecha)", max_length=40)
     motivo = discord.ui.TextInput(label="Motivo", style=discord.TextStyle.paragraph, max_length=500)
 
+    def __init__(self, departamento_slug: str, departamento_nombre: str):
+        super().__init__()
+        # BUG CORREGIDO: igual que arriba, esta clase no tenía __init__
+        # propio pero bot_hospital.py la instanciaba con 2 argumentos
+        # posicionales (slug, nombre) → TypeError al ejecutar
+        # /solicitud_permiso. Además la solicitud siempre se enviaba a
+        # RRHH sin importar el departamento, contradiciendo la descripción
+        # del comando ("se envía a tu propio departamento"). Ahora se
+        # guarda el departamento y se usa para elegir el destinatario.
+        self.departamento_slug = departamento_slug
+        self.departamento_nombre = departamento_nombre
+
     async def on_submit(self, interaction: discord.Interaction):
         embed = crear_embed("aviso", "🗓️ Solicitud de permiso", str(self.motivo), autor=interaction.user)
         embed.add_field(name="Desde", value=str(self.desde))
         embed.add_field(name="Hasta", value=str(self.hasta))
-        await enviar_solicitud(interaction, config.RRHH_KEY, embed, "log_solicitudes")
+        embed.add_field(name="Departamento", value=self.departamento_nombre)
+        if self.departamento_slug and self.departamento_slug in config.DEPARTAMENTOS:
+            dest = config.DEPARTAMENTOS[self.departamento_slug]["director_key"]
+        else:
+            dest = config.RRHH_KEY
+        await enviar_solicitud(interaction, dest, embed, "log_solicitudes")
         await interaction.response.send_message("✅ Solicitud de permiso enviada.", ephemeral=True)
+        
