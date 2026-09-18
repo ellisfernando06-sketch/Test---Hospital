@@ -10,13 +10,7 @@ config.py — EL ÚNICO ARCHIVO QUE DEBES EDITAR.
 #    NUNCA pongas el token en este archivo.
 # ---------------------------------------------------------------------------
 import os
-
-TOKEN = (
-    os.getenv("TOKEN")
-    or os.getenv("DISCORD_TOKEN")
-    or os.getenv("BOT_TOKEN")
-    or ""
-)
+TOKEN = os.getenv("TOKEN") or os.getenv("DISCORD_TOKEN") or os.getenv("BOT_TOKEN")
 # Se valida al arrancar (bot.run). Vacío aquí solo para poder importar módulos.
 
 NOMBRE_HOSPITAL = "Hospital General"
