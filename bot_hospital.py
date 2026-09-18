@@ -35,6 +35,7 @@ from discord.ext import commands
 
 import capacitaciones
 import codigos
+import os
 import config
 import economia
 import ficha_personal
