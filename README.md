@@ -5,7 +5,7 @@ Bot completo para un servidor de roleplay hospitalario con sistema de **keys** (
 ## Características
 
 - **Keys / jerarquía**: OWNER, CO_OWNER, Junta, Directores, Jefes, Supervisores, Staff.
-- **Roles por ID**: el bot **NUNCA crea roles nuevos**. Busca por nombre exacto (con emoji), guarda el ID y los reutiliza. Si falta un rol, lo reporta para que lo crees manualmente en el servidor.
+- **Roles por ID**: busca por nombre exacto (con emoji). Si no existen, **los crea** con emoji y color. Si ya existen, reutiliza su ID (no duplica).
 - **Orden por categorías**: `/configurar_roles` o `/ordenar_roles` ordena roles (RRHH, Médico, Enfermería, etc.).
 - **Control del bot** (solo OWNER ejecuta al momento; CO_OWNER envía solicitud de aprobación al OWNER):
   - `/apagar_bot`
@@ -70,7 +70,7 @@ data/                # JSON generados en runtime (no editar a mano)
 
 ## Notas
 
-- El bot **NUNCA crea roles**. Solo detecta los que ya existen por nombre exacto (incluido el emoji) y guarda su ID.
-- Si un rol falta, `/configurar_roles` lo reporta para que lo crees manualmente en Discord con el nombre exacto de `config.py`.
+- Si un rol ya existe con el **mismo nombre** (incluido el emoji), se usa su ID; no se crea otro.
+- Si no existe, `/configurar_roles` lo **crea** automáticamente con el nombre + emoji y color de `config.py`.
 - Para que el ordenamiento funcione, el rol del bot debe estar **por encima** de los roles a mover.
 - En mantenimiento el bot sigue respondiendo; puedes filtrar comandos según `bot_control.get_mode()` si lo necesitas.
