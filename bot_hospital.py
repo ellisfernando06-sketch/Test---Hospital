@@ -120,6 +120,63 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 
 
 # ===========================================================================
+# 0-A) ARRANQUE INICIAL (bootstrap) — rompe el candado de "nadie tiene key"
+#      Solo lo puede usar el DUEÑO REAL del servidor de Discord (guild.owner_id),
+#      y solo funciona si todavía nadie tiene la key OWNER asignada.
+#      Una vez usado, se recomienda borrar este comando del código.
+# ===========================================================================
+
+@bot.tree.command(name="bootstrap_owner", description="[Solo primer uso] Te asigna la key OWNER para poder configurar el bot")
+async def bootstrap_owner(interaction: discord.Interaction):
+    guild = interaction.guild
+    if guild is None:
+        await interaction.response.send_message("❌ Este comando solo funciona dentro de un servidor.", ephemeral=True)
+        return
+
+    if interaction.user.id != guild.owner_id:
+        await interaction.response.send_message(
+            "❌ Solo el dueño del servidor de Discord puede ejecutar la configuración inicial.",
+            ephemeral=True)
+        return
+
+    owner_role_id = roles_store.obtener_id_key("OWNER")
+    if owner_role_id:
+        rol_existente = guild.get_role(owner_role_id)
+        if rol_existente and rol_existente.members:
+            await interaction.response.send_message(
+                "⚠️ Ya hay alguien con la key OWNER configurada. Pide que te la otorgue con `/otorgar_key`.",
+                ephemeral=True)
+            return
+
+    await interaction.response.defer(ephemeral=True)
+
+    nombre, color = config.KEYS_NOMBRES["OWNER"]
+    resumen: list[str] = []
+    rol = await roles_setup._asegurar_rol(guild, nombre, color, resumen)
+    if not rol:
+        await interaction.followup.send(
+            "❌ No se pudo crear/detectar el rol Owner. Revisa que el rol del bot tenga permiso 'Gestionar roles'.",
+            ephemeral=True)
+        return
+
+    roles_store.guardar_key("OWNER", rol.id)
+
+    try:
+        await interaction.user.add_roles(rol, reason="Bootstrap inicial del sistema de keys")
+    except discord.Forbidden:
+        await interaction.followup.send(
+            f"⚠️ Se creó/detectó el rol {rol.mention} y se guardó, pero no pude asignártelo "
+            "(sube el rol del bot por encima de él en Ajustes → Roles). Asígnatelo manualmente en Discord.",
+            ephemeral=True)
+        return
+
+    await interaction.followup.send(
+        f"✅ Listo, {rol.mention} creado/detectado y asignado. Ahora ya puedes usar `/configurar_roles` "
+        "para el resto del sistema (departamentos, escalafones, etc.).",
+        ephemeral=True)
+
+
+# ===========================================================================
 # 0) CONFIGURACIÓN AUTOMÁTICA DE ROLES (keys) Y OTORGAMIENTO
 # ===========================================================================
 
