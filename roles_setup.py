@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-roles_setup.py — Detecta roles existentes por nombre (NO crea nuevos si ya existen),
+roles_setup.py — Detecta roles existentes por nombre (NUNCA crea roles nuevos),
 guarda IDs y ordena roles por categorías (RRHH, Médico, etc.).
+
+Directriz: el bot SOLO usa roles que ya existen en el servidor.
+Si falta algún rol, lo reporta y no lo crea.
 """
 from __future__ import annotations
 
@@ -11,11 +14,6 @@ import discord
 
 import config
 import roles_store
-
-
-def _hex_to_colour(hex_str: str) -> discord.Colour:
-    h = hex_str.lstrip("#")
-    return discord.Colour(int(h, 16))
 
 
 def _buscar_rol_por_nombre(guild: discord.Guild, nombre: str) -> Optional[discord.Role]:
@@ -38,29 +36,17 @@ async def _asegurar_rol(
     resumen: List[str],
 ) -> Optional[discord.Role]:
     """
-    Si el rol ya existe (por nombre), lo usa y no crea otro.
-    Solo crea si no existe ninguno con ese nombre.
+    SOLO detecta roles existentes por nombre exacto.
+    NUNCA crea roles nuevos. Si no existe, lo reporta y devuelve None.
+    (color_hex se mantiene por compatibilidad de firma, pero no se usa).
     """
     existente = _buscar_rol_por_nombre(guild, nombre)
     if existente:
         resumen.append(f"✅ Detectado: **{nombre}** (ID `{existente.id}`)")
         return existente
 
-    # Crear solo si no existe
-    try:
-        rol = await guild.create_role(
-            name=nombre,
-            colour=_hex_to_colour(color_hex),
-            reason="Configuración automática del bot hospitalario",
-        )
-        resumen.append(f"🆕 Creado: **{nombre}** (ID `{rol.id}`)")
-        return rol
-    except discord.Forbidden:
-        resumen.append(f"❌ Sin permisos para crear: **{nombre}**")
-        return None
-    except Exception as e:
-        resumen.append(f"❌ Error al crear **{nombre}**: {e}")
-        return None
+    resumen.append(f"⚠️ No encontrado: **{nombre}** — créalo manualmente en el servidor con ese nombre exacto.")
+    return None
 
 
 def _orden_deseado() -> List[Tuple[str, str]]:
@@ -172,9 +158,9 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
 
 async def configurar_todo(guild: discord.Guild) -> List[str]:
     """
-    1. Detecta (o crea si no existen) todos los roles de keys, escalafones y extras.
+    1. Detecta roles existentes de keys, escalafones y extras (NUNCA crea roles).
     2. Guarda sus IDs en roles_store.
-    3. Ordena por categorías.
+    3. Ordena por categorías los roles que sí existen.
     """
     resumen: List[str] = ["**Keys (cargos)**"]
 
