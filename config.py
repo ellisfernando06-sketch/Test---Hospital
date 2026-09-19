@@ -141,19 +141,12 @@ KEY_SOLICITUD_GENERAL = "DIRECTOR_RRHH"
 ESCALADA_SOLICITUDES = ["ENCARGADO_DISCIPLINA", "CO_OWNER", "OWNER"]
 
 # ---------------------------------------------------------------------------
-# 4) ORDEN DE ROLES POR CATEGORÍAS (de arriba hacia abajo en Discord)
-#    El bot reordena los roles según este esquema al ejecutar /configurar_roles
-#    o /ordenar_roles. Solo mueve roles que ya existen (por nombre).
+# 4) ORDEN DE ROLES POR CATEGORÍAS
 # ---------------------------------------------------------------------------
-# Orden deseado (de mayor jerarquía / arriba a menor / abajo):
-# 1. OWNER / CO_OWNER / Disciplina
-# 2. Directores
-# 3. Por cada departamento: Director del depto + escalafón (de mayor a menor)
-# 4. Jefe de Departamento genérico, Supervisor, STAFF
-# 5. Suspendido al final
+# Orden: OWNER / CO_OWNER / Disciplina → Directores → escalafones → Jefe/Supervisor/STAFF → Suspendido
 
 # ---------------------------------------------------------------------------
-# 5) CANALES DE LOG (pon el ID numérico del canal o deja None)
+# 5) CANALES DE LOG
 # ---------------------------------------------------------------------------
 CANALES = {
     "log_general":        None,
@@ -170,8 +163,8 @@ CANALES = {
     "log_quejas":         None,
     "log_postulaciones":  None,
     "alerta_codigos":     None,
-    "bot_status":         1481762625279758449,  # Canal estado del bot (Online / Mantenimiento / Offline)
-    "aprobaciones":       None,  # Canal donde llegan solicitudes de CO_OWNER (si None, se intenta DM al OWNER)
+    "bot_status":         1481762625279758449,
+    "aprobaciones":       None,
 }
 
 # ---------------------------------------------------------------------------
