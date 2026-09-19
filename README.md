@@ -7,8 +7,8 @@ Sistema por **keys** (cargos). Cada **Director** ejecuta los comandos de su depa
 
 | Nivel | Keys |
 |-------|------|
-| Cúpula | 👑 Owner, 🤝 Co-Owner, ⚖️ Encargado de Disciplina |
-| Directores | 🩺 Médico, 💉 Enfermería, 👥 RRHH, 💰 Financiero, 📦 Logística, 🛡️ Seguridad, 📋 Administrativo |
+| Cúpula | 👑 Owner, 🤝 Co-Owner, ⚖️ Director de Disciplina |
+| Directores de área | 🩺 Médico, 💉 Enfermería, 👥 RRHH, 💰 Financiero, 📦 Logística, 🛡️ Seguridad |
 | Mandos | 🎖️ Encargado de Área, ⭐ Jefe de Departamento, 📌 Supervisor |
 | Staff | 📚 Residente, 🏥 Personal, 📝 Pasante, 💚 Voluntario |
 
