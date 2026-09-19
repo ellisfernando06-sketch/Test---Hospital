@@ -72,7 +72,7 @@ def _orden_deseado() -> List[Tuple[str, str]]:
     orden: List[Tuple[str, str]] = []
 
     # Cúpula
-    for key in ["OWNER", "CO_OWNER", "ENCARGADO_DISCIPLINA", "JEFE_JUNTA_DIRECTIVA", "JUNTA_DIRECTIVA"]:
+    for key in ["OWNER", "CO_OWNER", "ENCARGADO_DISCIPLINA"]:
         if key in config.KEYS_NOMBRES:
             orden.append(("key", config.KEYS_NOMBRES[key][0]))
 
