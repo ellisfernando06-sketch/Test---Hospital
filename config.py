@@ -20,7 +20,8 @@ LOGO_URL = None  # Opcional: URL de un logo para los embeds
 # ---------------------------------------------------------------------------
 # 2) KEYS (roles de cargo)
 #    Formato: key: ("Nombre exacto del rol en Discord (con emoji)", "#COLOR_HEX")
-#    El bot NO crea roles nuevos si ya existen: busca por nombre exacto y guarda el ID.
+#    El bot NUNCA crea roles nuevos: busca por nombre exacto y guarda el ID.
+#    Debes crear los roles manualmente en el servidor con estos nombres exactos.
 # ---------------------------------------------------------------------------
 KEYS_NOMBRES = {
     "OWNER":                ("👑 Owner", "#E74C3C"),
