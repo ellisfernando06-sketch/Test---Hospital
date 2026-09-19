@@ -95,9 +95,19 @@ async def on_ready():
     await bot_control.publicar_estado(bot)
     try:
         sincronizados = await bot.tree.sync()
-        print(f"Sincronizados {len(sincronizados)} comandos slash.")
+        print(f"Sincronizados {len(sincronizados)} comandos slash (global).")
     except Exception as e:
-        print(f"Error al sincronizar comandos: {e}")
+        print(f"Error al sincronizar comandos globales: {e}")
+
+    # Sincronización directa a tu servidor: aparece al instante, sin esperar
+    # la propagación global de Discord (que puede tardar hasta 1 hora).
+    try:
+        MI_SERVIDOR = discord.Object(id=1381360019467014184)
+        bot.tree.copy_global_to(guild=MI_SERVIDOR)
+        sincronizados_guild = await bot.tree.sync(guild=MI_SERVIDOR)
+        print(f"Sincronizados {len(sincronizados_guild)} comandos slash (tu servidor, instantáneo).")
+    except Exception as e:
+        print(f"Error al sincronizar comandos en el servidor: {e}")
 
 
 # ---------------------------------------------------------------------------
