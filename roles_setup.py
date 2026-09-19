@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-roles_setup.py — Detecta roles existentes por nombre (NUNCA crea roles nuevos),
-guarda IDs y ordena roles por categorías (RRHH, Médico, etc.).
-
-Directriz: el bot SOLO usa roles que ya existen en el servidor.
-Si falta algún rol, lo reporta y no lo crea.
+roles_setup.py — Detecta roles existentes por nombre (con emoji).
+Si no existen, los CREA con el nombre + emoji y color de config.py.
+Guarda IDs y ordena roles por categorías (RRHH, Médico, etc.).
 """
 from __future__ import annotations
 
@@ -14,6 +12,11 @@ import discord
 
 import config
 import roles_store
+
+
+def _hex_to_colour(hex_str: str) -> discord.Colour:
+    h = hex_str.lstrip("#")
+    return discord.Colour(int(h, 16))
 
 
 def _buscar_rol_por_nombre(guild: discord.Guild, nombre: str) -> Optional[discord.Role]:
@@ -36,17 +39,29 @@ async def _asegurar_rol(
     resumen: List[str],
 ) -> Optional[discord.Role]:
     """
-    SOLO detecta roles existentes por nombre exacto.
-    NUNCA crea roles nuevos. Si no existe, lo reporta y devuelve None.
-    (color_hex se mantiene por compatibilidad de firma, pero no se usa).
+    Si el rol ya existe (por nombre exacto, incluido el emoji), lo usa.
+    Si no existe, lo CREA con el nombre (emoji incluido) y el color indicado.
     """
     existente = _buscar_rol_por_nombre(guild, nombre)
     if existente:
         resumen.append(f"✅ Detectado: **{nombre}** (ID `{existente.id}`)")
         return existente
 
-    resumen.append(f"⚠️ No encontrado: **{nombre}** — créalo manualmente en el servidor con ese nombre exacto.")
-    return None
+    # Crear porque no existe
+    try:
+        rol = await guild.create_role(
+            name=nombre,
+            colour=_hex_to_colour(color_hex),
+            reason="Configuración automática del bot hospitalario",
+        )
+        resumen.append(f"🆕 Creado: **{nombre}** (ID `{rol.id}`)")
+        return rol
+    except discord.Forbidden:
+        resumen.append(f"❌ Sin permisos para crear: **{nombre}**")
+        return None
+    except Exception as e:
+        resumen.append(f"❌ Error al crear **{nombre}**: {e}")
+        return None
 
 
 def _orden_deseado() -> List[Tuple[str, str]]:
@@ -108,18 +123,8 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
         return resumen
 
     # Discord API: edit positions — asignamos posiciones decrecientes bajo el bot
-    # Posición del bot es la máxima que podemos tocar.
     base_pos = bot_top.position - 1
     positions = {}
-    # BUG CORREGIDO: antes, cuando había más roles gestionables que espacio
-    # disponible entre el rol del bot y la posición 1, todos los roles
-    # "sobrantes" se fijaban a la MISMA posición (1), porque el código
-    # hacía "if nueva < 1: nueva = 1". Pasarle a Discord varios roles con
-    # la posición duplicada en un mismo edit_role_positions produce un
-    # orden final inconsistente/arbitrario para esos roles. Ahora, en vez
-    # de forzar la posición 1 para todos, simplemente se dejan de mover
-    # los roles que ya no entran en el espacio disponible (se avisa en el
-    # resumen) y se conserva su posición actual.
     roles_omitidos: List[discord.Role] = []
     for i, rol in enumerate(roles_ordenados):
         nueva = base_pos - i
@@ -135,7 +140,6 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
     try:
         await guild.edit_role_positions(positions=positions, reason="Orden por categorías (bot hospital)")
         resumen.append(f"✅ Roles reordenados ({len(positions)} roles).")
-        # Detalle por categoría
         resumen.append("")
         resumen.append("**Orden aplicado (arriba → abajo):**")
         for r in roles_ordenados:
@@ -158,9 +162,10 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
 
 async def configurar_todo(guild: discord.Guild) -> List[str]:
     """
-    1. Detecta roles existentes de keys, escalafones y extras (NUNCA crea roles).
+    1. Detecta roles existentes por nombre (con emoji).
+       Si no existen, los CREA con emoji + color de config.py.
     2. Guarda sus IDs en roles_store.
-    3. Ordena por categorías los roles que sí existen.
+    3. Ordena por categorías.
     """
     resumen: List[str] = ["**Keys (cargos)**"]
 
