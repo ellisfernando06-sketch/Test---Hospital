@@ -27,8 +27,6 @@ KEYS_NOMBRES = {
     "OWNER":                ("👑 Owner", "#E74C3C"),
     "CO_OWNER":             ("🤝 Co-Owner", "#C0392B"),
     "ENCARGADO_DISCIPLINA": ("⚖️ Encargado de Disciplina", "#8E44AD"),
-    "JEFE_JUNTA_DIRECTIVA": ("🏛️ Presidente del Consejo", "#9B59B6"),
-    "JUNTA_DIRECTIVA":      ("📋 Junta Directiva", "#8E44AD"),
     "DIRECTOR_MEDICO":      ("🩺 Director Médico", "#1ABC9C"),
     "DIRECTOR_ENFERMERIA":  ("💉 Director de Enfermería", "#3498DB"),
     "DIRECTOR_RRHH":        ("👥 Director de Recursos Humanos", "#9B59B6"),
@@ -46,8 +44,6 @@ JERARQUIA_KEYS = [
     "SUPERVISOR",
     "JEFE_DEPARTAMENTO",
     "DIRECTOR",          # alias lógico para cualquier DIRECTOR_*
-    "JUNTA_DIRECTIVA",
-    "JEFE_JUNTA_DIRECTIVA",
     "ENCARGADO_DISCIPLINA",
     "CO_OWNER",
     "OWNER",
@@ -139,7 +135,7 @@ DEPARTAMENTOS = {
 }
 
 # A dónde va una solicitud del área "general"
-KEY_SOLICITUD_GENERAL = "JEFE_JUNTA_DIRECTIVA"
+KEY_SOLICITUD_GENERAL = "DIRECTOR_RRHH"
 
 # Si nadie tiene la key destino, la solicitud sube por esta cadena
 ESCALADA_SOLICITUDES = ["ENCARGADO_DISCIPLINA", "CO_OWNER", "OWNER"]
@@ -150,7 +146,7 @@ ESCALADA_SOLICITUDES = ["ENCARGADO_DISCIPLINA", "CO_OWNER", "OWNER"]
 #    o /ordenar_roles. Solo mueve roles que ya existen (por nombre).
 # ---------------------------------------------------------------------------
 # Orden deseado (de mayor jerarquía / arriba a menor / abajo):
-# 1. OWNER / CO_OWNER / Disciplina / Junta
+# 1. OWNER / CO_OWNER / Disciplina
 # 2. Directores
 # 3. Por cada departamento: Director del depto + escalafón (de mayor a menor)
 # 4. Jefe de Departamento genérico, Supervisor, STAFF
@@ -213,13 +209,13 @@ CODIGOS_EMERGENCIA = {
         "nombre": "Código Plata",
         "descripcion": "Persona armada o situación con rehenes.",
         "color": "#95A5A6",
-        "mencion_keys": ["DIRECTOR_SEGURIDAD", "JEFE_JUNTA_DIRECTIVA"],
+        "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH"],
     },
     "negro": {
         "nombre": "Código Negro",
         "descripcion": "Amenaza de bomba.",
         "color": "#2C3E50",
-        "mencion_keys": ["DIRECTOR_SEGURIDAD", "JEFE_JUNTA_DIRECTIVA"],
+        "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH"],
     },
     "naranja": {
         "nombre": "Código Naranja",
@@ -243,7 +239,7 @@ CODIGOS_EMERGENCIA = {
         "nombre": "Código Verde",
         "descripcion": "Evacuación general del edificio.",
         "color": "#27AE60",
-        "mencion_keys": ["DIRECTOR_SEGURIDAD", "JEFE_JUNTA_DIRECTIVA", "STAFF"],
+        "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH", "STAFF"],
     },
 }
 
