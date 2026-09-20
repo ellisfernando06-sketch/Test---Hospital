@@ -100,13 +100,15 @@ async def on_ready():
         bot_control.set_mode("online", "Bot reiniciado y operativo.", None)
     await bot_control.publicar_estado(bot)
     # Solo sincronización al servidor (evita comandos duplicados global+guild).
-    # Si antes había comandos globales, se limpian al sincronizar solo guild.
+    # IMPORTANTE: se copia al guild y se sincroniza ANTES de limpiar el árbol
+    # global. Si se limpia primero (clear_commands(guild=None)), copy_global_to
+    # no tiene nada que copiar y el guild queda con la lista de comandos vacía.
     try:
         MI_SERVIDOR = discord.Object(id=1381360019467014184)
+        bot.tree.copy_global_to(guild=MI_SERVIDOR)  # copia mientras el global aún tiene comandos
+        sincronizados_guild = await bot.tree.sync(guild=MI_SERVIDOR)
         bot.tree.clear_commands(guild=None)  # limpia registro global en memoria
         await bot.tree.sync()  # publica árbol vacío a nivel global (quita duplicados viejos)
-        bot.tree.copy_global_to(guild=MI_SERVIDOR)
-        sincronizados_guild = await bot.tree.sync(guild=MI_SERVIDOR)
         print(f"Sincronizados {len(sincronizados_guild)} comandos slash (solo tu servidor, sin duplicados).")
     except Exception as e:
         print(f"Error al sincronizar comandos: {e}")
@@ -1306,7 +1308,7 @@ async def organigrama(interaction: discord.Interaction):
         if key == "DIRECTOR":
             nombre = "Director(es) de Área"
         else:
-            nombre = config.KEYS_NOMBRES.get(key, (key))[0]
+            nombre = config.KEYS_NOMBRES.get(key, (key, ""))[0]
         lineas.append(f"{'　' * i}└ {nombre}")
     embed = crear_embed("info", "🏥 Organigrama General", "\n".join(lineas))
 
@@ -1429,10 +1431,6 @@ async def asignar_tarea(interaction: discord.Interaction, usuario: discord.Membe
 @app_commands.describe(departamento="Área destinataria", asunto="Asunto de la carta")
 @app_commands.choices(departamento=SOLICITUD_CHOICES)
 async def carta_solicitud(interaction: discord.Interaction, departamento: app_commands.Choice[str], asunto: str):
-    # BUG CORREGIDO: se llamaba a CartaSolicitudModal(asunto, departamento.value,
-    # departamento.name) — 3 argumentos en el orden equivocado respecto al
-    # constructor de la clase (departamento_slug, departamento_nombre,
-    # asunto_sugerido), lo que hacía truenar el comando con TypeError.
     await interaction.response.send_modal(
         CartaSolicitudModal(departamento.value, departamento.name, asunto)
     )
@@ -2076,9 +2074,6 @@ async def postulacion_mias(interaction: discord.Interaction):
 ])
 @require_key("DIRECTOR", "DIRECTOR_RRHH", "OWNER")
 async def postulacion_resolver(interaction: discord.Interaction, id_postulacion: int, estado: app_commands.Choice[str]):
-    # BUG CORREGIDO: postulaciones.resolver() existía en postulaciones.py
-    # pero ningún comando la llamaba, así que el staff no tenía forma de
-    # aprobar o rechazar postulaciones — quedaban "pendiente" para siempre.
     if not postulaciones.resolver(id_postulacion, estado.value):
         await interaction.response.send_message(f"❌ No existe la postulación #{id_postulacion}.", ephemeral=True)
         return
