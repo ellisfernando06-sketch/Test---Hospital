@@ -2,7 +2,7 @@
 """
 roles_setup.py — Detecta roles existentes por nombre (con emoji).
 Si no existen, los CREA con el nombre + emoji y color de config.py.
-Guarda IDs y ordena roles por categorías (RRHH, Médico, etc.).
+Guarda IDs y ordena roles por categorías.
 """
 from __future__ import annotations
 
@@ -20,11 +20,9 @@ def _hex_to_colour(hex_str: str) -> discord.Colour:
 
 
 def _buscar_rol_por_nombre(guild: discord.Guild, nombre: str) -> Optional[discord.Role]:
-    """Busca por nombre exacto (case-sensitive como en Discord)."""
     for r in guild.roles:
         if r.name == nombre:
             return r
-    # Fallback: sin importar mayúsculas
     nombre_l = nombre.lower()
     for r in guild.roles:
         if r.name.lower() == nombre_l:
@@ -38,16 +36,11 @@ async def _asegurar_rol(
     color_hex: str,
     resumen: List[str],
 ) -> Optional[discord.Role]:
-    """
-    Si el rol ya existe (por nombre exacto, incluido el emoji), lo usa.
-    Si no existe, lo CREA con el nombre (emoji incluido) y el color indicado.
-    """
     existente = _buscar_rol_por_nombre(guild, nombre)
     if existente:
         resumen.append(f"✅ Detectado: **{nombre}** (ID `{existente.id}`)")
         return existente
 
-    # Crear porque no existe
     try:
         rol = await guild.create_role(
             name=nombre,
@@ -65,10 +58,6 @@ async def _asegurar_rol(
 
 
 def _orden_deseado() -> List[Tuple[str, str]]:
-    """
-    Lista ordenada (arriba → abajo en Discord) de (tipo, nombre_rol).
-    Incluye separadores de categoría por departamento.
-    """
     orden: List[Tuple[str, str]] = []
     seps = {s[0]: s[1] for s in getattr(config, "SEPARADORES_ROLES", [])}
 
@@ -76,21 +65,26 @@ def _orden_deseado() -> List[Tuple[str, str]]:
         if key in seps:
             orden.append(("sep", seps[key]))
 
-    # Cúpula
     sep("sep_cupula")
-    for key in ["OWNER", "CO_OWNER", "DIRECTOR_DISCIPLINA"]:
+    for key in ["OWNER", "CO_OWNER"]:
         if key in config.KEYS_NOMBRES:
             orden.append(("key", config.KEYS_NOMBRES[key][0]))
 
-    # Directores de área
+    sep("sep_servidor")
+    for key in ["DIRECTOR_GENERAL", "DIRECTOR_DISCIPLINA", "DIRECTOR_ADMINISTRATIVO", "STAFF_SERVIDOR"]:
+        if key in config.KEYS_NOMBRES:
+            orden.append(("key", config.KEYS_NOMBRES[key][0]))
+    if "staff_servidor" in config.DEPARTAMENTOS:
+        for nombre in reversed(config.DEPARTAMENTOS["staff_servidor"]["escalafon_nombres"]):
+            orden.append(("escalafon", nombre))
+
     sep("sep_directores")
-    skip = {"DIRECTOR_DISCIPLINA"}
+    skip = {"DIRECTOR_DISCIPLINA", "DIRECTOR_GENERAL", "DIRECTOR_ADMINISTRATIVO"}
     for key in config.DIRECTOR_KEYS:
         if key in skip:
             continue
         orden.append(("key", config.KEYS_NOMBRES[key][0]))
 
-    # Por departamento: separador + escalafón (mayor → menor)
     depto_sep = {
         "medico": "sep_medico",
         "especialidades": "sep_especialidades",
@@ -100,39 +94,31 @@ def _orden_deseado() -> List[Tuple[str, str]]:
         "logistica": "sep_logistica",
         "seguridad": "sep_seguridad",
         "administracion": "sep_admin",
-        "staff_servidor": "sep_servidor",
     }
     for slug, data in config.DEPARTAMENTOS.items():
+        if slug == "staff_servidor":
+            continue
         sk = depto_sep.get(slug)
         if sk:
             sep(sk)
         for nombre in reversed(data["escalafon_nombres"]):
             orden.append(("escalafon", nombre))
 
-    # Mandos intermedios genéricos
     sep("sep_mandos")
     for key in ["ENCARGADO_AREA", "JEFE_DEPARTAMENTO", "SUPERVISOR"]:
         if key in config.KEYS_NOMBRES:
             orden.append(("key", config.KEYS_NOMBRES[key][0]))
 
-    # Staff genérico
     sep("sep_staff")
     for key in ["RESIDENTE", "STAFF", "PASANTE", "VOLUNTARIO"]:
         if key in config.KEYS_NOMBRES:
             orden.append(("key", config.KEYS_NOMBRES[key][0]))
 
-    # Suspendido al final
     orden.append(("extra", config.ROL_SUSPENDIDO_NOMBRE))
     return orden
 
 
-
 async def ordenar_roles(guild: discord.Guild) -> List[str]:
-    """
-    Reordena los roles del servidor según categorías.
-    Discord: posición más alta = más arriba en la lista.
-    El bot solo mueve roles por debajo de su propio rol.
-    """
     resumen: List[str] = []
     bot_member = guild.me
     if not bot_member:
@@ -141,7 +127,6 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
     bot_top = bot_member.top_role
     orden = _orden_deseado()
 
-    # Construir lista de roles existentes en el orden deseado (solo los que existen)
     roles_ordenados: List[discord.Role] = []
     for _, nombre in orden:
         rol = _buscar_rol_por_nombre(guild, nombre)
@@ -152,7 +137,6 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
         resumen.append("⚠️ No hay roles gestionables para ordenar (¿el rol del bot está por encima?).")
         return resumen
 
-    # Discord API: edit positions — asignamos posiciones decrecientes bajo el bot
     base_pos = bot_top.position - 1
     positions = {}
     roles_omitidos: List[discord.Role] = []
@@ -164,7 +148,7 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
         positions[rol] = nueva
 
     if not positions:
-        resumen.append("⚠️ No hay espacio de posiciones disponible para reordenar (rol del bot demasiado bajo).")
+        resumen.append("⚠️ No hay espacio de posiciones disponible para reordenar.")
         return resumen
 
     try:
@@ -178,12 +162,11 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
         if roles_omitidos:
             resumen.append("")
             resumen.append(
-                f"⚠️ {len(roles_omitidos)} rol(es) no se pudieron reordenar por falta de espacio de "
-                "posiciones (sube el rol del bot más arriba para incluirlos): "
+                f"⚠️ {len(roles_omitidos)} rol(es) no se pudieron reordenar: "
                 + ", ".join(r.name for r in roles_omitidos)
             )
     except discord.Forbidden:
-        resumen.append("❌ Sin permisos para reordenar roles. Sube el rol del bot por encima de los roles a ordenar.")
+        resumen.append("❌ Sin permisos para reordenar roles.")
     except Exception as e:
         resumen.append(f"❌ Error al reordenar: {e}")
 
@@ -191,21 +174,13 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
 
 
 async def configurar_todo(guild: discord.Guild) -> List[str]:
-    """
-    1. Detecta roles existentes por nombre (con emoji).
-       Si no existen, los CREA con emoji + color de config.py.
-    2. Guarda sus IDs en roles_store.
-    3. Ordena por categorías.
-    """
     resumen: List[str] = ["**Keys (cargos)**"]
 
-    # Keys
     for key, (nombre, color) in config.KEYS_NOMBRES.items():
         rol = await _asegurar_rol(guild, nombre, color, resumen)
         if rol:
             roles_store.guardar_key(key, rol.id)
 
-    # Escalafones por departamento
     resumen.append("")
     resumen.append("**Departamentos / escalafones**")
     for slug, data in config.DEPARTAMENTOS.items():
@@ -217,9 +192,6 @@ async def configurar_todo(guild: discord.Guild) -> List[str]:
             ids.append(rol.id if rol else None)
         roles_store.guardar_escalafon(slug, ids)
 
-    # Extra: Suspendido
-    
-    # Separadores de categoría
     resumen.append("")
     resumen.append("**Separadores de categoría**")
     for sep_key, nombre, color in getattr(config, "SEPARADORES_ROLES", []):
@@ -233,7 +205,6 @@ async def configurar_todo(guild: discord.Guild) -> List[str]:
     if rol_sus:
         roles_store.guardar_extra("SUSPENDIDO", rol_sus.id)
 
-    # Ordenar
     resumen.append("")
     resumen.append("**Ordenamiento por categorías**")
     resumen.extend(await ordenar_roles(guild))
