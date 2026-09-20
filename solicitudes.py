@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 solicitudes.py — Solicitudes con aprobación/negación por botones.
-Incluye: RRHH (despido, sanción, degradado, investigación, suspensión),
-citatorios por dirección, y envío genérico.
-Enrutado por tipo: sancion administrativa → Dir. Administrativo,
-sancion disciplinaria → Dir. Disciplina, investigacion interna → RRHH, etc.
+Cualquier solicitud puede elegir destinatario: Dir. Médico, RRHH, Disciplina, etc.
 """
 from __future__ import annotations
 
@@ -45,73 +42,23 @@ def _save_pending(data: dict) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-# Mapeo tipo de sanción / citatorio / investigación → key aprobador + canal
 RUTAS_POR_TIPO = {
-    "sancion_administrativa": {
-        "key": "DIRECTOR_ADMINISTRATIVO",
-        "canal": "citatorio_admin",
-        "titulo": "📋 Sanción administrativa",
-    },
-    "sancion_disciplinaria": {
-        "key": "DIRECTOR_DISCIPLINA",
-        "canal": "citatorio_disciplina",
-        "titulo": "⚖️ Sanción disciplinaria",
-    },
-    "sancion_interna": {
-        "key": "DIRECTOR_RRHH",
-        "canal": "aprobaciones_rrhh",
-        "titulo": "⚠️ Sanción interna (RRHH)",
-    },
-    "investigacion_interna": {
-        "key": "DIRECTOR_RRHH",
-        "canal": "aprobaciones_rrhh",
-        "titulo": "🔎 Investigación interna",
-    },
-    "investigacion_disciplinaria": {
-        "key": "DIRECTOR_DISCIPLINA",
-        "canal": "citatorio_disciplina",
-        "titulo": "🔎 Investigación disciplinaria",
-    },
-    "investigacion_administrativa": {
-        "key": "DIRECTOR_ADMINISTRATIVO",
-        "canal": "citatorio_admin",
-        "titulo": "🔎 Investigación administrativa",
-    },
-    "citatorio_general": {
-        "key": "DIRECTOR_GENERAL",
-        "canal": "citatorio_general",
-        "titulo": "📢 Citatorio — Dirección General",
-    },
-    "citatorio_disciplina": {
-        "key": "DIRECTOR_DISCIPLINA",
-        "canal": "citatorio_disciplina",
-        "titulo": "📢 Citatorio — Disciplina",
-    },
-    "citatorio_admin": {
-        "key": "DIRECTOR_ADMINISTRATIVO",
-        "canal": "citatorio_admin",
-        "titulo": "📢 Citatorio — Administrativo",
-    },
-    "despido": {
-        "key": "DIRECTOR_RRHH",
-        "canal": "aprobaciones_rrhh",
-        "titulo": "🚫 Despido",
-    },
-    "suspension": {
-        "key": "DIRECTOR_RRHH",
-        "canal": "aprobaciones_rrhh",
-        "titulo": "⛔ Suspensión",
-    },
-    "degrado": {
-        "key": "DIRECTOR_RRHH",
-        "canal": "aprobaciones_rrhh",
-        "titulo": "⬇️ Degradado",
-    },
+    "sancion_administrativa": {"key": "DIRECTOR_ADMINISTRATIVO", "canal": "citatorio_admin", "titulo": "📋 Sanción administrativa"},
+    "sancion_disciplinaria": {"key": "DIRECTOR_DISCIPLINA", "canal": "citatorio_disciplina", "titulo": "⚖️ Sanción disciplinaria"},
+    "sancion_interna": {"key": "DIRECTOR_RRHH", "canal": "aprobaciones_rrhh", "titulo": "⚠️ Sanción interna (RRHH)"},
+    "investigacion_interna": {"key": "DIRECTOR_RRHH", "canal": "aprobaciones_rrhh", "titulo": "🔎 Investigación interna"},
+    "investigacion_disciplinaria": {"key": "DIRECTOR_DISCIPLINA", "canal": "citatorio_disciplina", "titulo": "🔎 Investigación disciplinaria"},
+    "investigacion_administrativa": {"key": "DIRECTOR_ADMINISTRATIVO", "canal": "citatorio_admin", "titulo": "🔎 Investigación administrativa"},
+    "citatorio_general": {"key": "DIRECTOR_GENERAL", "canal": "citatorio_general", "titulo": "📢 Citatorio — Dirección General"},
+    "citatorio_disciplina": {"key": "DIRECTOR_DISCIPLINA", "canal": "citatorio_disciplina", "titulo": "📢 Citatorio — Disciplina"},
+    "citatorio_admin": {"key": "DIRECTOR_ADMINISTRATIVO", "canal": "citatorio_admin", "titulo": "📢 Citatorio — Administrativo"},
+    "despido": {"key": "DIRECTOR_RRHH", "canal": "aprobaciones_rrhh", "titulo": "🚫 Despido"},
+    "suspension": {"key": "DIRECTOR_RRHH", "canal": "aprobaciones_rrhh", "titulo": "⛔ Suspensión"},
+    "degrado": {"key": "DIRECTOR_RRHH", "canal": "aprobaciones_rrhh", "titulo": "⬇️ Degradado"},
 }
 
 
 def resolver_ruta(tipo: str) -> dict:
-    """Devuelve key, canal y título según el tipo de solicitud."""
     t = (tipo or "").strip().lower().replace(" ", "_").replace("-", "_")
     aliases = {
         "sancion_admin": "sancion_administrativa",
@@ -135,17 +82,48 @@ def resolver_ruta(tipo: str) -> dict:
     return RUTAS_POR_TIPO["sancion_interna"]
 
 
-class AprobacionView(discord.ui.View):
-    """Botones Aprobar / Negar. Solo el rol con la key_aprobador puede usarlos."""
+DESTINATARIOS_CHOICES = [
+    ("🖥️ Director General", "DIRECTOR_GENERAL"),
+    ("⚖️ Director de Disciplina", "DIRECTOR_DISCIPLINA"),
+    ("📋 Director Administrativo", "DIRECTOR_ADMINISTRATIVO"),
+    ("👥 Director de RRHH", "DIRECTOR_RRHH"),
+    ("🩺 Director Médico", "DIRECTOR_MEDICO"),
+    ("💉 Director de Enfermería", "DIRECTOR_ENFERMERIA"),
+    ("💰 Director Financiero", "DIRECTOR_FINANCIERO"),
+    ("📦 Director de Logística", "DIRECTOR_LOGISTICA"),
+    ("🛡️ Director de Seguridad", "DIRECTOR_SEGURIDAD"),
+    ("👑 Owner", "OWNER"),
+    ("🤝 Co-Owner", "CO_OWNER"),
+]
 
-    def __init__(
-        self,
-        key_aprobador: str,
-        solicitud_id: str,
-        on_approve: Optional[Callable] = None,
-        on_deny: Optional[Callable] = None,
-        timeout: float = None,
-    ):
+CANAL_POR_KEY = {
+    "DIRECTOR_GENERAL": "citatorio_general",
+    "DIRECTOR_DISCIPLINA": "citatorio_disciplina",
+    "DIRECTOR_ADMINISTRATIVO": "citatorio_admin",
+    "DIRECTOR_RRHH": "aprobaciones_rrhh",
+    "DIRECTOR_MEDICO": "log_solicitudes",
+    "DIRECTOR_ENFERMERIA": "log_solicitudes",
+    "DIRECTOR_FINANCIERO": "log_finanzas",
+    "DIRECTOR_LOGISTICA": "log_inventario",
+    "DIRECTOR_SEGURIDAD": "log_solicitudes",
+    "OWNER": "aprobaciones",
+    "CO_OWNER": "aprobaciones",
+}
+
+
+def canal_para_key(key: str) -> str:
+    return CANAL_POR_KEY.get(key, "log_solicitudes")
+
+
+def nombre_destinatario(key: str) -> str:
+    for label, k in DESTINATARIOS_CHOICES:
+        if k == key:
+            return label
+    return config.nombre_key(key) if hasattr(config, "nombre_key") else key
+
+
+class AprobacionView(discord.ui.View):
+    def __init__(self, key_aprobador: str, solicitud_id: str, on_approve: Optional[Callable] = None, on_deny: Optional[Callable] = None, timeout: float = None):
         super().__init__(timeout=timeout)
         self.key_aprobador = key_aprobador
         self.solicitud_id = solicitud_id
@@ -165,45 +143,34 @@ class AprobacionView(discord.ui.View):
     async def aprobar(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._puede(interaction):
             await interaction.response.send_message(
-                f"❌ Solo **{config.nombre_key(self.key_aprobador)}** (o superior) puede aprobar.",
-                ephemeral=True,
-            )
+                f"❌ Solo **{config.nombre_key(self.key_aprobador)}** (o superior) puede aprobar.", ephemeral=True)
             return
-
         pending = _load_pending()
         info = pending.pop(self.solicitud_id, None)
         _save_pending(pending)
-
         for child in self.children:
             child.disabled = True
-
         embed = interaction.message.embeds[0] if interaction.message.embeds else crear_embed("exito", "Aprobado", "")
         embed.color = discord.Colour.green()
         embed.add_field(name="Estado", value=f"✅ **APROBADO** por {interaction.user.mention}", inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
-
         if self._on_approve and info:
             try:
                 await self._on_approve(interaction, info)
             except Exception as e:
-                await interaction.followup.send(f"⚠️ Aprobado, pero error al ejecutar acción: {e}", ephemeral=True)
+                await interaction.followup.send(f"⚠️ Aprobado, pero error al ejecutar: {e}", ephemeral=True)
 
     @discord.ui.button(label="❌ Negar", style=discord.ButtonStyle.danger, custom_id="solicitud_negar")
     async def negar(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not await self._puede(interaction):
             await interaction.response.send_message(
-                f"❌ Solo **{config.nombre_key(self.key_aprobador)}** (o superior) puede negar.",
-                ephemeral=True,
-            )
+                f"❌ Solo **{config.nombre_key(self.key_aprobador)}** (o superior) puede negar.", ephemeral=True)
             return
-
         pending = _load_pending()
         pending.pop(self.solicitud_id, None)
         _save_pending(pending)
-
         for child in self.children:
             child.disabled = True
-
         embed = interaction.message.embeds[0] if interaction.message.embeds else crear_embed("error", "Negado", "")
         embed.color = discord.Colour.red()
         embed.add_field(name="Estado", value=f"❌ **NEGADO** por {interaction.user.mention}", inline=False)
@@ -222,7 +189,6 @@ async def enviar_solicitud_con_aprobacion(
     guild = interaction.guild
     if not guild:
         return
-
     solicitud_id = f"{tipo}_{interaction.user.id}_{int(datetime.now(timezone.utc).timestamp())}"
     datos_guardar = {
         "tipo": tipo,
@@ -233,9 +199,7 @@ async def enviar_solicitud_con_aprobacion(
     pending = _load_pending()
     pending[solicitud_id] = datos_guardar
     _save_pending(pending)
-
     view = AprobacionView(key_aprobador=key_aprobador, solicitud_id=solicitud_id, on_approve=on_approve)
-
     canal = None
     if canal_key:
         cid = config.CANALES.get(canal_key)
@@ -245,14 +209,12 @@ async def enviar_solicitud_con_aprobacion(
         cid = config.CANALES.get("aprobaciones_rrhh") or config.CANALES.get("aprobaciones") or config.CANALES.get("log_solicitudes")
         if cid:
             canal = guild.get_channel(cid)
-
     mention = ""
     rid = roles_store.obtener_id_key(key_aprobador)
     if rid:
         rol = guild.get_role(rid)
         if rol:
             mention = rol.mention
-
     if canal:
         try:
             await canal.send(content=mention or None, embed=embed, view=view)
@@ -271,7 +233,6 @@ async def enviar_solicitud(
     guild = interaction.guild
     if not guild:
         return
-
     if canal_log:
         canal_id = config.CANALES.get(canal_log)
         if canal_id:
@@ -281,7 +242,6 @@ async def enviar_solicitud(
                     await canal.send(embed=embed)
                 except discord.Forbidden:
                     pass
-
     keys_a_probar = [key_destino] + [k for k in config.ESCALADA_SOLICITUDES if k != key_destino]
     mencionado = False
     for key in keys_a_probar:
@@ -302,10 +262,7 @@ async def enviar_solicitud(
                     continue
             if not mencionado:
                 try:
-                    await interaction.channel.send(
-                        content=f"{rol.mention} — nueva solicitud",
-                        embed=embed,
-                    )
+                    await interaction.channel.send(content=f"{rol.mention} — nueva solicitud", embed=embed)
                     mencionado = True
                 except Exception:
                     pass
@@ -381,34 +338,11 @@ class CitatorioModal(discord.ui.Modal):
         self.direccion = direccion
         self.key_aprobador = key_aprobador
         self.canal_key = canal_key
-
-        self.usuario_id = discord.ui.TextInput(
-            label="ID o mención del citado",
-            placeholder="Ej: 123456789 o @usuario",
-            max_length=100,
-        )
-        self.motivo = discord.ui.TextInput(
-            label="Motivo del citatorio",
-            style=discord.TextStyle.paragraph,
-            max_length=1000,
-        )
-        self.fecha_hora = discord.ui.TextInput(
-            label="Fecha y hora de la cita",
-            placeholder="Ej: 20/09/2026 18:00",
-            max_length=80,
-        )
-        self.lugar = discord.ui.TextInput(
-            label="Lugar / canal",
-            placeholder="Ej: Oficina de Disciplina / #citatorios",
-            max_length=100,
-            required=False,
-        )
-        self.observaciones = discord.ui.TextInput(
-            label="Observaciones adicionales",
-            style=discord.TextStyle.paragraph,
-            max_length=500,
-            required=False,
-        )
+        self.usuario_id = discord.ui.TextInput(label="ID o mención del citado", placeholder="Ej: 123456789 o @usuario", max_length=100)
+        self.motivo = discord.ui.TextInput(label="Motivo del citatorio", style=discord.TextStyle.paragraph, max_length=1000)
+        self.fecha_hora = discord.ui.TextInput(label="Fecha y hora de la cita", placeholder="Ej: 20/09/2026 18:00", max_length=80)
+        self.lugar = discord.ui.TextInput(label="Lugar / canal", placeholder="Ej: Oficina de Disciplina", max_length=100, required=False)
+        self.observaciones = discord.ui.TextInput(label="Observaciones adicionales", style=discord.TextStyle.paragraph, max_length=500, required=False)
         self.add_item(self.usuario_id)
         self.add_item(self.motivo)
         self.add_item(self.fecha_hora)
@@ -416,12 +350,7 @@ class CitatorioModal(discord.ui.Modal):
         self.add_item(self.observaciones)
 
     async def on_submit(self, interaction: discord.Interaction):
-        embed = crear_embed(
-            "aviso",
-            f"📢 Citatorio — {self.direccion}",
-            str(self.motivo),
-            autor=interaction.user,
-        )
+        embed = crear_embed("aviso", f"📢 Citatorio — {self.direccion}", str(self.motivo), autor=interaction.user)
         embed.add_field(name="Citado", value=str(self.usuario_id), inline=True)
         embed.add_field(name="Fecha/hora", value=str(self.fecha_hora), inline=True)
         if self.lugar.value:
@@ -429,53 +358,30 @@ class CitatorioModal(discord.ui.Modal):
         if self.observaciones.value:
             embed.add_field(name="Observaciones", value=str(self.observaciones), inline=False)
         embed.add_field(name="Estado", value="⏳ Pendiente de autorización", inline=False)
-
         await enviar_solicitud_con_aprobacion(
             interaction,
             key_aprobador=self.key_aprobador,
             embed=embed,
             tipo=f"citatorio_{self.direccion.lower().replace(' ', '_')}",
-            datos={
-                "citado": str(self.usuario_id),
-                "motivo": str(self.motivo),
-                "fecha": str(self.fecha_hora),
-                "lugar": str(self.lugar) if self.lugar.value else "",
-            },
+            datos={"citado": str(self.usuario_id), "motivo": str(self.motivo), "fecha": str(self.fecha_hora), "lugar": str(self.lugar) if self.lugar.value else ""},
             canal_key=self.canal_key,
         )
-        await interaction.response.send_message(
-            f"✅ Citatorio enviado a **{self.direccion}** para aprobación.",
-            ephemeral=True,
-        )
+        await interaction.response.send_message(f"✅ Citatorio enviado a **{self.direccion}** para aprobación.", ephemeral=True)
 
 
 class ReporteProcedimientoModal(discord.ui.Modal, title="Reporte de procedimiento"):
     afectado = discord.ui.TextInput(label="Persona afectada (nombre/mención)", max_length=100)
     motivo = discord.ui.TextInput(label="Motivo", style=discord.TextStyle.paragraph, max_length=800)
     sancion = discord.ui.TextInput(label="Sanción / medida aplicada", style=discord.TextStyle.paragraph, max_length=500)
-    procedimiento = discord.ui.TextInput(
-        label="Qué ocurrió y cómo se procedió",
-        style=discord.TextStyle.paragraph,
-        max_length=1500,
-    )
-    observaciones = discord.ui.TextInput(
-        label="Observaciones finales",
-        style=discord.TextStyle.paragraph,
-        max_length=500,
-        required=False,
-    )
+    procedimiento = discord.ui.TextInput(label="Qué ocurrió y cómo se procedió", style=discord.TextStyle.paragraph, max_length=1500)
+    observaciones = discord.ui.TextInput(label="Observaciones finales", style=discord.TextStyle.paragraph, max_length=500, required=False)
 
     def __init__(self, direccion: str):
         super().__init__()
         self.direccion = direccion
 
     async def on_submit(self, interaction: discord.Interaction):
-        embed = crear_embed(
-            "info",
-            f"📋 Reporte de procedimiento — {self.direccion}",
-            str(self.procedimiento),
-            autor=interaction.user,
-        )
+        embed = crear_embed("info", f"📋 Reporte de procedimiento — {self.direccion}", str(self.procedimiento), autor=interaction.user)
         embed.add_field(name="Afectado", value=str(self.afectado), inline=True)
         embed.add_field(name="Encargado", value=interaction.user.mention, inline=True)
         embed.add_field(name="Dirección", value=self.direccion, inline=True)
@@ -483,7 +389,6 @@ class ReporteProcedimientoModal(discord.ui.Modal, title="Reporte de procedimient
         embed.add_field(name="Sanción / medida", value=str(self.sancion), inline=False)
         if self.observaciones.value:
             embed.add_field(name="Observaciones", value=str(self.observaciones), inline=False)
-
         guild = interaction.guild
         canal = None
         cid = config.CANALES.get("log_procedimientos") or config.CANALES.get("log_personal")
@@ -493,5 +398,4 @@ class ReporteProcedimientoModal(discord.ui.Modal, title="Reporte de procedimient
             await canal.send(embed=embed)
         else:
             await interaction.channel.send(embed=embed)
-
         await interaction.response.send_message("✅ Reporte de procedimiento publicado.", ephemeral=True)
