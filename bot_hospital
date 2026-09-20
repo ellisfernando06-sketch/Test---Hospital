@@ -117,18 +117,27 @@ async def on_ready():
 # ---------------------------------------------------------------------------
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, SinPermiso):
-        legibles = ", ".join(error.keys_requeridas)
-        msg = f"❌ No tienes el cargo/key necesario para esto. Se requiere: **{legibles}**."
+    # Desenvuelve errores anidados (CheckFailure, CommandInvokeError, etc.)
+    original = getattr(error, "original", None) or getattr(error, "__cause__", None) or error
+    if isinstance(error, SinPermiso) or isinstance(original, SinPermiso):
+        sp = error if isinstance(error, SinPermiso) else original
+        legibles = ", ".join(getattr(sp, "keys_requeridas", []))
+        msg = f"❌ No tienes el cargo/key necesario. Se requiere: **{legibles or 'permiso superior'}**."
     elif isinstance(error, app_commands.MissingPermissions):
-        msg = "❌ No tienes permiso para usar este comando."
+        msg = "❌ No tienes permiso de Discord para usar este comando."
+    elif isinstance(error, app_commands.CommandOnCooldown):
+        msg = f"⏳ Espera {error.retry_after:.1f}s antes de usar este comando otra vez."
     else:
-        msg = f"❌ Ocurrió un error: {error}"
+        msg = f"❌ Error: `{original}`"
+        print(f"[CMD ERROR] {interaction.command}: {type(error).__name__}: {error} | original={original}")
 
-    if interaction.response.is_done():
-        await interaction.followup.send(msg, ephemeral=True)
-    else:
-        await interaction.response.send_message(msg, ephemeral=True)
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(msg, ephemeral=True)
+    except Exception as e:
+        print(f"[CMD ERROR] no se pudo responder a la interacción: {e}")
 
 
 # ===========================================================================
@@ -1210,10 +1219,30 @@ async def convocar_directores(interaction: discord.Interaction, titulo: str, fec
 
 @bot.tree.command(name="anuncio", description="Publica un anuncio oficial del hospital")
 @app_commands.describe(titulo="Título del anuncio", mensaje="Contenido del anuncio")
-@require_key("DIRECTOR", "OWNER")
+@require_key("DIRECTOR", "OWNER", "DIRECTOR_GENERAL", "CO_OWNER")
 async def anuncio(interaction: discord.Interaction, titulo: str, mensaje: str):
-    embed = crear_embed("info", f"📢 {titulo}", mensaje, autor=interaction.user)
-    await interaction.response.send_message(embed=embed)
+    await interaction.response.defer(ephemeral=False)
+    try:
+        embed = crear_embed("info", f"📢 {titulo}", mensaje, autor=interaction.user)
+        # Intenta publicar en canal de anuncios/log si está configurado; si no, aquí mismo
+        canal = None
+        for key in ("anuncios", "log_general", "bot_status"):
+            cid = config.CANALES.get(key)
+            if cid:
+                canal = interaction.guild.get_channel(cid) if interaction.guild else None
+                if canal:
+                    break
+        if canal and canal.id != interaction.channel_id:
+            await canal.send(embed=embed)
+            await interaction.followup.send(f"✅ Anuncio publicado en {canal.mention}.", ephemeral=True)
+        else:
+            await interaction.followup.send(embed=embed)
+    except Exception as e:
+        print(f"[anuncio] error: {e}")
+        try:
+            await interaction.followup.send(f"❌ No se pudo publicar el anuncio: `{e}`", ephemeral=True)
+        except Exception:
+            pass
 
 
 class VotacionView(discord.ui.View):
