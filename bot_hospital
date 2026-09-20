@@ -697,57 +697,50 @@ async def despedir(interaction: discord.Interaction, usuario: discord.Member, mo
             "error", "🚫 Despido aprobado",
             f"**{inter.user}** aprobó el despido de **{miembro}**\nMotivo: {info['datos'].get('motivo','—')}"))
 
-    await enviar_solicitud_con_aprobacion(
-        interaction,
-        key_aprobador=destinatario.value,
-        embed=embed,
-        tipo="despido",
-        datos={"usuario_id": usuario.id, "motivo": motivo, "evidencia": evidencia},
-        canal_key=canal_para_key(destinatario.value),
-        on_approve=_on_approve,
-    )
-    await interaction.response.send_message(
-        f"✅ Solicitud de despido de {usuario.mention} enviada a **{nombre_destinatario(destinatario.value)}**.",
-        ephemeral=True,
-    )
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await enviar_solicitud_con_aprobacion(
+            interaction,
+            key_aprobador=destinatario.value,
+            embed=embed,
+            tipo="despido",
+            datos={"usuario_id": usuario.id, "motivo": motivo, "evidencia": evidencia},
+            canal_key=canal_para_key(destinatario.value),
+            on_approve=_on_approve,
+        )
+        await interaction.followup.send(
+            f"✅ Solicitud de despido de {usuario.mention} enviada a **{nombre_destinatario(destinatario.value)}**.",
+            ephemeral=True,
+        )
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: `{e}`", ephemeral=True)
 
 
 
-@bot.tree.command(name="sancion_interna", description="Solicita sanción (elige tipo y destinatario)")
+@bot.tree.command(name="sancion_interna", description="Solicita sanción — elige dirección destino")
 @app_commands.describe(
     usuario="Usuario sancionado",
-    tipo="Tipo de sanción (sugiere destinatario por defecto)",
-    destinatario="A quién se envía la solicitud (cualquier dirección)",
-    motivo="Motivo",
-    evidencia="Evidencia o detalle",
+    direccion="Dirección a la que se envía (canal de ese director)",
+    motivo="Motivo de la sanción",
+    evidencia="Evidencia o detalle adicional",
 )
-@app_commands.choices(
-    tipo=[
-        app_commands.Choice(name="Sanción administrativa", value="sancion_administrativa"),
-        app_commands.Choice(name="Sanción disciplinaria", value="sancion_disciplinaria"),
-        app_commands.Choice(name="Sanción interna (RRHH)", value="sancion_interna"),
-    ],
-    destinatario=DESTINATARIO_CHOICES,
-)
+@app_commands.choices(direccion=DESTINATARIO_CHOICES)
 @require_key("DIRECTOR", "DIRECTOR_DISCIPLINA", "DIRECTOR_GENERAL", "DIRECTOR_ADMINISTRATIVO", "SUPERVISOR", "OWNER")
 async def sancion_interna(
     interaction: discord.Interaction,
     usuario: discord.Member,
-    tipo: app_commands.Choice[str],
-    destinatario: app_commands.Choice[str],
+    direccion: app_commands.Choice[str],
     motivo: str,
     evidencia: str = "",
 ):
-    # Si no eligen destinatario manualmente, el tipo sugiere uno; aquí siempre usan el Choice
-    key_dest = destinatario.value
-    # Si el tipo sugiere otra ruta y el usuario dejó el default implícito, respetamos destinatario elegido
-    ruta = resolver_ruta(tipo.value)
-    canal = canal_para_key(key_dest) or ruta.get("canal") or "aprobaciones_rrhh"
-    titulo = ruta.get("titulo", f"⚠️ Sanción — {tipo.name}")
+    """Envía solicitud de sanción al canal del director elegido."""
+    key_dest = direccion.value
+    canal = canal_para_key(key_dest) or "aprobaciones_rrhh"
+    titulo = f"⚠️ Sanción — {nombre_destinatario(key_dest)}"
 
     embed = crear_embed(
         "aviso", titulo,
-        f"**Usuario:** {usuario.mention}\n**Tipo:** {tipo.name}\n**Motivo:** {motivo}\n**Evidencia:** {evidencia or '—'}",
+        f"**Usuario:** {usuario.mention}\n**Dirección:** {nombre_destinatario(key_dest)}\n**Motivo:** {motivo}\n**Evidencia:** {evidencia or '—'}",
         autor=interaction.user,
     )
     embed.add_field(name="Destinatario", value=f"**{nombre_destinatario(key_dest)}**", inline=True)
@@ -757,59 +750,53 @@ async def sancion_interna(
         uid = int(info["datos"].get("usuario_id", 0))
         registros.registrar_evento_cargo(
             uid, "sancion",
-            f"{info['datos'].get('tipo','')}: {info['datos'].get('motivo','')}",
+            f"{info['datos'].get('motivo','')}",
             inter.user.id,
         )
         await inter.followup.send("✅ Sanción registrada en el expediente.", ephemeral=True)
         await enviar_log("log_sanciones", crear_embed(
             "aviso", f"{titulo} — aprobada",
-            f"**{inter.user}** aprobó sanción a <@{uid}>\nTipo: {info['datos'].get('tipo')}\nMotivo: {info['datos'].get('motivo')}\nAprobado por: {nombre_destinatario(key_dest)}"))
+            f"**{inter.user}** aprobó sanción a <@{uid}>\nMotivo: {info['datos'].get('motivo')}\nAprobado por: {nombre_destinatario(key_dest)}"))
 
-    await enviar_solicitud_con_aprobacion(
-        interaction,
-        key_aprobador=key_dest,
-        embed=embed,
-        tipo=tipo.value,
-        datos={"usuario_id": usuario.id, "tipo": tipo.value, "motivo": motivo, "evidencia": evidencia, "destinatario": key_dest},
-        canal_key=canal,
-        on_approve=_on_approve,
-    )
-    await interaction.response.send_message(
-        f"✅ Solicitud enviada a **{nombre_destinatario(key_dest)}**.",
-        ephemeral=True,
-    )
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await enviar_solicitud_con_aprobacion(
+            interaction,
+            key_aprobador=key_dest,
+            embed=embed,
+            tipo="sancion",
+            datos={"usuario_id": usuario.id, "motivo": motivo, "evidencia": evidencia, "destinatario": key_dest},
+            canal_key=canal,
+            on_approve=_on_approve,
+        )
+        await interaction.followup.send(
+            f"✅ Solicitud enviada al canal de **{nombre_destinatario(key_dest)}**.",
+            ephemeral=True,
+        )
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error al enviar la solicitud: `{e}`", ephemeral=True)
 
 
 
-@bot.tree.command(name="solicitud_investigacion", description="Solicita investigación (elige tipo y destinatario)")
+@bot.tree.command(name="solicitud_investigacion", description="Solicita investigación — elige dirección destino")
 @app_commands.describe(
-    tipo="Tipo de investigación",
-    destinatario="A quién se envía (cualquier dirección)",
-    motivo="Motivo",
+    direccion="Dirección a la que se envía (canal de ese director)",
+    motivo="Motivo de la investigación",
     usuario="Persona a investigar (opcional)",
     evidencia="Evidencia",
 )
-@app_commands.choices(
-    tipo=[
-        app_commands.Choice(name="Investigación interna", value="investigacion_interna"),
-        app_commands.Choice(name="Investigación disciplinaria", value="investigacion_disciplinaria"),
-        app_commands.Choice(name="Investigación administrativa", value="investigacion_administrativa"),
-    ],
-    destinatario=DESTINATARIO_CHOICES,
-)
+@app_commands.choices(direccion=DESTINATARIO_CHOICES)
 @require_key("DIRECTOR", "JEFE_DEPARTAMENTO", "SUPERVISOR", "DIRECTOR_DISCIPLINA", "DIRECTOR_GENERAL", "DIRECTOR_ADMINISTRATIVO", "OWNER")
 async def solicitud_investigacion(
     interaction: discord.Interaction,
-    tipo: app_commands.Choice[str],
-    destinatario: app_commands.Choice[str],
+    direccion: app_commands.Choice[str],
     motivo: str,
     usuario: discord.Member = None,
     evidencia: str = "",
 ):
-    key_dest = destinatario.value
-    ruta = resolver_ruta(tipo.value)
-    canal = canal_para_key(key_dest) or ruta.get("canal") or "aprobaciones_rrhh"
-    titulo = ruta.get("titulo", f"🔎 Investigación — {tipo.name}")
+    key_dest = direccion.value
+    canal = canal_para_key(key_dest) or "aprobaciones_rrhh"
+    titulo = f"🔎 Investigación — {nombre_destinatario(key_dest)}"
 
     texto = f"**Motivo:** {motivo}\n**Evidencia:** {evidencia or '—'}"
     if usuario:
@@ -818,18 +805,22 @@ async def solicitud_investigacion(
     embed.add_field(name="Destinatario", value=f"**{nombre_destinatario(key_dest)}**", inline=True)
     embed.add_field(name="Estado", value="⏳ Pendiente de aprobación", inline=True)
 
-    await enviar_solicitud_con_aprobacion(
-        interaction,
-        key_aprobador=key_dest,
-        embed=embed,
-        tipo=tipo.value,
-        datos={"usuario_id": usuario.id if usuario else 0, "motivo": motivo, "evidencia": evidencia, "tipo": tipo.value, "destinatario": key_dest},
-        canal_key=canal,
-    )
-    await interaction.response.send_message(
-        f"✅ Investigación enviada a **{nombre_destinatario(key_dest)}**.",
-        ephemeral=True,
-    )
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await enviar_solicitud_con_aprobacion(
+            interaction,
+            key_aprobador=key_dest,
+            embed=embed,
+            tipo="investigacion",
+            datos={"usuario_id": usuario.id if usuario else 0, "motivo": motivo, "evidencia": evidencia, "destinatario": key_dest},
+            canal_key=canal,
+        )
+        await interaction.followup.send(
+            f"✅ Investigación enviada al canal de **{nombre_destinatario(key_dest)}**.",
+            ephemeral=True,
+        )
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error al enviar: `{e}`", ephemeral=True)
 
 
 
@@ -893,19 +884,23 @@ async def suspender(interaction: discord.Interaction, usuario: discord.Member, m
             "aviso", "⛔ Suspensión aprobada",
             f"**{inter.user}** aprobó suspensión de **{miembro}**\n{info['datos'].get('motivo','')}"))
 
-    await enviar_solicitud_con_aprobacion(
-        interaction,
-        key_aprobador=destinatario.value,
-        embed=embed,
-        tipo="suspension",
-        datos={"usuario_id": usuario.id, "motivo": motivo, "duracion": duracion},
-        canal_key=canal_para_key(destinatario.value),
-        on_approve=_on_approve,
-    )
-    await interaction.response.send_message(
-        f"✅ Solicitud de suspensión de {usuario.mention} enviada a **{nombre_destinatario(destinatario.value)}**.",
-        ephemeral=True,
-    )
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await enviar_solicitud_con_aprobacion(
+            interaction,
+            key_aprobador=destinatario.value,
+            embed=embed,
+            tipo="suspension",
+            datos={"usuario_id": usuario.id, "motivo": motivo, "duracion": duracion},
+            canal_key=canal_para_key(destinatario.value),
+            on_approve=_on_approve,
+        )
+        await interaction.followup.send(
+            f"✅ Solicitud de suspensión de {usuario.mention} enviada a **{nombre_destinatario(destinatario.value)}**.",
+            ephemeral=True,
+        )
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: `{e}`", ephemeral=True)
 
 
 
@@ -2309,23 +2304,27 @@ async def solicitud_degrado(interaction: discord.Interaction, usuario: discord.M
         autor=interaction.user,
     )
     embed.add_field(name="Estado", value="⏳ Pendiente de aprobación de **Director de RRHH**", inline=False)
-    await enviar_solicitud_con_aprobacion(
-        interaction,
-        key_aprobador=destinatario.value,
-        embed=embed,
-        tipo="degrado",
-        datos={
-            "usuario_id": usuario.id,
-            "cargo_actual": cargo_actual,
-            "cargo_propuesto": cargo_propuesto,
-            "motivo": motivo,
-        },
-        canal_key=canal_para_key(destinatario.value),
-    )
-    await interaction.response.send_message(
-        f"✅ Solicitud de degradado de {usuario.mention} enviada a **{nombre_destinatario(destinatario.value)}**.",
-        ephemeral=True,
-    )
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await enviar_solicitud_con_aprobacion(
+            interaction,
+            key_aprobador=destinatario.value,
+            embed=embed,
+            tipo="degrado",
+            datos={
+                "usuario_id": usuario.id,
+                "cargo_actual": cargo_actual,
+                "cargo_propuesto": cargo_propuesto,
+                "motivo": motivo,
+            },
+            canal_key=canal_para_key(destinatario.value),
+        )
+        await interaction.followup.send(
+            f"✅ Solicitud de degradado de {usuario.mention} enviada a **{nombre_destinatario(destinatario.value)}**.",
+            ephemeral=True,
+        )
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: `{e}`", ephemeral=True)
 
 
 
@@ -2353,18 +2352,22 @@ async def solicitud_general(
     )
     embed.add_field(name="Destinatario", value=f"**{nombre_destinatario(key_dest)}**", inline=True)
     embed.add_field(name="Estado", value="⏳ Pendiente de aprobación", inline=True)
-    await enviar_solicitud_con_aprobacion(
-        interaction,
-        key_aprobador=key_dest,
-        embed=embed,
-        tipo="solicitud_general",
-        datos={"asunto": asunto, "contenido": contenido, "destinatario": key_dest},
-        canal_key=canal_para_key(key_dest),
-    )
-    await interaction.response.send_message(
-        f"✅ Solicitud enviada a **{nombre_destinatario(key_dest)}**.",
-        ephemeral=True,
-    )
+    await interaction.response.defer(ephemeral=True)
+    try:
+        await enviar_solicitud_con_aprobacion(
+            interaction,
+            key_aprobador=key_dest,
+            embed=embed,
+            tipo="solicitud_general",
+            datos={"asunto": asunto, "contenido": contenido, "destinatario": key_dest},
+            canal_key=canal_para_key(key_dest),
+        )
+        await interaction.followup.send(
+            f"✅ Solicitud enviada a **{nombre_destinatario(key_dest)}**.",
+            ephemeral=True,
+        )
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error al enviar: `{e}`", ephemeral=True)
 
 
 
