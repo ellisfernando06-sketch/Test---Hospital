@@ -21,7 +21,6 @@ def _cargar(module_globals: dict):
         source = resp.read().decode("utf-8")
     print(f"[hospital_core] Núcleo descargado ({len(source)} bytes)")
 
-    # Vista persistente de verificación dentro de on_ready
     old_view = (
         'bot.add_view(AprobacionView(key_aprobador="DIRECTOR_RRHH", '
         'solicitud_id="persist"))'
@@ -38,7 +37,6 @@ def _cargar(module_globals: dict):
             1,
         )
 
-    # No ejecutar bot.run del archivo remoto
     marker = "if not config.TOKEN:"
     idx = source.find(marker)
     if idx > 0:
@@ -56,16 +54,21 @@ def _cargar(module_globals: dict):
     if bot is None:
         raise RuntimeError("hospital_core: el núcleo no definió 'bot'")
 
-    # --- Registro ÚNICO de módulos nuevos ---
     print("[hospital_core] Registrando módulos nuevos…")
 
+    # Prefer comandos_nuevos_fixed if the original is empty/broken
     try:
-        import comandos_nuevos
+        import comandos_nuevos_fixed as comandos_nuevos
         comandos_nuevos.registrar(bot)
-        print("[hospital_core] ✓ comandos_nuevos.registrar OK")
+        print("[hospital_core] ✓ comandos_nuevos_fixed.registrar OK")
     except Exception:
-        print("[hospital_core] ✗ comandos_nuevos.registrar FALLÓ:")
-        traceback.print_exc()
+        try:
+            import comandos_nuevos
+            comandos_nuevos.registrar(bot)
+            print("[hospital_core] ✓ comandos_nuevos.registrar OK")
+        except Exception:
+            print("[hospital_core] ✗ comandos_nuevos FALLÓ:")
+            traceback.print_exc()
 
     try:
         import centro_solicitudes_ui
@@ -82,7 +85,6 @@ def _cargar(module_globals: dict):
         print("[hospital_core] ✗ verificacion FALLÓ:")
         traceback.print_exc()
 
-    # Diagnóstico: listar si los comandos clave están en el árbol
     try:
         cmds = list(bot.tree.get_commands())
         nombres = sorted(c.name for c in cmds)
@@ -90,7 +92,7 @@ def _cargar(module_globals: dict):
         for n in (
             "sancionar", "quitar_sancion", "apelar_sancion", "historial_sanciones",
             "banear", "expulsar", "silenciar", "verificar_roblox",
-            "panel_solicitudes", "registrar_gasto", "libro_contable", "mi_sanciones",
+            "panel_solicitudes", "mi_sanciones", "ver_roblox",
         ):
             marca = "✓" if n in nombres else "✗ FALTA"
             print(f"  {marca} /{n}")
