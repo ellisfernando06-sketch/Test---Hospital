@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 centro_solicitudes.py — Sistema General de Solicitudes
-
-Diseño institucional: panel principal, menú, formularios, tickets,
-estados, prioridad, logs y almacenamiento persistente.
-Las 6 categorías tienen título y color propios en el embed del ticket.
+Datos, estados, categorías y embeds (6 categorías).
 """
 from __future__ import annotations
 
@@ -14,13 +11,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import discord
-from discord import ui, app_commands
-from discord.ext import commands
 
 import config
-import permisos
 import roles_store
-from estilos import crear_embed
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 _PATH = os.path.join(_DATA_DIR, "centro_solicitudes.json")
@@ -108,10 +101,10 @@ def _fecha_legible(iso: Optional[str] = None) -> str:
     if not iso:
         iso = _now()
     try:
-        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
         return dt.strftime("%d/%m/%Y %H:%M")
     except Exception:
-        return str(iso)[:16]
+        return str(iso)[:16] if iso else "—"
 
 
 def _load() -> dict:
@@ -121,8 +114,12 @@ def _load() -> dict:
     try:
         with open(_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
+        if not isinstance(data, dict):
+            return {"contador": 0, "solicitudes": {}}
         data.setdefault("contador", 0)
         data.setdefault("solicitudes", {})
+        if not isinstance(data["solicitudes"], dict):
+            data["solicitudes"] = {}
         return data
     except Exception:
         return {"contador": 0, "solicitudes": {}}
@@ -136,12 +133,14 @@ def _save(data: dict) -> None:
 
 def _siguiente_numero() -> int:
     data = _load()
-    data["contador"] = int(data.get("contador", 0)) + 1
+    data["contador"] = int(data.get("contador") or 0) + 1
     _save(data)
-    return data["contador"]
+    return int(data["contador"])
 
 
 def guardar_solicitud(reg: dict) -> None:
+    if not isinstance(reg, dict) or "id" not in reg:
+        return
     data = _load()
     data["solicitudes"][str(reg["id"])] = reg
     _save(data)
@@ -149,18 +148,21 @@ def guardar_solicitud(reg: dict) -> None:
 
 def obtener_solicitud(sid: int) -> Optional[dict]:
     data = _load()
-    return data["solicitudes"].get(str(sid))
+    item = data.get("solicitudes", {}).get(str(sid))
+    return item if isinstance(item, dict) else None
 
 
 def actualizar_solicitud(sid: int, **kwargs) -> Optional[dict]:
     data = _load()
     key = str(sid)
-    if key not in data["solicitudes"]:
+    solicitudes = data.get("solicitudes") or {}
+    if key not in solicitudes or not isinstance(solicitudes.get(key), dict):
         return None
-    data["solicitudes"][key].update(kwargs)
-    data["solicitudes"][key]["fecha_actualizacion"] = _now()
+    solicitudes[key].update(kwargs)
+    solicitudes[key]["fecha_actualizacion"] = _now()
+    data["solicitudes"] = solicitudes
     _save(data)
-    return data["solicitudes"][key]
+    return solicitudes[key]
 
 
 def _rol_staff(guild: discord.Guild) -> Optional[discord.Role]:
@@ -185,7 +187,10 @@ def _categoria_canal(guild: discord.Guild) -> Optional[discord.CategoryChannel]:
 
 
 async def enviar_log_solicitud(bot: discord.Client, embed: discord.Embed) -> None:
-    canal_id = config.CANALES.get("log_solicitudes") or config.CANALES.get("log_general")
+    canales = getattr(config, "CANALES", None) or {}
+    if not isinstance(canales, dict):
+        return
+    canal_id = canales.get("log_solicitudes") or canales.get("log_general")
     if not canal_id:
         return
     canal = bot.get_channel(canal_id)
@@ -194,6 +199,15 @@ async def enviar_log_solicitud(bot: discord.Client, embed: discord.Embed) -> Non
             await canal.send(embed=embed)
         except discord.Forbidden:
             pass
+
+
+def _cat(reg: dict) -> dict:
+    """Obtiene la categoría de forma segura."""
+    key = (reg or {}).get("categoria") or "general"
+    cat = CATEGORIAS.get(key)
+    if not isinstance(cat, dict):
+        cat = CATEGORIAS["general"]
+    return cat
 
 
 def embed_panel_principal() -> discord.Embed:
@@ -210,27 +224,41 @@ def embed_panel_principal() -> discord.Embed:
         timestamp=discord.utils.utcnow(),
     )
     for key, cat in CATEGORIAS.items():
+        if not isinstance(cat, dict):
+            continue
         embed.add_field(
-            name=f"{cat['emoji']} {cat['nombre']}",
-            value=cat["descripcion"],
+            name=f"{cat.get('emoji', '📁')} {cat.get('nombre', key)}",
+            value=cat.get("descripcion", "—"),
             inline=False,
         )
-    embed.set_footer(text=f"{config.NOMBRE_HOSPITAL} · Sistema de Solicitudes")
-    if config.LOGO_URL:
-        embed.set_thumbnail(url=config.LOGO_URL)
+    nombre = getattr(config, "NOMBRE_HOSPITAL", "Hospital")
+    embed.set_footer(text=f"{nombre} · Sistema de Solicitudes")
+    logo = getattr(config, "LOGO_URL", None)
+    if logo:
+        embed.set_thumbnail(url=logo)
     return embed
 
 
-def embed_ticket(reg: dict, guild: Optional[discord.Guild] = None) -> discord.Embed:
-    """Embed profesional del ticket — diseño propio por cada una de las 6 categorías."""
-    cat = CATEGORIAS.get(reg.get("categoria", "general"), CATEGORIAS["general"])
-    estado_key = reg.get("estado", "en_revision")
-    estado_txt, color = ESTADOS.get(estado_key, ESTADOS["en_revision"])
-    prio_key = reg.get("prioridad", "normal")
-    prio_txt, _ = PRIORIDADES.get(prio_key, PRIORIDADES["normal"])
+def embed_ticket(reg: Optional[dict], guild: Optional[discord.Guild] = None) -> discord.Embed:
+    """Embed del ticket. Seguro ante reg vacío o claves faltantes."""
+    if not isinstance(reg, dict):
+        reg = {}
 
-    num = reg.get("numero", reg.get("id", 0))
-    titulo_cat = cat.get("titulo", f"{cat['emoji']} SOLICITUD")
+    cat = _cat(reg)
+    estado_key = reg.get("estado") or "en_revision"
+    estado_info = ESTADOS.get(estado_key) or ESTADOS["en_revision"]
+    estado_txt, color = estado_info[0], estado_info[1]
+
+    prio_key = reg.get("prioridad") or "normal"
+    prio_info = PRIORIDADES.get(prio_key) or PRIORIDADES["normal"]
+    prio_txt = prio_info[0]
+
+    try:
+        num = int(reg.get("numero") or reg.get("id") or 0)
+    except (TypeError, ValueError):
+        num = 0
+
+    titulo_cat = cat.get("titulo") or f"{cat.get('emoji', '📋')} SOLICITUD"
     embed = discord.Embed(
         title=f"{titulo_cat}  ·  #{num:04d}",
         description=(
@@ -243,9 +271,14 @@ def embed_ticket(reg: dict, guild: Optional[discord.Guild] = None) -> discord.Em
         timestamp=discord.utils.utcnow(),
     )
 
-    solicitante = f"<@{reg.get('usuario_id')}>"
+    uid = reg.get("usuario_id")
+    solicitante = f"<@{uid}>" if uid else "—"
     embed.add_field(name="👤 Solicitante", value=solicitante, inline=True)
-    embed.add_field(name="📂 Categoría", value=f"{cat['emoji']} {cat['nombre']}", inline=True)
+    embed.add_field(
+        name="📂 Categoría",
+        value=f"{cat.get('emoji', '')} {cat.get('nombre', '—')}".strip(),
+        inline=True,
+    )
     embed.add_field(name="🆔 Número", value=f"`#{num:04d}`", inline=True)
     embed.add_field(name="🟡 Estado", value=estado_txt, inline=True)
     embed.add_field(name="📌 Prioridad", value=prio_txt, inline=True)
@@ -258,51 +291,70 @@ def embed_ticket(reg: dict, guild: Optional[discord.Guild] = None) -> discord.Em
         inline=True,
     )
 
-    campos = reg.get("campos") or {}
-    if campos:
+    campos = reg.get("campos")
+    if isinstance(campos, dict) and campos:
         lineas = []
         for k, v in campos.items():
-            if v and str(v).strip() not in ("—", "-"):
-                lineas.append(f"**{k}**\n{v}")
+            if v is None:
+                continue
+            sv = str(v).strip()
+            if sv and sv not in ("—", "-"):
+                lineas.append(f"**{k}**\n{sv}")
         if lineas:
             texto = "\n\n".join(lineas)
             if len(texto) > 1020:
                 texto = texto[:1017] + "…"
             embed.add_field(name="📝 Información proporcionada", value=texto, inline=False)
 
-    if reg.get("resolucion"):
-        embed.add_field(name="✅ Resolución", value=reg["resolucion"][:500], inline=False)
+    resolucion = reg.get("resolucion")
+    if resolucion:
+        embed.add_field(name="✅ Resolución", value=str(resolucion)[:500], inline=False)
 
-    if reg.get("motivo_cierre"):
+    motivo_cierre = reg.get("motivo_cierre")
+    if motivo_cierre:
         embed.add_field(
             name="🔒 Cierre",
-            value=f"**Motivo:** {reg['motivo_cierre']}\n**Fecha:** {_fecha_legible(reg.get('fecha_cierre'))}",
+            value=f"**Motivo:** {motivo_cierre}\n**Fecha:** {_fecha_legible(reg.get('fecha_cierre'))}",
             inline=False,
         )
 
-    embed.set_footer(text=f"{config.NOMBRE_HOSPITAL}  ·  Sistema de Solicitudes  ·  ID {reg.get('id')}")
-    if config.LOGO_URL:
-        embed.set_thumbnail(url=config.LOGO_URL)
+    nombre = getattr(config, "NOMBRE_HOSPITAL", "Hospital")
+    embed.set_footer(text=f"{nombre}  ·  Sistema de Solicitudes  ·  ID {reg.get('id', '—')}")
+    logo = getattr(config, "LOGO_URL", None)
+    if logo:
+        embed.set_thumbnail(url=logo)
     return embed
 
 
-def embed_log_accion(reg: dict, accion: str, autor: discord.abc.User, detalle: str = "") -> discord.Embed:
-    cat = CATEGORIAS.get(reg.get("categoria", "general"), CATEGORIAS["general"])
-    num = reg.get("numero", reg.get("id", 0))
+def embed_log_accion(reg: Optional[dict], accion: str, autor: discord.abc.User, detalle: str = "") -> discord.Embed:
+    if not isinstance(reg, dict):
+        reg = {}
+    cat = _cat(reg)
+    try:
+        num = int(reg.get("numero") or reg.get("id") or 0)
+    except (TypeError, ValueError):
+        num = 0
+
     embed = discord.Embed(
         title="📋 SOLICITUD ACTUALIZADA",
         color=0x2C3E50,
         timestamp=discord.utils.utcnow(),
     )
     embed.add_field(name="ID", value=f"#{num:04d}", inline=True)
-    embed.add_field(name="Categoría", value=f"{cat['emoji']} {cat['nombre']}", inline=True)
-    embed.add_field(name="Usuario", value=f"<@{reg.get('usuario_id')}>", inline=True)
+    embed.add_field(
+        name="Categoría",
+        value=f"{cat.get('emoji', '')} {cat.get('nombre', '—')}".strip(),
+        inline=True,
+    )
+    uid = reg.get("usuario_id")
+    embed.add_field(name="Usuario", value=f"<@{uid}>" if uid else "—", inline=True)
     resp = reg.get("responsable_id")
     embed.add_field(name="Responsable", value=f"<@{resp}>" if resp else "—", inline=True)
-    embed.add_field(name="Acción", value=accion, inline=True)
-    embed.add_field(name="Realizada por", value=autor.mention if hasattr(autor, "mention") else str(autor), inline=True)
+    embed.add_field(name="Acción", value=accion or "—", inline=True)
+    who = autor.mention if hasattr(autor, "mention") else str(autor)
+    embed.add_field(name="Realizada por", value=who, inline=True)
     if detalle:
-        embed.add_field(name="Detalle", value=detalle[:500], inline=False)
+        embed.add_field(name="Detalle", value=str(detalle)[:500], inline=False)
     embed.add_field(name="Fecha", value=_fecha_legible(), inline=True)
-    embed.set_footer(text=config.NOMBRE_HOSPITAL)
+    embed.set_footer(text=getattr(config, "NOMBRE_HOSPITAL", "Hospital"))
     return embed
