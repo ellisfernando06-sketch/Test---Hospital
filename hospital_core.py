@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-hospital_core.py — Carga el núcleo del bot desde un commit estable y
-registra SIEMPRE los módulos nuevos (comandos_nuevos, centro_solicitudes_ui, verificacion).
+hospital_core.py — Carga el núcleo del bot y registra los módulos nuevos
+UNA sola vez (comandos_nuevos, centro_solicitudes_ui, verificacion).
 """
 from __future__ import annotations
 
@@ -21,50 +21,7 @@ def _cargar(module_globals: dict):
         source = resp.read().decode("utf-8")
     print(f"[hospital_core] Núcleo descargado ({len(source)} bytes)")
 
-    # --- Parches de import (opcionales, el registro real se hace después) ---
-    old_import = (
-        "from solicitudes import (\n"
-        "    CartaSolicitudModal, SolicitudDescargoModal, SolicitudPermisoModal,\n"
-        "    enviar_solicitud, enviar_solicitud_con_aprobacion,\n"
-        "    CitatorioModal, ReporteProcedimientoModal, AprobacionView,\n"
-        "    resolver_ruta, DESTINATARIOS_CHOICES, canal_para_key, nombre_destinatario,\n"
-        ")"
-    )
-    if old_import in source:
-        source = source.replace(
-            old_import,
-            old_import + "\nimport comandos_nuevos\nimport verificacion\nimport centro_solicitudes_ui",
-            1,
-        )
-        print("[hospital_core] Imports nuevos inyectados en el núcleo")
-    else:
-        print("[hospital_core] AVISO: bloque de import solicitudes no encontrado")
-
-    # Insertar llamadas registrar justo después de crear el bot
-    old_bot = 'bot = commands.Bot(command_prefix="!", intents=intents)'
-    if old_bot in source:
-        source = source.replace(
-            old_bot,
-            old_bot
-            + "\n\n"
-            + "# --- Registro módulos nuevos (inyectado) ---\n"
-            + "try:\n"
-            + "    comandos_nuevos.registrar(bot)\n"
-            + "    print('[hospital_core] comandos_nuevos OK')\n"
-            + "except Exception as _e:\n"
-            + "    print('[hospital_core] ERROR comandos_nuevos:', _e)\n"
-            + "try:\n"
-            + "    centro_solicitudes_ui.registrar(bot)\n"
-            + "    print('[hospital_core] centro_solicitudes_ui OK')\n"
-            + "except Exception as _e:\n"
-            + "    print('[hospital_core] ERROR centro_solicitudes_ui:', _e)\n",
-            1,
-        )
-        print("[hospital_core] Llamadas registrar() inyectadas")
-    else:
-        print("[hospital_core] AVISO: línea bot = commands.Bot no encontrada")
-
-    # Vista persistente de verificación
+    # Vista persistente de verificación dentro de on_ready
     old_view = (
         'bot.add_view(AprobacionView(key_aprobador="DIRECTOR_RRHH", '
         'solicitud_id="persist"))'
@@ -74,13 +31,14 @@ def _cargar(module_globals: dict):
             old_view,
             old_view
             + "\n    try:\n"
-            + "        bot.add_view(verificacion.VerificarView(staff_id=0, guild_id=0))\n"
+            + "        import verificacion as _verif\n"
+            + "        bot.add_view(_verif.VerificarView(staff_id=0, guild_id=0))\n"
             + "    except Exception as _e:\n"
             + "        print('[hospital_core] ERROR VerificarView:', _e)",
             1,
         )
 
-    # No ejecutar el bot.run del archivo remoto
+    # No ejecutar bot.run del archivo remoto
     marker = "if not config.TOKEN:"
     idx = source.find(marker)
     if idx > 0:
@@ -98,8 +56,9 @@ def _cargar(module_globals: dict):
     if bot is None:
         raise RuntimeError("hospital_core: el núcleo no definió 'bot'")
 
-    # --- Registro FORZADO después del exec (por si el parche falló) ---
-    print("[hospital_core] Registro forzado de módulos nuevos…")
+    # --- Registro ÚNICO de módulos nuevos ---
+    print("[hospital_core] Registrando módulos nuevos…")
+
     try:
         import comandos_nuevos
         comandos_nuevos.registrar(bot)
@@ -123,17 +82,17 @@ def _cargar(module_globals: dict):
         print("[hospital_core] ✗ verificacion FALLÓ:")
         traceback.print_exc()
 
-    # Contar comandos en el árbol
+    # Diagnóstico: listar si los comandos clave están en el árbol
     try:
         cmds = list(bot.tree.get_commands())
-        print(f"[hospital_core] Comandos en el árbol: {len(cmds)}")
         nombres = sorted(c.name for c in cmds)
+        print(f"[hospital_core] Total comandos en árbol: {len(nombres)}")
         for n in (
             "sancionar", "quitar_sancion", "apelar_sancion", "historial_sanciones",
             "banear", "expulsar", "silenciar", "verificar_roblox",
-            "panel_solicitudes", "registrar_gasto", "libro_contable",
+            "panel_solicitudes", "registrar_gasto", "libro_contable", "mi_sanciones",
         ):
-            marca = "✓" if n in nombres else "✗"
+            marca = "✓" if n in nombres else "✗ FALTA"
             print(f"  {marca} /{n}")
     except Exception as e:
         print("[hospital_core] No se pudo listar comandos:", e)
