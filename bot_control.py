@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*
 """
 bot_control.py — Estado del bot (online / mantenimiento / offline) y
 comandos exclusivos de OWNER. CO_OWNER debe pedir aprobación al OWNER.
@@ -84,7 +84,12 @@ def status_embed() -> discord.Embed:
             f"Agradecemos su colaboración y les recordamos seguir los protocolos "
             f"establecidos. Cualquier incidencia puede reportarse por los canales oficiales."
         )
-        if custom_msg and custom_msg not in ("Bot operativo.", "Bot reiniciado.", "Sistemas restaurados y bot plenamente operativo. Todos los módulos disponibles.", "Reinicio completado. Bot operativo y sincronizado tras el reinicio del proceso."):
+        if custom_msg and custom_msg not in (
+            "Bot operativo.",
+            "Bot reiniciado.",
+            "Sistemas restaurados y bot plenamente operativo. Todos los módulos disponibles.",
+            "Reinicio completado. Bot operativo y sincronizado tras el reinicio del proceso.",
+        ):
             desc += f"\n\n**Nota de la administración:**\n> {custom_msg}"
     elif mode == "mantenimiento":
         color = 0xF39C12
@@ -141,7 +146,7 @@ def status_embed() -> discord.Embed:
         fecha = str(_status["changed_at"])[:19].replace("T", " ") + " UTC"
         embed.add_field(name="📅 Último cambio de estado", value=fecha, inline=True)
     if _status.get("changed_by"):
-        embed.add_field(name="👤 Autorizado por", value=f"<{_status['changed_by']}>", inline=True)
+        embed.add_field(name="👤 Autorizado por", value=f"<@{_status['changed_by']}>", inline=True)
     return embed
 
 
@@ -158,9 +163,186 @@ async def publicar_estado(bot: discord.Client, guild: Optional[discord.Guild] = 
         pass
 
 
-# --- Resto del archivo (comandos OWNER / CO_OWNER, vistas de aprobación, etc.) se mantiene ---
-# Por espacio, se asume que el resto del archivo original sigue después de esta función.
-# Si el archivo quedó incompleto, restaurar desde el local y volver a push.
+class AprobacionBotView(ui.View):
+    def __init__(self, accion: str, solicitante_id: int, bot: discord.Client, extra: str = ""):
+        super().__init__(timeout=3600)
+        self.accion = accion
+        self.solicitante_id = solicitante_id
+        self.bot = bot
+        self.extra = extra
+
+    async def _es_owner(self, interaction: discord.Interaction) -> bool:
+        if not isinstance(interaction.user, discord.Member):
+            return False
+        return permisos.member_tiene_key(interaction.user, "OWNER")
+
+    @ui.button(label="✅ Aprobar", style=discord.ButtonStyle.success)
+    async def aprobar(self, interaction: discord.Interaction, button: ui.Button):
+        if not await self._es_owner(interaction):
+            await interaction.response.send_message("❌ Solo el **OWNER** puede aprobar.", ephemeral=True)
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(view=self)
+        await interaction.followup.send(f"✅ Acción **{self.accion}** aprobada. Ejecutando…", ephemeral=True)
+        await _ejecutar_accion(self.bot, self.accion, interaction.user.id, self.extra, interaction)
+
+    @ui.button(label="❌ Negar", style=discord.ButtonStyle.danger)
+    async def negar(self, interaction: discord.Interaction, button: ui.Button):
+        if not await self._es_owner(interaction):
+            await interaction.response.send_message("❌ Solo el **OWNER** puede negar.", ephemeral=True)
+            return
+        for child in self.children:
+            child.disabled = True
+        await interaction.response.edit_message(view=self)
+        await interaction.followup.send(f"❌ Acción **{self.accion}** denegada.", ephemeral=True)
+
+
+async def _ejecutar_accion(
+    bot: discord.Client,
+    accion: str,
+    por: int,
+    extra: str,
+    interaction: Optional[discord.Interaction] = None,
+) -> None:
+    if accion == "apagar":
+        set_mode(
+            "offline",
+            extra or "Apagado por decisión del OWNER / Administración. Se reactivará cuando se complete el proceso técnico o administrativo correspondiente.",
+            por,
+        )
+        await publicar_estado(bot)
+        msg = "🔴 Bot marcado como **offline**. Cerrando conexión…"
+        if interaction:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg)
+            else:
+                await interaction.response.send_message(msg)
+        await asyncio.sleep(1.5)
+        await bot.close()
+
+    elif accion == "encender":
+        set_mode(
+            "online",
+            extra or "Sistemas restaurados y bot plenamente operativo. Todos los módulos disponibles.",
+            por,
+        )
+        await publicar_estado(bot)
+        msg = "🟢 Bot en modo **online**."
+        if interaction:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg)
+            else:
+                await interaction.response.send_message(msg)
+
+    elif accion == "mantenimiento":
+        set_mode(
+            "mantenimiento",
+            extra or "Mantenimiento técnico programado. Optimización de sistemas, corrección de incidencias y preparación de actualizaciones.",
+            por,
+        )
+        await publicar_estado(bot)
+        msg = "🟡 Bot en modo **mantenimiento**."
+        if interaction:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg)
+            else:
+                await interaction.response.send_message(msg)
+
+    elif accion == "reiniciar":
+        set_mode(
+            "online",
+            extra or "Reinicio completado. Bot operativo y sincronizado tras el reinicio del proceso.",
+            por,
+        )
+        await publicar_estado(bot)
+        msg = "🔄 Reinicio solicitado. Si el proceso está bajo un supervisor (systemd/PM2/Railway), se reiniciará solo. Cerrando…"
+        if interaction:
+            if interaction.response.is_done():
+                await interaction.followup.send(msg)
+            else:
+                await interaction.response.send_message(msg)
+        await asyncio.sleep(1.5)
+        await bot.close()
+
+
+async def manejar_control_bot(
+    interaction: discord.Interaction,
+    bot: discord.Client,
+    accion: str,
+    mensaje: str = "",
+) -> None:
+    """
+    OWNER ejecuta al momento.
+    CO_OWNER envía solicitud de aprobación al OWNER (canal aprobaciones o DM).
+    """
+    user = interaction.user
+    if not isinstance(user, discord.Member):
+        await interaction.response.send_message("❌ Solo en servidor.", ephemeral=True)
+        return
+
+    es_owner = permisos.member_tiene_key(user, "OWNER")
+    es_co = permisos.member_tiene_key(user, "CO_OWNER")
+
+    if not es_owner and not es_co:
+        await interaction.response.send_message(
+            "❌ Solo **OWNER** o **CO_OWNER** pueden usar este comando.",
+            ephemeral=True,
+        )
+        return
+
+    if es_owner:
+        await interaction.response.defer(ephemeral=True)
+        await _ejecutar_accion(bot, accion, user.id, mensaje, interaction)
+        return
+
+    # CO_OWNER → pedir aprobación
+    embed = crear_embed(
+        "aviso",
+        f"🔐 Solicitud de {accion.upper()} del bot",
+        f"**Solicitante:** {user.mention} (CO-OWNER)\n**Acción:** `{accion}`\n**Mensaje:** {mensaje or '—'}",
+        autor=user,
+    )
+    view = AprobacionBotView(accion, user.id, bot, mensaje)
+
+    enviado = False
+    canal_id = config.CANALES.get("aprobaciones")
+    if canal_id:
+        canal = interaction.guild.get_channel(canal_id) if interaction.guild else None
+        if canal:
+            owner_rid = roles_store.obtener_id_key("OWNER")
+            mencion = ""
+            if owner_rid:
+                rol = interaction.guild.get_role(owner_rid)
+                if rol:
+                    mencion = rol.mention
+            await canal.send(content=mencion or None, embed=embed, view=view)
+            enviado = True
+
+    if not enviado and interaction.guild:
+        owner_rid = roles_store.obtener_id_key("OWNER")
+        if owner_rid:
+            rol = interaction.guild.get_role(owner_rid)
+            if rol:
+                for m in rol.members:
+                    try:
+                        await m.send(embed=embed, view=view)
+                        enviado = True
+                        break
+                    except discord.Forbidden:
+                        continue
+
+    if enviado:
+        await interaction.response.send_message(
+            "📨 Solicitud enviada al **OWNER**. Debe aprobarla para ejecutar la acción.",
+            ephemeral=True,
+        )
+    else:
+        await interaction.response.send_message(
+            "❌ No se pudo contactar a ningún OWNER. Configura el canal `aprobaciones` o asegúrate de que haya un OWNER en el servidor.",
+            ephemeral=True,
+        )
+
 
 # Cargar estado al importar
 _load_status()
