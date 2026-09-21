@@ -15,6 +15,19 @@ import roles_store
 from estilos import crear_embed
 
 
+def _rol_staff_servidor(guild: discord.Guild):
+    """Detecta el rol de Staff del Servidor por nombre."""
+    nombres = ["🖥️ Staff del Servidor", "Staff del Servidor", "Staff", "STAFF"]
+    for n in nombres:
+        r = discord.utils.get(guild.roles, name=n)
+        if r:
+            return r
+    rid = roles_store.obtener_id_key("STAFF_SERVIDOR")
+    if rid:
+        return guild.get_role(rid)
+    return None
+
+
 class AbrirTicketView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -30,11 +43,7 @@ class AbrirTicketView(ui.View):
             interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True),
             guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True),
         }
-        # Staff keys
-        # BUG CORREGIDO: antes se usaba __import__("roles_store") dos veces
-        # dentro del bucle en lugar de importar el módulo una sola vez arriba.
-        # Funcionaba, pero era frágil e ineficiente; ahora se usa el import
-        # normal (roles_store) ya declarado al inicio del archivo.
+
         for key in config.TICKET_STAFF_KEYS:
             if key == "DIRECTOR":
                 for dk in config.DIRECTOR_KEYS:
@@ -50,6 +59,10 @@ class AbrirTicketView(ui.View):
                     if rol:
                         overwrites[rol] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
 
+        staff_role = _rol_staff_servidor(guild)
+        if staff_role:
+            overwrites[staff_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+
         nombre = f"ticket-{interaction.user.name}"[:90]
         try:
             canal = await guild.create_text_channel(
@@ -62,8 +75,22 @@ class AbrirTicketView(ui.View):
             await interaction.response.send_message("❌ No tengo permisos para crear canales.", ephemeral=True)
             return
 
-        embed = crear_embed("info", "🎫 Ticket abierto", f"Hola {interaction.user.mention}, describe tu consulta. Un miembro del staff te atenderá.")
-        await canal.send(content=interaction.user.mention, embed=embed, view=CerrarTicketView())
+        embed = crear_embed(
+            "info",
+            "🎫 Ticket abierto",
+            f"Hola {interaction.user.mention}, describe tu consulta. Un miembro del staff te atenderá.\n\n"
+            f"Puedes adjuntar **imágenes, videos o texto** como evidencia.",
+        )
+
+        content_parts = [interaction.user.mention]
+        if staff_role:
+            content_parts.append(staff_role.mention)
+
+        await canal.send(
+            content=" ".join(content_parts),
+            embed=embed,
+            view=CerrarTicketView(),
+        )
         await interaction.response.send_message(f"✅ Ticket creado: {canal.mention}", ephemeral=True)
 
 
@@ -76,14 +103,10 @@ class CerrarTicketView(ui.View):
         if not isinstance(interaction.user, discord.Member):
             return
         if not permisos.member_tiene_alguna_key(interaction.user, *config.TICKET_STAFF_KEYS, "OWNER"):
-            # El autor del ticket también puede cerrar si el canal empieza por ticket-
-            if not interaction.channel or not str(interaction.channel.name).startswith("ticket-"):
+            if not interaction.channel or not str(interaction.channel.name).startswith(("ticket-", "apelacion-")):
                 await interaction.response.send_message("❌ Solo staff puede cerrar tickets.", ephemeral=True)
                 return
         await interaction.response.send_message("🔒 Cerrando ticket en 3 segundos…")
-        # BUG CORREGIDO: el mensaje decía "en 3 segundos" pero el canal se
-        # borraba inmediatamente después, sin esperar nada. Ahora sí se
-        # espera el tiempo anunciado antes de borrar.
         await asyncio.sleep(3)
         try:
             await interaction.channel.delete(reason=f"Cerrado por {interaction.user}")
