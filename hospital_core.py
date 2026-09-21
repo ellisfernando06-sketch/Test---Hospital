@@ -5,6 +5,7 @@ y aplica parches (comandos_nuevos, verificacion, centro_solicitudes).
 """
 from __future__ import annotations
 
+import sys
 import urllib.request
 
 _COMMIT = "30a15578af8c1459b0d2dcad8af2881c4a8a326b"
@@ -14,7 +15,7 @@ _URL = (
 )
 
 
-def _cargar():
+def _cargar(module_globals: dict):
     with urllib.request.urlopen(_URL, timeout=45) as resp:
         source = resp.read().decode("utf-8")
 
@@ -58,12 +59,9 @@ def _cargar():
     if idx > 0:
         source = source[:idx]
 
-    g = {"__name__": "hospital_core", "__file__": __file__}
-    # Compartir el namespace del módulo actual para que `from hospital_core import bot` funcione
-    import hospital_core as self_mod
-    g = self_mod.__dict__
-    exec(compile(source, "hospital_core_remote.py", "exec"), g)
-    return g.get("bot")
+    exec(compile(source, "hospital_core_remote.py", "exec"), module_globals)
+    return module_globals.get("bot")
 
 
-bot = _cargar()
+# Ejecutar carga en el namespace de este módulo
+bot = _cargar(globals())
