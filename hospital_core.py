@@ -56,16 +56,15 @@ def _cargar(module_globals: dict):
 
     print("[hospital_core] Registrando módulos nuevos…")
 
-    # Prefer comandos_nuevos_fixed if the original is empty/broken
     try:
-        import comandos_nuevos_fixed as comandos_nuevos
+        import comandos_nuevos
         comandos_nuevos.registrar(bot)
-        print("[hospital_core] ✓ comandos_nuevos_fixed.registrar OK")
+        print("[hospital_core] ✓ comandos_nuevos.registrar OK")
     except Exception:
         try:
-            import comandos_nuevos
+            import comandos_nuevos_fixed as comandos_nuevos
             comandos_nuevos.registrar(bot)
-            print("[hospital_core] ✓ comandos_nuevos.registrar OK")
+            print("[hospital_core] ✓ comandos_nuevos_fixed.registrar OK")
         except Exception:
             print("[hospital_core] ✗ comandos_nuevos FALLÓ:")
             traceback.print_exc()
@@ -92,7 +91,7 @@ def _cargar(module_globals: dict):
         for n in (
             "sancionar", "quitar_sancion", "apelar_sancion", "historial_sanciones",
             "banear", "expulsar", "silenciar", "verificar_roblox",
-            "panel_solicitudes", "mi_sanciones", "ver_roblox",
+            "panel_solicitudes", "registrar_gasto", "libro_contable", "mi_sanciones",
         ):
             marca = "✓" if n in nombres else "✗ FALTA"
             print(f"  {marca} /{n}")
