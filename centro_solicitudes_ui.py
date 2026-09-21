@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*
+# -*- coding: utf-8 -*-
 """centro_solicitudes_ui.py — Formularios, tickets y comandos del Centro de Solicitudes."""
 from __future__ import annotations
 
@@ -13,17 +13,23 @@ import config
 import permisos
 import roles_store
 from centro_solicitudes import (
-    CATEGORIAS, ESTADOS, PRIORIDADES,
-    embed_panel_principal, embed_ticket, embed_log_accion,
-    guardar_solicitud, obtener_solicitud, actualizar_solicitud,
-    _siguiente_numero, _rol_staff, _categoria_canal, enviar_log_solicitud,
-    _now, _fecha_legible,
+    CATEGORIAS,
+    ESTADOS,
+    PRIORIDADES,
+    embed_panel_principal,
+    embed_ticket,
+    embed_log_accion,
+    guardar_solicitud,
+    obtener_solicitud,
+    actualizar_solicitud,
+    _siguiente_numero,
+    _rol_staff,
+    _categoria_canal,
+    enviar_log_solicitud,
+    _now,
+    _fecha_legible,
 )
 
-
-# ---------------------------------------------------------------------------
-# Formularios (Modals) — 6 categorías
-# ---------------------------------------------------------------------------
 
 class FormSancion(ui.Modal, title="🛡️ Solicitud de Sanción"):
     usuario_inv = ui.TextInput(label="Usuario involucrado", placeholder="ID o mención", max_length=100)
@@ -167,8 +173,9 @@ async def crear_ticket_solicitud(
     await interaction.response.defer(ephemeral=True)
 
     numero = _siguiente_numero()
-    cat = CATEGORIAS.get(categoria, CATEGORIAS["general"])
-    nombre_canal = f"{cat['prefijo']}-{numero:04d}"[:90]
+    cat = CATEGORIAS.get(categoria) or CATEGORIAS["general"]
+    prefijo = cat.get("prefijo") or "solicitud"
+    nombre_canal = f"{prefijo}-{numero:04d}"[:90]
 
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(view_channel=False),
@@ -184,9 +191,9 @@ async def crear_ticket_solicitud(
     if staff_role:
         overwrites[staff_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
 
-    for key in getattr(config, "TICKET_STAFF_KEYS", []):
+    for key in getattr(config, "TICKET_STAFF_KEYS", []) or []:
         if key == "DIRECTOR":
-            for dk in config.DIRECTOR_KEYS:
+            for dk in getattr(config, "DIRECTOR_KEYS", []) or []:
                 rid = roles_store.obtener_id_key(dk)
                 if rid:
                     rol = guild.get_role(rid)
@@ -205,7 +212,7 @@ async def crear_ticket_solicitud(
             nombre_canal,
             category=category,
             overwrites=overwrites,
-            reason=f"Solicitud #{numero:04d} — {cat['nombre']} por {interaction.user}",
+            reason=f"Solicitud #{numero:04d} — {cat.get('nombre', categoria)} por {interaction.user}",
         )
     except discord.Forbidden:
         await interaction.followup.send("❌ No tengo permisos para crear canales.", ephemeral=True)
@@ -223,7 +230,7 @@ async def crear_ticket_solicitud(
         "fecha_actualizacion": _now(),
         "fecha_cierre": None,
         "motivo_cierre": None,
-        "campos": campos,
+        "campos": campos or {},
         "resolucion": None,
         "canal_id": canal.id,
         "usuarios_extra": [],
@@ -250,15 +257,20 @@ async def crear_ticket_solicitud(
 class MenuCategorias(ui.Select):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        options = [
-            discord.SelectOption(
-                label=cat["nombre"],
-                value=key,
-                description=cat["menu_desc"][:100],
-                emoji=cat["emoji"],
+        options = []
+        for key, cat in CATEGORIAS.items():
+            if not isinstance(cat, dict):
+                continue
+            options.append(
+                discord.SelectOption(
+                    label=str(cat.get("nombre") or key)[:100],
+                    value=str(key),
+                    description=str(cat.get("menu_desc") or "")[:100],
+                    emoji=cat.get("emoji") or None,
+                )
             )
-            for key, cat in CATEGORIAS.items()
-        ]
+        if not options:
+            options = [discord.SelectOption(label="General", value="general")]
         super().__init__(
             placeholder="📂 Selecciona el tipo de solicitud",
             min_values=1,
@@ -268,7 +280,7 @@ class MenuCategorias(ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        cat = self.values[0]
+        cat = self.values[0] if self.values else "general"
         formularios = {
             "sancion": FormSancion,
             "apelacion": FormApelacion,
@@ -313,11 +325,12 @@ class ConfirmarCierreView(ui.View):
             await interaction.response.send_message("❌ No tienes permiso.", ephemeral=True)
             return
         motivo = "Cerrada por el staff"
-        actualizar_solicitud(
+        reg = actualizar_solicitud(
             self.solicitud_id, estado="cerrada", motivo_cierre=motivo, fecha_cierre=_now(),
         )
-        reg = obtener_solicitud(self.solicitud_id)
-        embed = embed_ticket(reg, interaction.guild)
+        if not reg:
+            reg = obtener_solicitud(self.solicitud_id)
+        embed = embed_ticket(reg or {}, interaction.guild)
         await interaction.response.edit_message(
             content=f"🔒 Solicitud cerrada por {interaction.user.mention}", embed=embed, view=None,
         )
@@ -353,22 +366,24 @@ class PrioridadSelect(ui.Select):
         if not _puede_gestionar(interaction.user):
             await interaction.response.send_message("❌ Solo staff autorizado.", ephemeral=True)
             return
-        prio = self.values[0]
+        prio = self.values[0] if self.values else "normal"
         reg = actualizar_solicitud(self.solicitud_id, prioridad=prio)
         if not reg:
             await interaction.response.send_message("❌ Solicitud no encontrada.", ephemeral=True)
             return
-        await interaction.response.send_message(
-            f"✅ Prioridad actualizada a **{PRIORIDADES[prio][0]}**.", ephemeral=True
-        )
+        prio_txt = (PRIORIDADES.get(prio) or PRIORIDADES["normal"])[0]
+        await interaction.response.send_message(f"✅ Prioridad actualizada a **{prio_txt}**.", ephemeral=True)
         try:
             async for msg in interaction.channel.history(limit=20):
                 if msg.author == interaction.client.user and msg.embeds:
-                    await msg.edit(embed=embed_ticket(reg, interaction.guild), view=TicketSolicitudView(self.bot, self.solicitud_id))
+                    await msg.edit(
+                        embed=embed_ticket(reg, interaction.guild),
+                        view=TicketSolicitudView(self.bot, self.solicitud_id),
+                    )
                     break
         except Exception:
             pass
-        log = embed_log_accion(reg, "Cambio de prioridad", interaction.user, PRIORIDADES[prio][0])
+        log = embed_log_accion(reg, "Cambio de prioridad", interaction.user, prio_txt)
         await enviar_log_solicitud(self.bot, log)
 
 
@@ -401,7 +416,9 @@ class AnadirUsuarioModal(ui.Modal, title="👥 Añadir usuario al ticket"):
             await interaction.response.send_message("❌ Usuario no encontrado.", ephemeral=True)
             return
         try:
-            await interaction.channel.set_permissions(member, view_channel=True, send_messages=True, attach_files=True)
+            await interaction.channel.set_permissions(
+                member, view_channel=True, send_messages=True, attach_files=True
+            )
         except discord.Forbidden:
             await interaction.response.send_message("❌ No puedo modificar permisos.", ephemeral=True)
             return
@@ -420,34 +437,39 @@ class EstadoSelect(ui.Select):
     def __init__(self, bot: commands.Bot, solicitud_id: int):
         self.bot = bot
         self.solicitud_id = solicitud_id
-        options = [
-            discord.SelectOption(label=v[0], value=k)
-            for k, v in ESTADOS.items()
-        ]
+        options = []
+        for k, v in ESTADOS.items():
+            label = v[0] if isinstance(v, (tuple, list)) and v else str(k)
+            options.append(discord.SelectOption(label=str(label)[:100], value=str(k)))
         super().__init__(placeholder="Cambiar estado", options=options, min_values=1, max_values=1)
 
     async def callback(self, interaction: discord.Interaction):
         if not _puede_gestionar(interaction.user):
             await interaction.response.send_message("❌ Solo staff autorizado.", ephemeral=True)
             return
-        nuevo = self.values[0]
+        nuevo = self.values[0] if self.values else "en_revision"
         reg_old = obtener_solicitud(self.solicitud_id)
-        old_txt = ESTADOS.get((reg_old or {}).get("estado", ""), ("?", 0))[0]
+        old_key = (reg_old or {}).get("estado") or "en_revision"
+        old_txt = (ESTADOS.get(old_key) or ESTADOS["en_revision"])[0]
         reg = actualizar_solicitud(self.solicitud_id, estado=nuevo)
         if not reg:
             await interaction.response.send_message("❌ Solicitud no encontrada.", ephemeral=True)
             return
+        new_txt = (ESTADOS.get(nuevo) or ESTADOS["en_revision"])[0]
         await interaction.response.send_message(
-            f"✅ Estado: **{old_txt}** → **{ESTADOS[nuevo][0]}**", ephemeral=True
+            f"✅ Estado: **{old_txt}** → **{new_txt}**", ephemeral=True
         )
         try:
             async for msg in interaction.channel.history(limit=20):
                 if msg.author == interaction.client.user and msg.embeds:
-                    await msg.edit(embed=embed_ticket(reg, interaction.guild), view=TicketSolicitudView(self.bot, self.solicitud_id))
+                    await msg.edit(
+                        embed=embed_ticket(reg, interaction.guild),
+                        view=TicketSolicitudView(self.bot, self.solicitud_id),
+                    )
                     break
         except Exception:
             pass
-        log = embed_log_accion(reg, "Cambio de estado", interaction.user, f"{old_txt} → {ESTADOS[nuevo][0]}")
+        log = embed_log_accion(reg, "Cambio de estado", interaction.user, f"{old_txt} → {new_txt}")
         await enviar_log_solicitud(self.bot, log)
 
 
@@ -468,7 +490,9 @@ class TicketSolicitudView(ui.View):
         if not _puede_gestionar(interaction.user):
             await interaction.response.send_message("❌ Solo staff autorizado.", ephemeral=True)
             return
-        reg = actualizar_solicitud(self.solicitud_id, responsable_id=interaction.user.id, estado="en_revision")
+        reg = actualizar_solicitud(
+            self.solicitud_id, responsable_id=interaction.user.id, estado="en_revision"
+        )
         if not reg:
             await interaction.response.send_message("❌ Solicitud no encontrada.", ephemeral=True)
             return
@@ -493,7 +517,9 @@ class TicketSolicitudView(ui.View):
             await interaction.response.send_message("❌ Solo staff autorizado.", ephemeral=True)
             return
         await interaction.response.send_message(
-            "Selecciona la prioridad:", view=PrioridadView(self.bot, self.solicitud_id), ephemeral=True,
+            "Selecciona la prioridad:",
+            view=PrioridadView(self.bot, self.solicitud_id),
+            ephemeral=True,
         )
 
     @ui.button(label="Añadir usuario", style=discord.ButtonStyle.secondary, emoji="👥", custom_id="sol_adduser")
@@ -509,7 +535,9 @@ class TicketSolicitudView(ui.View):
             await interaction.response.send_message("❌ Solo staff autorizado.", ephemeral=True)
             return
         await interaction.response.send_message(
-            "Selecciona el nuevo estado:", view=EstadoView(self.bot, self.solicitud_id), ephemeral=True,
+            "Selecciona el nuevo estado:",
+            view=EstadoView(self.bot, self.solicitud_id),
+            ephemeral=True,
         )
 
 
