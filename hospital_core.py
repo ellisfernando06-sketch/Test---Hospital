@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 """
 hospital_core.py — Carga el núcleo del bot desde un commit estable en GitHub
-y aplica parches (comandos_nuevos, verificacion, centro_solicitudes).
+y aplica parches (comandos_nuevos, verificacion, centro_solicitudes_ui).
 """
 from __future__ import annotations
 
-import sys
 import urllib.request
 
 _COMMIT = "30a15578af8c1459b0d2dcad8af2881c4a8a326b"
@@ -29,7 +28,7 @@ def _cargar(module_globals: dict):
     )
     new_import = (
         old_import
-        + "\nimport comandos_nuevos\nimport verificacion\nimport centro_solicitudes"
+        + "\nimport comandos_nuevos\nimport verificacion\nimport centro_solicitudes_ui"
     )
     if old_import in source:
         source = source.replace(old_import, new_import, 1)
@@ -38,7 +37,7 @@ def _cargar(module_globals: dict):
     new_bot = (
         'bot = commands.Bot(command_prefix="!", intents=intents)\n\n'
         "comandos_nuevos.registrar(bot)\n"
-        "centro_solicitudes.registrar(bot)\n"
+        "centro_solicitudes_ui.registrar(bot)\n"
     )
     if old_bot in source:
         source = source.replace(old_bot, new_bot, 1)
@@ -63,5 +62,4 @@ def _cargar(module_globals: dict):
     return module_globals.get("bot")
 
 
-# Ejecutar carga en el namespace de este módulo
 bot = _cargar(globals())
