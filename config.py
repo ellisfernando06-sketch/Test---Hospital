@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-config.py — EL ÚNICO ARCHIVO QUE DEBES EDITAR.
-
-Sistema por KEYS:
-  - Cada DIRECTOR_* solo gestiona su departamento.
-  - Despidos, sanciones internas e investigaciones → DIRECTOR_RRHH (con aprobación).
-  - Staff del Servidor: Director General, Director Disciplinario, Director Administrativo, Admin en prueba.
+config.py — EL ÚNICO ARCHIVO QUE DEBES EDITAR (IDs de canales y nombres).
 """
 import os
 
@@ -38,19 +33,10 @@ KEYS_NOMBRES = {
 }
 
 JERARQUIA_KEYS = [
-    "VOLUNTARIO",
-    "PASANTE",
-    "STAFF",
-    "RESIDENTE",
-    "SUPERVISOR",
-    "ENCARGADO_AREA",
-    "JEFE_DEPARTAMENTO",
-    "DIRECTOR",
-    "DIRECTOR_ADMINISTRATIVO",
-    "DIRECTOR_DISCIPLINA",
-    "DIRECTOR_GENERAL",
-    "CO_OWNER",
-    "OWNER",
+    "VOLUNTARIO", "PASANTE", "STAFF", "RESIDENTE", "SUPERVISOR",
+    "ENCARGADO_AREA", "JEFE_DEPARTAMENTO", "DIRECTOR",
+    "DIRECTOR_ADMINISTRATIVO", "DIRECTOR_DISCIPLINA", "DIRECTOR_GENERAL",
+    "CO_OWNER", "OWNER",
 ]
 
 DIRECTOR_KEYS = [k for k in KEYS_NOMBRES if k.startswith("DIRECTOR_")]
@@ -64,9 +50,7 @@ KEY_SUSPENSIONES = "DIRECTOR_RRHH"
 KEY_DEGRADOS = "DIRECTOR_RRHH"
 
 KEYS_CON_STAFF_SERVIDOR = {
-    "DIRECTOR_GENERAL",
-    "DIRECTOR_DISCIPLINA",
-    "DIRECTOR_ADMINISTRATIVO",
+    "DIRECTOR_GENERAL", "DIRECTOR_DISCIPLINA", "DIRECTOR_ADMINISTRATIVO",
 }
 
 KEYS_CITATORIO = ["DIRECTOR_GENERAL", "DIRECTOR_DISCIPLINA", "DIRECTOR_ADMINISTRATIVO", "OWNER", "CO_OWNER"]
@@ -84,66 +68,9 @@ DEPARTAMENTOS = {
         "emoji": "🩺",
         "director_key": "DIRECTOR_MEDICO",
         "escalafon_nombres": [
-            "🩺 Pasante de Medicina",
-            "🩺 Interno",
-            "🩺 Médico General",
-            "🩺 Médico Especialista",
-            "🩺 Encargado de Servicio",
-            "🩺 Jefe de Servicio",
-            "🩺 Subdirector Médico",
-        ],
-    },
-    "especialidades": {
-        "nombre": "Especialidades Médicas",
-        "emoji": "🫀",
-        "director_key": "DIRECTOR_MEDICO",
-        "escalafon_nombres": [
-            "🫀 Cardiología",
-            "🫀 Encargado de Cardiología",
-            "🫀 Jefe de Cardiología",
-            "🧠 Neurología",
-            "🧠 Encargado de Neurología",
-            "🧠 Jefe de Neurología",
-            "🦴 Traumatología",
-            "🦴 Encargado de Traumatología",
-            "🦴 Jefe de Traumatología",
-            "👶 Pediatría",
-            "👶 Encargado de Pediatría",
-            "👶 Jefe de Pediatría",
-            "🤰 Ginecología y Obstetricia",
-            "🤰 Encargado de Ginecología",
-            "🤰 Jefe de Ginecología",
-            "👁️ Oftalmología",
-            "👁️ Encargado de Oftalmología",
-            "👁️ Jefe de Oftalmología",
-            "👂 Otorrinolaringología",
-            "👂 Encargado de ORL",
-            "👂 Jefe de ORL",
-            "🧪 Laboratorio Clínico",
-            "🧪 Encargado de Laboratorio",
-            "🧪 Jefe de Laboratorio",
-            "📷 Radiología / Imagen",
-            "📷 Encargado de Radiología",
-            "📷 Jefe de Radiología",
-            "🩹 Cirugía General",
-            "🩹 Encargado de Cirugía",
-            "🩹 Jefe de Cirugía",
-            "🚑 Urgencias / Emergencias",
-            "🚑 Encargado de Urgencias",
-            "🚑 Jefe de Urgencias",
-            "💊 Anestesiología",
-            "💊 Encargado de Anestesia",
-            "💊 Jefe de Anestesia",
-            "🧬 Oncología",
-            "🧬 Encargado de Oncología",
-            "🧬 Jefe de Oncología",
-            "🫁 Neumología",
-            "🫁 Encargado de Neumología",
-            "🫁 Jefe de Neumología",
-            "🦠 Infectología",
-            "🦠 Encargado de Infectología",
-            "🦠 Jefe de Infectología",
-            "🫀 Subdirector de Especialidades",
+            "🩺 Pasante de Medicina", "🩺 Interno", "🩺 Médico General",
+            "🩺 Médico Especialista", "🩺 Encargado de Servicio",
+            "🩺 Jefe de Servicio", "🩺 Subdirector Médico",
         ],
     },
     "enfermeria": {
@@ -151,13 +78,9 @@ DEPARTAMENTOS = {
         "emoji": "💉",
         "director_key": "DIRECTOR_ENFERMERIA",
         "escalafon_nombres": [
-            "💉 Auxiliar de Enfermería",
-            "💉 Enfermero/a",
-            "💉 Enfermero/a Especialista",
-            "💉 Enfermero/a de Urgencias",
-            "💉 Encargado de Enfermería",
-            "💉 Jefe de Enfermería",
-            "💉 Subdirector de Enfermería",
+            "💉 Auxiliar de Enfermería", "💉 Enfermero/a",
+            "💉 Enfermero/a Especialista", "💉 Encargado de Enfermería",
+            "💉 Jefe de Enfermería", "💉 Subdirector de Enfermería",
         ],
     },
     "rrhh": {
@@ -165,129 +88,89 @@ DEPARTAMENTOS = {
         "emoji": "👥",
         "director_key": "DIRECTOR_RRHH",
         "escalafon_nombres": [
-            "👥 Asistente de RRHH",
-            "👥 Analista de RRHH",
-            "👥 Coordinador de RRHH",
-            "👥 Encargado de Personal",
-            "👥 Jefe de RRHH",
-            "👥 Subdirector de RRHH",
+            "👥 Asistente de RRHH", "👥 Analista de RRHH",
+            "👥 Coordinador de RRHH", "👥 Jefe de RRHH",
         ],
     },
     "finanzas": {
         "nombre": "Finanzas",
         "emoji": "💰",
         "director_key": "DIRECTOR_FINANCIERO",
-        "escalafon_nombres": [
-            "💰 Auxiliar Contable",
-            "💰 Contador",
-            "💰 Coordinador Financiero",
-            "💰 Encargado de Tesorería",
-            "💰 Jefe de Finanzas",
-            "💰 Subdirector Financiero",
-        ],
+        "escalafon_nombres": ["💰 Auxiliar Contable", "💰 Contador", "💰 Jefe de Finanzas"],
     },
     "logistica": {
         "nombre": "Logística e Insumos",
         "emoji": "📦",
         "director_key": "DIRECTOR_LOGISTICA",
-        "escalafon_nombres": [
-            "📦 Auxiliar de Almacén",
-            "📦 Técnico de Insumos",
-            "📦 Encargado de Insumos",
-            "📦 Encargado de Farmacia",
-            "📦 Jefe de Logística",
-            "📦 Subdirector de Logística",
-        ],
+        "escalafon_nombres": ["📦 Auxiliar de Almacén", "📦 Técnico de Insumos", "📦 Jefe de Logística"],
     },
     "seguridad": {
         "nombre": "Seguridad",
         "emoji": "🛡️",
         "director_key": "DIRECTOR_SEGURIDAD",
-        "escalafon_nombres": [
-            "🛡️ Guardia",
-            "🛡️ Guardia Senior",
-            "🛡️ Supervisor de Seguridad",
-            "🛡️ Encargado de Seguridad",
-            "🛡️ Jefe de Seguridad",
-            "🛡️ Subdirector de Seguridad",
-        ],
+        "escalafon_nombres": ["🛡️ Guardia", "🛡️ Supervisor de Seguridad", "🛡️ Jefe de Seguridad"],
     },
     "administracion": {
         "nombre": "Administración",
         "emoji": "📋",
         "director_key": "DIRECTOR_ADMINISTRATIVO",
-        "escalafon_nombres": [
-            "📋 Recepcionista",
-            "📋 Asistente Administrativo",
-            "📋 Coordinador Administrativo",
-            "📋 Encargado de Admisiones",
-            "📋 Jefe Administrativo",
-            "📋 Subdirector Administrativo",
-        ],
-    },
-    "staff_servidor": {
-        "nombre": "Staff del Servidor",
-        "emoji": "🖥️",
-        "director_key": "DIRECTOR_GENERAL",
-        "escalafon_nombres": [
-            "🖥️ Admin en prueba",
-        ],
+        "escalafon_nombres": ["📋 Recepcionista", "📋 Asistente Administrativo", "📋 Jefe Administrativo"],
     },
 }
 
 CANALES = {
+    # ── Logs generales ──
     "log_general":         None,
     "log_roles":           None,
     "log_ascensos":        None,
     "log_personal":        None,
     "log_documentos":      None,
+    # ── RP médico ──
+    "log_pacientes":       None,   # Admisiones, evoluciones, altas, HC
+    "log_turnos":          None,   # Entrada/salida de guardia
+    "log_inventario":      None,   # Consumo y stock
+    "log_procedimientos":  None,   # Quirófano
+    "alerta_codigos":      None,   # Códigos de emergencia (ALERTA)
+    # ── Admin / staff ──
     "log_finanzas":        None,
-    "log_solicitudes":     None,
-    "log_inventario":      None,
-    "log_pacientes":       None,
-    "log_turnos":          None,
+    "log_solicitudes":     None,   # Solicitudes generales
     "log_capacitaciones":  None,
     "log_quejas":          None,
-    "log_postulaciones":   None,
+    "log_postulaciones":   None,   # Postulaciones a departamentos
     "log_sanciones":       None,
     "log_investigaciones": None,
     "log_sanciones_ooc":   None,
-    "log_procedimientos":  None,
-    "alerta_codigos":      None,
+    # ── Aprobaciones / citatorios ──
     "bot_status":          1481762625279758449,
-    "aprobaciones":        None,
+    "aprobaciones":        None,   # Aprobaciones generales / OWNER
+    "aprobaciones_rrhh":   None,   # RRHH
     "citatorio_general":   None,
     "citatorio_disciplina": None,
     "citatorio_admin":     None,
-    "aprobaciones_rrhh":   None,
+    # ── Opcionales RP ──
+    "panel_guardia":       None,
+    "log_quirofano":       None,
 }
 
 SEPARADORES_ROLES = [
-    ("sep_cupula",          "『 👑 ADMINISTRACIÓN 』", "#2C3E50"),
-    ("sep_servidor",        "『 🖥️ STAFF DEL SERVIDOR 』", "#7F8C8D"),
-    ("sep_directores",      "『 🏛️ DIRECCIÓN HOSPITAL 』", "#2C3E50"),
-    ("sep_medico",          "『 🩺 CUERPO MÉDICO 』", "#1ABC9C"),
-    ("sep_especialidades",  "『 🫀 ESPECIALIDADES 』", "#E74C3C"),
-    ("sep_enfermeria",      "『 💉 ENFERMERÍA 』", "#3498DB"),
-    ("sep_rrhh",            "『 👥 RECURSOS HUMANOS 』", "#9B59B6"),
-    ("sep_finanzas",        "『 💰 FINANZAS 』", "#F1C40F"),
-    ("sep_logistica",       "『 📦 LOGÍSTICA 』", "#E67E22"),
-    ("sep_seguridad",       "『 🛡️ SEGURIDAD 』", "#34495E"),
-    ("sep_admin",           "『 📋 ADMINISTRACIÓN HOSPITAL 』", "#16A085"),
-    ("sep_mandos",          "『 ⭐ MANDOS INTERMEDIOS 』", "#27AE60"),
-    ("sep_staff",           "『 🏥 PERSONAL / STAFF 』", "#95A5A6"),
+    ("sep_cupula", "『 👑 ADMINISTRACIÓN 』", "#2C3E50"),
+    ("sep_servidor", "『 🖥️ STAFF DEL SERVIDOR 』", "#7F8C8D"),
+    ("sep_directores", "『 🏛️ DIRECCIÓN HOSPITAL 』", "#2C3E50"),
+    ("sep_medico", "『 🩺 CUERPO MÉDICO 』", "#1ABC9C"),
+    ("sep_enfermeria", "『 💉 ENFERMERÍA 』", "#3498DB"),
+    ("sep_rrhh", "『 👥 RECURSOS HUMANOS 』", "#9B59B6"),
+    ("sep_finanzas", "『 💰 FINANZAS 』", "#F1C40F"),
+    ("sep_logistica", "『 📦 LOGÍSTICA 』", "#E67E22"),
+    ("sep_seguridad", "『 🛡️ SEGURIDAD 』", "#34495E"),
+    ("sep_admin", "『 📋 ADMINISTRACIÓN HOSPITAL 』", "#16A085"),
+    ("sep_staff", "『 🏥 PERSONAL / STAFF 』", "#95A5A6"),
 ]
 
 GRAVEDAD_PACIENTE = ["Estable", "Observación", "Grave", "Crítico"]
 
 CATEGORIAS_INVENTARIO = [
-    "Medicamentos",
-    "Material quirúrgico",
-    "Insumos de enfermería",
-    "Equipo médico",
-    "Protección personal",
-    "Oficina y papelería",
-    "General",
+    "Medicamentos", "Material quirúrgico", "Insumos de enfermería",
+    "Equipo médico", "Protección personal", "Oficina y papelería", "General",
 ]
 
 CODIGOS_EMERGENCIA = {
@@ -353,31 +236,11 @@ TICKET_STAFF_KEYS = ["SUPERVISOR", "DIRECTOR", "DIRECTOR_DISCIPLINA", "DIRECTOR_
 TICKET_CATEGORIA_ID = 1381426327630118932
 
 TIPOS_SOLICITUD_RRHH = {
-    "despido": {
-        "titulo": "🚫 Solicitud de despido",
-        "campos": ["usuario", "motivo", "evidencia"],
-        "key_aprobador": "DIRECTOR_RRHH",
-    },
-    "sancion_interna": {
-        "titulo": "⚠️ Solicitud de sanción interna",
-        "campos": ["usuario", "tipo_sancion", "motivo", "evidencia"],
-        "key_aprobador": "DIRECTOR_RRHH",
-    },
-    "degrado": {
-        "titulo": "⬇️ Solicitud de degradado",
-        "campos": ["usuario", "cargo_actual", "cargo_propuesto", "motivo"],
-        "key_aprobador": "DIRECTOR_RRHH",
-    },
-    "investigacion": {
-        "titulo": "🔎 Solicitud de investigación interna",
-        "campos": ["usuario", "motivo", "evidencia"],
-        "key_aprobador": "DIRECTOR_RRHH",
-    },
-    "suspension": {
-        "titulo": "⛔ Solicitud de suspensión",
-        "campos": ["usuario", "duracion", "motivo"],
-        "key_aprobador": "DIRECTOR_RRHH",
-    },
+    "despido": {"titulo": "🚫 Solicitud de despido", "campos": ["usuario", "motivo", "evidencia"], "key_aprobador": "DIRECTOR_RRHH"},
+    "sancion_interna": {"titulo": "⚠️ Solicitud de sanción interna", "campos": ["usuario", "tipo_sancion", "motivo", "evidencia"], "key_aprobador": "DIRECTOR_RRHH"},
+    "degrado": {"titulo": "⬇️ Solicitud de degradado", "campos": ["usuario", "cargo_actual", "cargo_propuesto", "motivo"], "key_aprobador": "DIRECTOR_RRHH"},
+    "investigacion": {"titulo": "🔎 Solicitud de investigación interna", "campos": ["usuario", "motivo", "evidencia"], "key_aprobador": "DIRECTOR_RRHH"},
+    "suspension": {"titulo": "⛔ Solicitud de suspensión", "campos": ["usuario", "duracion", "motivo"], "key_aprobador": "DIRECTOR_RRHH"},
 }
 
 
