@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*
 """
 hospital_core.py — Carga el núcleo del bot y registra módulos nuevos
-(comandos_nuevos, centro_solicitudes_ui, verificacion, rp_medico, paneles_miembros, tienda, comunidad).
+(comandos_nuevos, centro_solicitudes_ui, verificacion, rp_medico, paneles_miembros, tienda, comunidad, limpiar_canal).
 """
 from __future__ import annotations
 
@@ -64,6 +64,7 @@ def _cargar(module_globals: dict):
         "paneles_miembros",
         "tienda",
         "comunidad",
+        "limpiar_canal",
     ):
         try:
             mod = __import__(mod_name)
@@ -80,7 +81,7 @@ def _cargar(module_globals: dict):
         print(f"[hospital_core] Total comandos en árbol: {len(nombres)}")
         for n in (
             "panel_miembros", "panel_tienda", "tienda", "bienvenida", "reglas",
-            "panel_reglas", "mi_inventario", "panel_staff_disciplina",
+            "panel_reglas", "mi_inventario", "limpiar", "limpiar_todo",
         ):
             marca = "✓" if n in nombres else "✗ FALTA"
             print(f"  {marca} /{n}")
