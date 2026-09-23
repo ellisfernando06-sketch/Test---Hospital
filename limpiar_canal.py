@@ -107,10 +107,7 @@ def registrar(bot: commands.Bot) -> None:
             await inter.response.send_message("Solo en el servidor.", ephemeral=True)
             return
         if not _puede_limpiar(inter.user):
-            await inter.response.send_message(
-                "Necesitas Gestionar mensajes o rol de staff/direccion.",
-                ephemeral=True,
-            )
+            await inter.response.send_message("Necesitas Gestionar mensajes o staff.", ephemeral=True)
             return
         dest = canal or inter.channel
         if not isinstance(dest, discord.TextChannel):
@@ -118,41 +115,26 @@ def registrar(bot: commands.Bot) -> None:
             return
         me = dest.guild.me if dest.guild else None
         if me and not dest.permissions_for(me).manage_messages:
-            await inter.response.send_message(
-                "No tengo Gestionar mensajes en ese canal.", ephemeral=True
-            )
+            await inter.response.send_message("No tengo Gestionar mensajes.", ephemeral=True)
             return
-
         if cantidad is None:
-            aviso = f"Vaciando {dest.mention} (max. 5000, incluye antiguos)..."
+            aviso = f"Vaciando {dest.mention} (max. 5000)..."
         else:
             aviso = f"Borrando hasta {cantidad} mensajes en {dest.mention}..."
         await inter.response.send_message(aviso, ephemeral=True)
-
         try:
             stats = await _borrar_mensajes(dest, cantidad=cantidad)
         except Exception as e:
             await inter.followup.send(f"Error: {e}", ephemeral=True)
             return
-
-        emb = discord.Embed(
-            title="Limpieza completada",
-            description=(
-                f"{dest.mention}\n"
-                f"Borrados: {stats['borrados']} | Fallidos: {stats['fallidos']}\n"
-                f"Bulk: {stats['bulk']} | Individual: {stats['individual']}"
+        await inter.followup.send(
+            embed=discord.Embed(
+                title="Limpieza completada",
+                description=f"{dest.mention}\nBorrados: {stats['borrados']} | Fallidos: {stats['fallidos']}",
+                color=0xE67E22,
             ),
-            color=0xE67E22,
+            ephemeral=True,
         )
-        await inter.followup.send(embed=emb, ephemeral=True)
-        try:
-            msg = await dest.send(
-                f"{stats['borrados']} mensajes eliminados por {inter.user.mention}."
-            )
-            await asyncio.sleep(5)
-            await msg.delete()
-        except Exception:
-            pass
 
     @bot.tree.command(name="limpiar_todo", description="Vacia el canal por completo (hasta 5000 msgs).")
     @app_commands.describe(canal="Canal a vaciar (por defecto: este).")
@@ -164,10 +146,7 @@ def registrar(bot: commands.Bot) -> None:
             await inter.response.send_message("Solo en el servidor.", ephemeral=True)
             return
         if not _puede_limpiar(inter.user):
-            await inter.response.send_message(
-                "Necesitas Gestionar mensajes o rol de staff/direccion.",
-                ephemeral=True,
-            )
+            await inter.response.send_message("Necesitas Gestionar mensajes o staff.", ephemeral=True)
             return
         dest = canal or inter.channel
         if not isinstance(dest, discord.TextChannel):
@@ -175,14 +154,9 @@ def registrar(bot: commands.Bot) -> None:
             return
         me = dest.guild.me if dest.guild else None
         if me and not dest.permissions_for(me).manage_messages:
-            await inter.response.send_message(
-                "No tengo Gestionar mensajes en ese canal.", ephemeral=True
-            )
+            await inter.response.send_message("No tengo Gestionar mensajes.", ephemeral=True)
             return
-
-        await inter.response.send_message(
-            f"Vaciando {dest.mention} (max. 5000)...", ephemeral=True
-        )
+        await inter.response.send_message(f"Vaciando {dest.mention}...", ephemeral=True)
         try:
             stats = await _borrar_mensajes(dest, cantidad=None)
         except Exception as e:
@@ -191,11 +165,7 @@ def registrar(bot: commands.Bot) -> None:
         await inter.followup.send(
             embed=discord.Embed(
                 title="Canal vaciado",
-                description=(
-                    f"{dest.mention}\n"
-                    f"Borrados: {stats['borrados']} | Fallidos: {stats['fallidos']}\n"
-                    f"Bulk: {stats['bulk']} | Individual: {stats['individual']}"
-                ),
+                description=f"{dest.mention}\nBorrados: {stats['borrados']}",
                 color=0xE74C3C,
             ),
             ephemeral=True,
@@ -203,7 +173,7 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="sincronizar_comandos",
-        description="Resincroniza TODOS los slash commands del servidor (admin).",
+        description="Restaura TODOS los slash commands del servidor (admin).",
     )
     async def sincronizar_comandos(inter: discord.Interaction):
         if not isinstance(inter.user, discord.Member):
@@ -222,17 +192,25 @@ def registrar(bot: commands.Bot) -> None:
             return
         await inter.response.defer(ephemeral=True)
         try:
-            g = discord.Object(id=GUILD_ID)
-            bot.tree.copy_global_to(guild=g)
-            synced = await bot.tree.sync(guild=g)
-            nombres = sorted(c.name for c in synced)
+            fn = getattr(bot, "_hospital_sync_todo", None)
+            if callable(fn):
+                names = await fn("manual")
+            else:
+                g = discord.Object(id=GUILD_ID)
+                try:
+                    bot.tree.clear_commands(guild=g)
+                except Exception:
+                    pass
+                bot.tree.copy_global_to(guild=g)
+                synced = await bot.tree.sync(guild=g)
+                names = sorted(c.name for c in synced)
             await inter.followup.send(
-                f"{len(synced)} comandos restaurados en el servidor.\n"
-                f"`{'`, `'.join(nombres[:60])}`"
-                + ("..." if len(nombres) > 60 else ""),
+                f"**{len(names)}** comandos restaurados:\n"
+                f"`{'`, `'.join(names[:80])}`"
+                + ("..." if len(names) > 80 else ""),
                 ephemeral=True,
             )
         except Exception as e:
             await inter.followup.send(f"Error: {e}", ephemeral=True)
 
-    print("[limpiar_canal] OK — limpia + sincronizar (global)")
+    print("[limpiar_canal] OK")
