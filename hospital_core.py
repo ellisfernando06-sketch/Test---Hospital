@@ -81,6 +81,7 @@ def _cargar(module_globals: dict):
         "comunidad",
         "limpiar_canal",
         "entrevista_ui",
+        "tickets_cierre",
     ):
         try:
             mod = __import__(mod_name)
