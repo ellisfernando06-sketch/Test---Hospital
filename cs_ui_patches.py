@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""cs_ui_patches — aprobación, involucrados, panel en logs."""
+"""cs_ui_patches — aprobación, involucrados, logs a RRHH por nombre."""
 from __future__ import annotations
 import re
 from typing import List
@@ -217,23 +217,62 @@ def apply(mod):
             log_ch = None
             try:
                 import logs_store
-                cid = logs_store.get_canal_id("log_solicitudes")
-                if cid: log_ch = bot.get_channel(int(cid))
-            except Exception: pass
-            if not log_ch:
-                canales = getattr(config, "CANALES", {}) or {}
-                cid = canales.get("log_solicitudes")
-                if cid: log_ch = bot.get_channel(int(cid))
+                log_ch = logs_store.resolver_canal_log(bot, guild, "log_solicitudes")
+                if not log_ch:
+                    log_ch = logs_store.resolver_canal_log(bot, guild, "aprobaciones_rrhh")
+            except Exception as e:
+                print("[cs_ui] resolver log:", e)
+            rrhh_ping = ""
+            try:
+                import roles_store
+                rid = roles_store.obtener_id_key("DIRECTOR_RRHH") or roles_store.obtener_id_key("RRHH")
+                if rid and guild:
+                    rol = guild.get_role(int(rid))
+                    if rol:
+                        rrhh_ping = rol.mention + " "
+                if not rrhh_ping and guild:
+                    for r in guild.roles:
+                        rn = (r.name or "").lower()
+                        if "rrhh" in rn or "recursos humanos" in rn:
+                            rrhh_ping = r.mention + " "
+                            break
+            except Exception:
+                pass
             if log_ch:
                 emb = embed_ticket(reg, guild)
-                emb.title = f"Nueva solicitud #{int(reg['id']):04d}"
+                emb.title = f"Nueva solicitud #{int(reg['id']):04d} · RRHH"
                 chm = canal.mention if canal else "—"
-                await log_ch.send(content=f"Nueva solicitud · {chm}", embed=emb, view=PanelDecision(bot, int(reg["id"])))
+                await log_ch.send(
+                    content=f"{rrhh_ping}Nueva solicitud para **RRHH** · ticket {chm}",
+                    embed=emb,
+                    view=PanelDecision(bot, int(reg["id"])),
+                )
+            else:
+                print("[cs_ui] No hay canal RRHH. Crea: rrhh / solicitudes / recursos-humanos")
         except Exception as e:
             print("[cs_ui] post-crear:", e)
 
     mod.crear_ticket_solicitud = crear
-    print("[cs_ui] crear + panel logs OK")
+    print("[cs_ui] crear + panel RRHH OK")
+
+    try:
+        import logs_store as _ls
+        async def enviar_log_solicitud(bot, embed):
+            guild = next(iter(bot.guilds), None)
+            ch = _ls.resolver_canal_log(bot, guild, "log_solicitudes") if guild else None
+            if not ch and guild:
+                ch = _ls.resolver_canal_log(bot, guild, "aprobaciones_rrhh")
+            if ch:
+                try:
+                    await ch.send(embed=embed)
+                except Exception as e:
+                    print("[cs_ui] enviar_log:", e)
+            else:
+                print("[cs_ui] Sin canal RRHH para log")
+        mod.enviar_log_solicitud = enviar_log_solicitud
+        print("[cs_ui] enviar_log → RRHH OK")
+    except Exception as e:
+        print("[cs_ui] parche enviar_log:", e)
 
     if hasattr(mod, "registrar"):
         _or = mod.registrar
