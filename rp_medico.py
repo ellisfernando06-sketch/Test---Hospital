@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*
-from pathlib import Path
-_p = Path(__file__).parent
-_src = (_p / "rpm1.py").read_text(encoding="utf-8") + (_p / "rpm2.py").read_text(encoding="utf-8")
-exec(compile(_src, "rp_medico_full.py", "exec"), globals())
+"""rp_medico.py — stub (no rompe el arranque)."""
+from __future__ import annotations
+from discord.ext import commands
+
+def registrar(bot: commands.Bot) -> None:
+    print("[rp_medico] stub OK")
