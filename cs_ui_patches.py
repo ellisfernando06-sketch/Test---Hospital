@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*
-"""cs_ui_patches — aprobación, involucrados, logs a RRHH por nombre."""
+"""cs_ui_patches — solicitudes: Aprobar, Rechazar, Añadir, Transcribir y cerrar (sin réplicas)."""
 from __future__ import annotations
 import re
-from typing import List
 
 _CAT_MAP = {
     "sancion": ["staff", "disciplina", "sanciones", "rrhh"],
@@ -13,11 +12,12 @@ _CAT_MAP = {
     "consulta": ["información general", "informacion general", "información", "consultas", "info"],
 }
 
+
 def _resolver_cat(guild, key):
     import discord, config
     nombres = _CAT_MAP.get(key) or _CAT_MAP["general"]
     mapa = getattr(config, "TICKET_CATEGORIAS", None) or {}
-    for k in (key, "staff" if key in ("sancion","apelacion","investigacion","reporte") else "general"):
+    for k in (key, "staff" if key in ("sancion", "apelacion", "investigacion", "reporte") else "general"):
         cid = mapa.get(k) if isinstance(mapa, dict) else None
         if cid:
             ch = guild.get_channel(int(cid))
@@ -35,6 +35,7 @@ def _resolver_cat(guild, key):
             return ch
     return None
 
+
 def _ids_campos(campos):
     ids = []
     for v in (campos or {}).values():
@@ -44,7 +45,9 @@ def _ids_campos(campos):
             ids.append(int(m.group(1)))
     return list(dict.fromkeys(ids))
 
+
 def apply(mod):
+    import asyncio
     import discord
     from discord import ui
     import config
@@ -56,137 +59,235 @@ def apply(mod):
     embed_log = mod.embed_log_accion
     enviar_log = mod.enviar_log_solicitud
     _now = mod._now
-    TSV = mod.TicketSolicitudView
 
     class MotivoRechazo(ui.Modal, title="Rechazar solicitud"):
         motivo = ui.TextInput(label="Motivo", style=discord.TextStyle.paragraph, max_length=800)
+
         def __init__(self, bot, sid):
             super().__init__()
             self.bot, self.sid = bot, sid
+
         async def on_submit(self, inter):
             if not _puede(inter.user):
                 return await inter.response.send_message("Sin permiso.", ephemeral=True)
-            reg = actualizar(self.sid, estado="rechazada", resolucion=str(self.motivo),
-                             responsable_id=inter.user.id, fecha_actualizacion=_now()) or obtener(self.sid)
+            reg = actualizar(
+                self.sid, estado="rechazada", resolucion=str(self.motivo),
+                responsable_id=inter.user.id, fecha_actualizacion=_now(),
+            ) or obtener(self.sid)
             await inter.response.send_message(
                 f"Solicitud #{self.sid:04d} rechazada por {inter.user.mention}\nMotivo: {self.motivo}",
-                embed=embed_ticket(reg or {}, inter.guild))
+                embed=embed_ticket(reg or {}, inter.guild),
+            )
             if reg:
-                try: await enviar_log(self.bot, embed_log(reg, "Rechazo", inter.user, str(self.motivo)))
-                except Exception: pass
+                try:
+                    await enviar_log(self.bot, embed_log(reg, "Rechazo", inter.user, str(self.motivo)))
+                except Exception:
+                    pass
             if reg and reg.get("usuario_id"):
                 try:
                     u = inter.client.get_user(int(reg["usuario_id"]))
-                    if u: await u.send(f"Tu solicitud #{self.sid:04d} fue rechazada.\nMotivo: {self.motivo}")
-                except Exception: pass
+                    if u:
+                        await u.send(f"Tu solicitud #{self.sid:04d} fue rechazada.\nMotivo: {self.motivo}")
+                except Exception:
+                    pass
 
-    class PanelDecision(ui.View):
+    class ConfirmarCierre(ui.View):
+        def __init__(self, bot, sid):
+            super().__init__(timeout=90)
+            self.bot, self.sid = bot, sid
+
+        @ui.button(label="Transcribir y cerrar", style=discord.ButtonStyle.danger, emoji="📜")
+        async def confirmar(self, inter, btn):
+            if not _puede(inter.user):
+                return await inter.response.send_message("Sin permiso.", ephemeral=True)
+            reg = actualizar(
+                self.sid, estado="cerrada",
+                motivo_cierre="Cerrada con transcripcion", fecha_cierre=_now(),
+            ) or obtener(self.sid)
+            await inter.response.edit_message(
+                content=f"Cerrada por {inter.user.mention}",
+                embed=embed_ticket(reg or {}, inter.guild),
+                view=None,
+            )
+            if reg:
+                try:
+                    await enviar_log(self.bot, embed_log(reg, "Cierre", inter.user, "Transcripcion"))
+                except Exception:
+                    pass
+            ch = inter.channel
+            if ch:
+                try:
+                    from ticket_transcript import collect_messages, render_html, html_to_file, embed_resumen
+                    from datetime import datetime, timezone
+                    msgs = await collect_messages(ch, limit=500)
+                    titulo = f"Solicitud #{int(self.sid):04d}"
+                    html_str = render_html(
+                        titulo=titulo, canal_nombre=ch.name,
+                        abierto_por=str(reg.get("usuario_id") if reg else "—"),
+                        cerrado_por=inter.user.mention,
+                        categoria=ch.category.name if ch.category else "—",
+                        creado=msgs[0].created_at if msgs else ch.created_at,
+                        cerrado=datetime.now(timezone.utc),
+                        messages=msgs, guild=ch.guild,
+                    )
+                    archivo = html_to_file(html_str, filename=f"solicitud-{int(self.sid):04d}.html")
+                    emb = embed_resumen(
+                        titulo=titulo, canal_nombre=ch.name,
+                        abierto_por="—", cerrado_por=inter.user.mention,
+                        categoria=ch.category.name if ch.category else "—",
+                        n_msgs=len(msgs), color=0x8E44AD,
+                    )
+                    dest = None
+                    try:
+                        import logs_store
+                        cid = logs_store.get_canal_id("log_tickets") or logs_store.get_canal_id("log_solicitudes")
+                        if cid:
+                            dest = inter.client.get_channel(int(cid))
+                    except Exception:
+                        pass
+                    if dest:
+                        await dest.send(embed=emb, file=archivo)
+                    else:
+                        await ch.send(embed=emb, file=archivo)
+                except Exception as e:
+                    print("[cs_ui] transcript:", e)
+                try:
+                    await asyncio.sleep(5)
+                    await ch.delete(reason=f"Solicitud #{self.sid}")
+                except Exception:
+                    pass
+
+        @ui.button(label="Cancelar", style=discord.ButtonStyle.secondary, emoji="❌")
+        async def cancelar(self, inter, btn):
+            await inter.response.edit_message(content="Cierre cancelado.", view=None)
+
+    class TicketSolicitudView(ui.View):
+        """Solo 4 botones — reemplaza la clase remota para no heredar réplicas."""
+
+        def __init__(self, bot, solicitud_id: int):
+            super().__init__(timeout=None)
+            self.bot = bot
+            self.solicitud_id = solicitud_id
+
+        @ui.button(label="Aprobar", style=discord.ButtonStyle.success, emoji="✅", custom_id="sol_ok_v4")
+        async def aprobar(self, inter, btn):
+            if not _puede(inter.user):
+                return await inter.response.send_message("Solo staff.", ephemeral=True)
+            reg = actualizar(
+                self.solicitud_id, estado="resuelta", resolucion="Aprobada",
+                responsable_id=inter.user.id, fecha_actualizacion=_now(),
+            ) or obtener(self.solicitud_id)
+            await inter.response.send_message(
+                f"Aprobada por {inter.user.mention}",
+                embed=embed_ticket(reg or {}, inter.guild),
+            )
+            if reg:
+                try:
+                    await enviar_log(self.bot, embed_log(reg, "Aprobacion", inter.user, "Aprobada"))
+                except Exception:
+                    pass
+            if reg and reg.get("usuario_id"):
+                try:
+                    u = inter.client.get_user(int(reg["usuario_id"]))
+                    if u:
+                        await u.send(f"Tu solicitud #{self.solicitud_id:04d} fue aprobada.")
+                except Exception:
+                    pass
+
+        @ui.button(label="Rechazar", style=discord.ButtonStyle.danger, emoji="❌", custom_id="sol_no_v4")
+        async def rechazar(self, inter, btn):
+            if not _puede(inter.user):
+                return await inter.response.send_message("Solo staff.", ephemeral=True)
+            await inter.response.send_modal(MotivoRechazo(self.bot, self.solicitud_id))
+
+        @ui.button(label="Añadir personas", style=discord.ButtonStyle.secondary, emoji="👥", custom_id="sol_add_v4")
+        async def adduser(self, inter, btn):
+            if not _puede(inter.user):
+                return await inter.response.send_message("Solo staff.", ephemeral=True)
+            if not inter.guild:
+                return
+            try:
+                from ticket_adduser import AnadirUsuarioView
+                await inter.response.send_message(
+                    "Añadir persona al ticket:",
+                    view=AnadirUsuarioView(self.bot, self.solicitud_id, inter.guild),
+                    ephemeral=True,
+                )
+            except Exception as e:
+                await inter.response.send_message(f"Error: {e}", ephemeral=True)
+
+        @ui.button(label="Transcribir y cerrar", style=discord.ButtonStyle.secondary, emoji="📜", custom_id="sol_cls_v4")
+        async def cerrar(self, inter, btn):
+            if not _puede(inter.user):
+                return await inter.response.send_message("Solo staff.", ephemeral=True)
+            await inter.response.send_message(
+                "¿Cerrar con transcripción?",
+                view=ConfirmarCierre(self.bot, self.solicitud_id),
+                ephemeral=True,
+            )
+
+    mod.TicketSolicitudView = TicketSolicitudView
+    print("[cs_ui] TicketSolicitudView limpia: Aprobar | Rechazar | Añadir | Transcribir y cerrar")
+
+    class PanelDecisionLog(ui.View):
         def __init__(self, bot, sid):
             super().__init__(timeout=None)
             self.bot, self.sid = bot, sid
-        @ui.button(label="Aprobar", style=discord.ButtonStyle.success, emoji="✅", custom_id="sol_ap_v3")
+
+        @ui.button(label="Aprobar", style=discord.ButtonStyle.success, emoji="✅", custom_id="sol_log_ok_v4")
         async def ap(self, inter, btn):
             if not _puede(inter.user):
                 return await inter.response.send_message("Solo staff.", ephemeral=True)
-            reg = actualizar(self.sid, estado="resuelta", resolucion="Aprobada",
-                             responsable_id=inter.user.id, fecha_actualizacion=_now()) or obtener(self.sid)
+            reg = actualizar(
+                self.sid, estado="resuelta", resolucion="Aprobada",
+                responsable_id=inter.user.id, fecha_actualizacion=_now(),
+            ) or obtener(self.sid)
             await inter.response.send_message(
-                f"Solicitud #{self.sid:04d} aprobada por {inter.user.mention}",
-                embed=embed_ticket(reg or {}, inter.guild))
-            if reg:
-                try: await enviar_log(self.bot, embed_log(reg, "Aprobacion", inter.user, "Aprobada"))
-                except Exception: pass
+                f"#{self.sid:04d} aprobada por {inter.user.mention}",
+                embed=embed_ticket(reg or {}, inter.guild),
+            )
             if reg and reg.get("usuario_id"):
                 try:
                     u = inter.client.get_user(int(reg["usuario_id"]))
-                    if u: await u.send(f"Tu solicitud #{self.sid:04d} fue aprobada.")
-                except Exception: pass
-        @ui.button(label="Rechazar", style=discord.ButtonStyle.danger, emoji="❌", custom_id="sol_re_v3")
+                    if u:
+                        await u.send(f"Tu solicitud #{self.sid:04d} fue aprobada.")
+                except Exception:
+                    pass
+
+        @ui.button(label="Rechazar", style=discord.ButtonStyle.danger, emoji="❌", custom_id="sol_log_no_v4")
         async def re(self, inter, btn):
             if not _puede(inter.user):
                 return await inter.response.send_message("Solo staff.", ephemeral=True)
             await inter.response.send_modal(MotivoRechazo(self.bot, self.sid))
-        @ui.button(label="Ir al ticket", style=discord.ButtonStyle.secondary, emoji="🎫", custom_id="sol_go_v3")
+
+        @ui.button(label="Ir al ticket", style=discord.ButtonStyle.secondary, emoji="🎫", custom_id="sol_log_go_v4")
         async def go(self, inter, btn):
             reg = obtener(self.sid)
             if not reg or not reg.get("canal_id"):
                 return await inter.response.send_message("Ticket no encontrado.", ephemeral=True)
             ch = inter.client.get_channel(int(reg["canal_id"]))
-            await inter.response.send_message(f"Ticket: {ch.mention}" if ch else "Canal eliminado.", ephemeral=True)
-
-    mod.PanelDecisionView = PanelDecision
-
-    try:
-        from ticket_adduser import AnadirUsuarioView
-        async def adduser(self, inter, btn):
-            if not _puede(inter.user):
-                return await inter.response.send_message("Solo staff.", ephemeral=True)
-            if not inter.guild: return
             await inter.response.send_message(
-                "Añadir persona al ticket:",
-                view=AnadirUsuarioView(self.bot, self.solicitud_id, inter.guild), ephemeral=True)
-        TSV.adduser = adduser
-    except Exception as e:
-        print("adduser patch:", e)
+                f"Ticket: {ch.mention}" if ch else "Canal eliminado.", ephemeral=True
+            )
 
-    async def _aprobar(self, inter, btn=None):
-        if not _puede(inter.user):
-            return await inter.response.send_message("Solo staff.", ephemeral=True)
-        reg = actualizar(self.solicitud_id, estado="resuelta", resolucion="Aprobada",
-                         responsable_id=inter.user.id, fecha_actualizacion=_now()) or obtener(self.solicitud_id)
-        await inter.response.send_message(f"Aprobada por {inter.user.mention}", embed=embed_ticket(reg or {}, inter.guild))
-        if reg and reg.get("usuario_id"):
-            try:
-                u = inter.client.get_user(int(reg["usuario_id"]))
-                if u: await u.send(f"Tu solicitud #{self.solicitud_id:04d} fue aprobada.")
-            except Exception: pass
-
-    async def _rechazar(self, inter, btn=None):
-        if not _puede(inter.user):
-            return await inter.response.send_message("Solo staff.", ephemeral=True)
-        await inter.response.send_modal(MotivoRechazo(self.bot, self.solicitud_id))
-
-    def _new_init(self, bot, solicitud_id):
-        ui.View.__init__(self, timeout=None)
-        self.bot = bot
-        self.solicitud_id = solicitud_id
-        for label, style, emoji, cb in (
-            ("Aprobar", discord.ButtonStyle.success, "✅", _aprobar),
-            ("Rechazar", discord.ButtonStyle.danger, "❌", _rechazar),
-        ):
-            b = ui.Button(label=label, style=style, emoji=emoji)
-            async def make_cb(inter, _cb=cb, _self=self):
-                await _cb(_self, inter)
-            b.callback = make_cb
-            self.add_item(b)
-        for name, label, style, emoji in (
-            ("reclamar", "Reclamar", discord.ButtonStyle.primary, "👋"),
-            ("adduser", "Añadir personas", discord.ButtonStyle.secondary, "👥"),
-            ("cerrar", "Cerrar", discord.ButtonStyle.secondary, "🔒"),
-        ):
-            meth = getattr(TSV, name, None)
-            if not callable(meth):
-                continue
-            b = ui.Button(label=label, style=style, emoji=emoji)
-            async def make_cb2(inter, _m=meth, _self=self, _b=b):
-                await _m(_self, inter, _b)
-            b.callback = make_cb2
-            self.add_item(b)
-
-    TSV.__init__ = _new_init
-    print("[cs_ui] Ticket Aprobar/Rechazar OK")
+    mod.PanelDecisionView = PanelDecisionLog
 
     orig = mod.crear_ticket_solicitud
+
     async def crear(bot, inter, categoria, campos):
         import centro_solicitudes as cs
         old = getattr(cs, "_categoria_canal", None)
+
         def catg(g):
             return _resolver_cat(g, categoria) or (old(g) if old else None)
+
         cs._categoria_canal = catg
         try:
             await orig(bot, inter, categoria, campos)
         finally:
-            if old: cs._categoria_canal = old
+            if old:
+                cs._categoria_canal = old
+
         try:
             uid = inter.user.id
             reg = None
@@ -208,12 +309,15 @@ def apply(mod):
                     m = guild.get_member(iid)
                     if m:
                         try:
-                            await canal.set_permissions(m, view_channel=True, send_messages=True, attach_files=True)
+                            await canal.set_permissions(
+                                m, view_channel=True, send_messages=True, attach_files=True
+                            )
                             menc.append(m.mention)
-                        except Exception: pass
+                        except Exception:
+                            pass
                 if menc:
                     await canal.send("Involucrados en el ticket: " + " ".join(menc))
-                await canal.send("**Decisión del staff:**", view=PanelDecision(bot, int(reg["id"])))
+
             log_ch = None
             try:
                 import logs_store
@@ -245,18 +349,19 @@ def apply(mod):
                 await log_ch.send(
                     content=f"{rrhh_ping}Nueva solicitud para **RRHH** · ticket {chm}",
                     embed=emb,
-                    view=PanelDecision(bot, int(reg["id"])),
+                    view=PanelDecisionLog(bot, int(reg["id"])),
                 )
             else:
-                print("[cs_ui] No hay canal RRHH. Crea: rrhh / solicitudes / recursos-humanos")
+                print("[cs_ui] No hay canal RRHH. Crea: rrhh / solicitudes")
         except Exception as e:
             print("[cs_ui] post-crear:", e)
 
     mod.crear_ticket_solicitud = crear
-    print("[cs_ui] crear + panel RRHH OK")
+    print("[cs_ui] crear + log RRHH OK")
 
     try:
         import logs_store as _ls
+
         async def enviar_log_solicitud(bot, embed):
             guild = next(iter(bot.guilds), None)
             ch = _ls.resolver_canal_log(bot, guild, "log_solicitudes") if guild else None
@@ -267,18 +372,22 @@ def apply(mod):
                     await ch.send(embed=embed)
                 except Exception as e:
                     print("[cs_ui] enviar_log:", e)
-            else:
-                print("[cs_ui] Sin canal RRHH para log")
+
         mod.enviar_log_solicitud = enviar_log_solicitud
-        print("[cs_ui] enviar_log → RRHH OK")
     except Exception as e:
         print("[cs_ui] parche enviar_log:", e)
 
     if hasattr(mod, "registrar"):
         _or = mod.registrar
+
         def registrar(bot):
             _or(bot)
-            try: bot.add_view(PanelDecision(bot, 0))
-            except Exception: pass
+            try:
+                bot.add_view(TicketSolicitudView(bot, 0))
+                bot.add_view(PanelDecisionLog(bot, 0))
+            except Exception:
+                pass
+
         mod.registrar = registrar
-    print("[cs_ui] patches applied")
+
+    print("[cs_ui] patches applied (sin botones duplicados)")
