@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*
-"""cs_ui_patches — apply mínimo; entrevista en entrevista_ui.py"""
-from __future__ import annotations
-
-def apply(mod):
-    print("[cs_ui_patches] OK (mínimo)")
+from pathlib import Path
+_p = Path(__file__).parent
+exec(compile((_p/"cs_ui_a.py").read_text()+(_p/"cs_ui_b.py").read_text(), "cs_ui.py", "exec"), globals())
