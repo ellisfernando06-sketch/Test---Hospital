@@ -70,41 +70,28 @@ async def hacer_transcripcion_y_enviar(
     except Exception as e:
         print("[tickets_cierre] transcript import:", e)
         return False
-
     try:
         msgs = await collect_messages(channel, limit=800)
     except Exception as e:
         print("[tickets_cierre] collect:", e)
         msgs = []
-
     titulo = f"Ticket · {channel.name}"
     cat = channel.category.name if channel.category else "—"
     try:
         html_str = render_html(
-            titulo=titulo,
-            canal_nombre=channel.name,
-            abierto_por=abierto_por,
-            cerrado_por=cerrado_por,
-            categoria=cat,
+            titulo=titulo, canal_nombre=channel.name, abierto_por=abierto_por,
+            cerrado_por=cerrado_por, categoria=cat,
             creado=msgs[0].created_at if msgs else channel.created_at,
-            cerrado=datetime.now(timezone.utc),
-            messages=msgs,
-            guild=channel.guild,
+            cerrado=datetime.now(timezone.utc), messages=msgs, guild=channel.guild,
         )
         archivo = html_to_file(html_str, filename=f"{channel.name}.html")
         emb = embed_resumen(
-            titulo=titulo,
-            canal_nombre=channel.name,
-            abierto_por=abierto_por,
-            cerrado_por=cerrado_por,
-            categoria=cat,
-            n_msgs=len(msgs),
-            color=0x5B8DEF,
+            titulo=titulo, canal_nombre=channel.name, abierto_por=abierto_por,
+            cerrado_por=cerrado_por, categoria=cat, n_msgs=len(msgs), color=0x5B8DEF,
         )
     except Exception as e:
         print("[tickets_cierre] render:", e)
         return False
-
     dest = _canal_logs_tickets(bot, channel.guild)
     try:
         if dest:
@@ -130,11 +117,8 @@ class ConfirmarCierreTicket(ui.View):
         ch = inter.channel
         if not isinstance(ch, discord.TextChannel):
             return await inter.response.send_message("Solo canales de texto.", ephemeral=True)
-
         await inter.response.edit_message(
-            content=f"📜 Generando transcripción… (cerrado por {inter.user.mention})",
-            view=None,
-        )
+            content=f"📜 Generando transcripción… (cerrado por {inter.user.mention})", view=None)
         ok = await hacer_transcripcion_y_enviar(ch, self.bot, inter.user.mention)
         dest = _canal_logs_tickets(self.bot, inter.guild)
         if ok and dest:
@@ -165,8 +149,7 @@ def registrar(bot: commands.Bot) -> None:
                 name = getattr(interaction.channel, "name", "") or ""
                 if not name.startswith(("ticket-", "apelacion-", "solicitud-", "sancion-", "reporte-", "consulta-")):
                     await interaction.response.send_message(
-                        "❌ Solo staff puede cerrar tickets.", ephemeral=True
-                    )
+                        "❌ Solo staff puede cerrar tickets.", ephemeral=True)
                     return
             await interaction.response.send_message(
                 "🔒 ¿Cerrar este ticket?\nSe generará una **transcripción** y se enviará al canal de logs configurado.",
@@ -184,10 +167,7 @@ def registrar(bot: commands.Bot) -> None:
         description="Elige el canal donde se guardan transcripciones y logs de tickets",
     )
     @app_commands.describe(canal="Canal de texto para guardar transcripciones / logs de tickets")
-    async def configurar_logs_tickets(
-        inter: discord.Interaction,
-        canal: discord.TextChannel,
-    ):
+    async def configurar_logs_tickets(inter: discord.Interaction, canal: discord.TextChannel):
         if not isinstance(inter.user, discord.Member):
             await inter.response.send_message("Solo en el servidor.", ephemeral=True)
             return
@@ -195,20 +175,16 @@ def registrar(bot: commands.Bot) -> None:
         if not ok and permisos is not None:
             try:
                 ok = permisos.member_tiene_alguna_key(
-                    inter.user, "OWNER", "CO_OWNER", "DIRECTOR_GENERAL", "DIRECTOR_ADMINISTRATIVO"
-                )
+                    inter.user, "OWNER", "CO_OWNER", "DIRECTOR_GENERAL", "DIRECTOR_ADMINISTRATIVO")
             except Exception:
                 ok = False
         if not ok:
             await inter.response.send_message("Solo administración / owner.", ephemeral=True)
             return
-
         if logs_store is None:
             await inter.response.send_message("logs_store no disponible.", ephemeral=True)
             return
-
         logs_store.set_canal("log_tickets", canal.id)
-
         await inter.response.send_message(
             embed=discord.Embed(
                 title="Canal de logs de tickets guardado",
@@ -229,14 +205,24 @@ def registrar(bot: commands.Bot) -> None:
         ch = _canal_logs_tickets(bot, inter.guild)
         if ch:
             await inter.response.send_message(
-                f"Canal de transcripciones / logs de tickets: {ch.mention}",
-                ephemeral=True,
-            )
+                f"Canal de transcripciones / logs de tickets: {ch.mention}", ephemeral=True)
         else:
             await inter.response.send_message(
-                "No hay canal configurado. Usa `/configurar_logs_tickets` y elige un canal.\n"
-                "También se busca por nombre: `log-tickets`, `transcripciones`, `logs-tickets`.",
+                "No hay canal configurado. Usa `/configurar_logs_tickets`.\n"
+                "También se busca: `log-tickets`, `transcripciones`, `logs-tickets`.",
                 ephemeral=True,
             )
+
+    @bot.listen("on_ready")
+    async def _tickets_cierre_ready():
+        if getattr(bot, "_tickets_cierre_view", False):
+            return
+        bot._tickets_cierre_view = True
+        try:
+            import paneles
+            bot.add_view(paneles.CerrarTicketView())
+            print("[tickets_cierre] Vista CerrarTicketView re-registrada")
+        except Exception as e:
+            print("[tickets_cierre] re-register view:", e)
 
     print("[tickets_cierre] OK — /configurar_logs_tickets + cierre con transcripción")
