@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""limpiar_canal.py — /limpiar y /limpiar_todo (guild-scoped, sin sync destructivo)."""
+"""limpiar_canal.py — /limpiar y /limpiar_todo (guild-scoped)."""
 from __future__ import annotations
 
 import asyncio
