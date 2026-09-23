@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*
 """
-hospital_core.py — Carga el núcleo del bot y registra los módulos nuevos
-UNA sola vez (comandos_nuevos, centro_solicitudes_ui, verificacion, rp_medico, paneles_miembros).
+hospital_core.py — Carga el núcleo del bot y registra módulos nuevos
+(comandos_nuevos, centro_solicitudes_ui, verificacion, rp_medico, paneles_miembros, tienda, comunidad).
 """
 from __future__ import annotations
 
@@ -56,62 +56,31 @@ def _cargar(module_globals: dict):
 
     print("[hospital_core] Registrando módulos nuevos…")
 
-    try:
-        import comandos_nuevos
-        comandos_nuevos.registrar(bot)
-        print("[hospital_core] ✓ comandos_nuevos.registrar OK")
-    except Exception:
+    for mod_name in (
+        "comandos_nuevos",
+        "centro_solicitudes_ui",
+        "verificacion",
+        "rp_medico",
+        "paneles_miembros",
+        "tienda",
+        "comunidad",
+    ):
         try:
-            import comandos_nuevos_fixed as comandos_nuevos
-            comandos_nuevos.registrar(bot)
-            print("[hospital_core] ✓ comandos_nuevos_fixed.registrar OK")
+            mod = __import__(mod_name)
+            if hasattr(mod, "registrar"):
+                mod.registrar(bot)
+            print(f"[hospital_core] ✓ {mod_name} OK")
         except Exception:
-            print("[hospital_core] ✗ comandos_nuevos FALLÓ:")
+            print(f"[hospital_core] ✗ {mod_name} FALLÓ:")
             traceback.print_exc()
-
-    try:
-        import centro_solicitudes_ui
-        centro_solicitudes_ui.registrar(bot)
-        print("[hospital_core] ✓ centro_solicitudes_ui.registrar OK")
-    except Exception:
-        print("[hospital_core] ✗ centro_solicitudes_ui.registrar FALLÓ:")
-        traceback.print_exc()
-
-    try:
-        import verificacion  # noqa: F401
-        print("[hospital_core] ✓ verificacion importado")
-    except Exception:
-        print("[hospital_core] ✗ verificacion FALLÓ:")
-        traceback.print_exc()
-
-    try:
-        import rp_medico
-        rp_medico.registrar(bot)
-        print("[hospital_core] ✓ rp_medico.registrar OK")
-    except Exception:
-        print("[hospital_core] ✗ rp_medico.registrar FALLÓ:")
-        traceback.print_exc()
-
-    try:
-        import paneles_miembros
-        paneles_miembros.registrar(bot)
-        print("[hospital_core] ✓ paneles_miembros.registrar OK")
-    except Exception:
-        print("[hospital_core] ✗ paneles_miembros.registrar FALLÓ:")
-        traceback.print_exc()
 
     try:
         cmds = list(bot.tree.get_commands())
         nombres = sorted(c.name for c in cmds)
         print(f"[hospital_core] Total comandos en árbol: {len(nombres)}")
         for n in (
-            "sancionar", "quitar_sancion", "apelar_sancion", "historial_sanciones",
-            "banear", "expulsar", "silenciar", "verificar_roblox",
-            "panel_solicitudes", "registrar_gasto", "libro_contable", "mi_sanciones",
-            "admitir", "evolucion", "alta", "hc", "entrar_servicio", "salir_servicio",
-            "panel_guardia", "codigo_activar", "usar_insumo", "qx_solicitar",
-            "panel_staff_disciplina", "panel_postulaciones", "panel_quejas",
-            "panel_miembros", "panel_solicitudes_logs", "configurar_canal_logs",
+            "panel_miembros", "panel_tienda", "tienda", "bienvenida", "reglas",
+            "panel_reglas", "mi_inventario", "panel_staff_disciplina",
         ):
             marca = "✓" if n in nombres else "✗ FALTA"
             print(f"  {marca} /{n}")
