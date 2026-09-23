@@ -80,6 +80,7 @@ def _cargar(module_globals: dict):
         "tienda",
         "comunidad",
         "limpiar_canal",
+        "entrevista_ui",
     ):
         try:
             mod = __import__(mod_name)
