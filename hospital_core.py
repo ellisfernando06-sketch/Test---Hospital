@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""hospital_core.py — núcleo + módulos + sync completo sin vaciar el árbol."""
+"""hospital_core.py — núcleo + módulos + sync de TODOS los comandos."""
 from __future__ import annotations
 
 import asyncio
@@ -25,19 +25,17 @@ def _cargar(module_globals: dict):
     if "bot.tree.clear_commands(guild=None)" in source:
         source = source.replace(
             "bot.tree.clear_commands(guild=None)  # limpia registro global en memoria",
-            "pass  # [hospital_core] clear_commands DESACTIVADO",
+            "pass  # [hospital_core] NO vaciar global",
         )
         source = source.replace(
             "await bot.tree.sync()  # publica árbol vacío a nivel global (quita duplicados viejos)",
-            "pass  # [hospital_core] sync global vacío DESACTIVADO",
+            "pass  # [hospital_core] NO sync global vacío",
         )
         source = source.replace(
             "bot.tree.clear_commands(guild=None)",
-            "pass  # [hospital_core] clear_commands DESACTIVADO",
+            "pass  # [hospital_core] NO vaciar global",
         )
-        print("[hospital_core] clear_commands desactivado")
-    else:
-        print("[hospital_core] AVISO: clear_commands no encontrado en núcleo")
+        print("[hospital_core] clear_commands global DESACTIVADO")
 
     old_view = (
         'bot.add_view(AprobacionView(key_aprobador="DIRECTOR_RRHH", '
@@ -73,7 +71,6 @@ def _cargar(module_globals: dict):
         raise RuntimeError("hospital_core: el núcleo no definió 'bot'")
 
     print("[hospital_core] Registrando módulos nuevos…")
-
     for mod_name in (
         "comandos_nuevos",
         "centro_solicitudes_ui",
@@ -95,33 +92,42 @@ def _cargar(module_globals: dict):
 
     try:
         glob_names = sorted(c.name for c in bot.tree.get_commands())
-        print(f"[hospital_core] Comandos en árbol global: {len(glob_names)}")
-        for n in ("limpiar", "limpiar_todo", "bootstrap_owner", "configurar_roles", "panel_miembros"):
-            print(f"  {'✓' if n in glob_names else '✗'} /{n}")
+        print(f"[hospital_core] TOTAL en memoria (global): {len(glob_names)}")
+        print("[hospital_core] Lista:", ", ".join(glob_names))
     except Exception as e:
         print("[hospital_core] listar:", e)
+
+    async def _sync_todo(reason: str = ""):
+        g = discord.Object(id=_GUILD_ID)
+        try:
+            bot.tree.clear_commands(guild=g)
+        except Exception:
+            pass
+        bot.tree.copy_global_to(guild=g)
+        synced = await bot.tree.sync(guild=g)
+        names = sorted(c.name for c in synced)
+        print(f"[hospital_core] Sync {reason}: {len(synced)} comandos → servidor")
+        print("[hospital_core] Comandos publicados:", ", ".join(names))
+        return names
 
     @bot.listen("on_ready")
     async def _hospital_core_full_sync():
         if getattr(bot, "_hc_full_sync_done", False):
             return
         bot._hc_full_sync_done = True
-        await asyncio.sleep(3)
+        await asyncio.sleep(4)
         try:
-            g = discord.Object(id=_GUILD_ID)
-            bot.tree.copy_global_to(guild=g)
-            synced = await bot.tree.sync(guild=g)
-            names = sorted(c.name for c in synced)
-            print(f"[hospital_core] Sync COMPLETO guild: {len(synced)} comandos")
-            for n in (
-                "limpiar", "limpiar_todo", "sincronizar_comandos",
-                "bootstrap_owner", "configurar_roles", "panel_miembros",
-                "otorgar_key", "dar_rol",
-            ):
-                print(f"  {'✓' if n in names else '✗'} /{n}")
+            await _sync_todo("COMPLETO")
         except Exception as e:
-            print("[hospital_core] Sync completo falló:", e)
+            print("[hospital_core] Sync COMPLETO falló:", e)
+            traceback.print_exc()
+        await asyncio.sleep(8)
+        try:
+            await _sync_todo("REINTENTO")
+        except Exception as e:
+            print("[hospital_core] Sync REINTENTO falló:", e)
 
+    bot._hospital_sync_todo = _sync_todo
     return bot
 
 
