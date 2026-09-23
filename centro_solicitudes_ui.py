@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""centro_solicitudes_ui.py — Carga módulo + parches: adduser, categorías, transcripción."""
+"""centro_solicitudes_ui.py — Carga módulo + parches: personas, categorías, transcribir y cerrar."""
 from __future__ import annotations
 import urllib.request
 import sys
@@ -54,10 +54,64 @@ def _resolver_cat(guild, categoria_key: str):
     return None
 
 
+async def _hacer_transcripcion(channel, bot, solicitud_id, reg, cerrado_por):
+    from ticket_transcript import collect_messages, render_html, html_to_file, embed_resumen
+    msgs = await collect_messages(channel, limit=500)
+    cat_name = channel.category.name if channel.category else "—"
+    opener = "—"
+    if reg and reg.get("usuario_id") and channel.guild:
+        m = channel.guild.get_member(int(reg["usuario_id"]))
+        opener = m.mention if m else str(reg["usuario_id"])
+    titulo = f"Solicitud #{int(solicitud_id):04d}"
+    if reg and reg.get("categoria"):
+        titulo += f" · {reg['categoria']}"
+    html_str = render_html(
+        titulo=titulo,
+        canal_nombre=channel.name,
+        abierto_por=opener,
+        cerrado_por=cerrado_por,
+        categoria=cat_name,
+        creado=msgs[0].created_at if msgs else channel.created_at,
+        cerrado=datetime.now(timezone.utc),
+        messages=msgs,
+        guild=channel.guild,
+    )
+    archivo = html_to_file(html_str, filename=f"solicitud-{int(solicitud_id):04d}.html")
+    emb = embed_resumen(
+        titulo=titulo,
+        canal_nombre=channel.name,
+        abierto_por=opener,
+        cerrado_por=cerrado_por,
+        categoria=cat_name,
+        n_msgs=len(msgs),
+        color=0x8E44AD,
+    )
+    dest = None
+    try:
+        import logs_store
+        cid = logs_store.get_canal_id("log_tickets") or logs_store.get_canal_id("log_solicitudes")
+        if cid:
+            dest = bot.get_channel(int(cid))
+    except Exception:
+        pass
+    if not dest:
+        import config
+        canales = getattr(config, "CANALES", {}) or {}
+        cid = canales.get("log_tickets") or canales.get("log_solicitudes")
+        if cid:
+            dest = bot.get_channel(int(cid))
+    if dest:
+        await dest.send(embed=emb, file=archivo)
+    else:
+        await channel.send(embed=emb, file=archivo)
+    return len(msgs)
+
+
 def _patch_all(mod):
     import discord
     from discord import ui
 
+    # 1) Añadir personas
     try:
         from ticket_adduser import AnadirUsuarioView
         TicketSolicitudView = mod.TicketSolicitudView
@@ -71,16 +125,25 @@ def _patch_all(mod):
                 await interaction.response.send_message("❌ Solo en el servidor.", ephemeral=True)
                 return
             await interaction.response.send_message(
-                "👥 **Añadir persona al ticket**\n• Menú superior: personal autorizado\n• Menú inferior: buscar usuario",
+                "👥 **Añadir persona a la solicitud**\n"
+                "• Menú superior: personal autorizado (roles staff / hospital)\n"
+                "• Menú inferior: buscar cualquier usuario del servidor",
                 view=AnadirUsuarioView(self.bot, self.solicitud_id, interaction.guild),
                 ephemeral=True,
             )
 
         TicketSolicitudView.adduser = adduser
-        print("[centro_solicitudes_ui] Parche adduser OK")
+        try:
+            fn = TicketSolicitudView.adduser
+            if hasattr(fn, "__discord_ui_model_kwargs__"):
+                fn.__discord_ui_model_kwargs__["label"] = "Añadir personas"
+        except Exception:
+            pass
+        print("[centro_solicitudes_ui] Parche Añadir personas OK")
     except Exception as e:
         print("[centro_solicitudes_ui] Parche adduser falló:", e)
 
+    # 2) Categoría por tipo
     try:
         orig_crear = mod.crear_ticket_solicitud
 
@@ -105,8 +168,8 @@ def _patch_all(mod):
     except Exception as e:
         print("[centro_solicitudes_ui] Parche categorías falló:", e)
 
+    # 3) Transcribir y cerrar
     try:
-        ConfirmarCierreView = mod.ConfirmarCierreView
         _puede_gestionar = mod._puede_gestionar
         actualizar_solicitud = mod.actualizar_solicitud
         obtener_solicitud = mod.obtener_solicitud
@@ -114,81 +177,95 @@ def _patch_all(mod):
         embed_log_accion = mod.embed_log_accion
         enviar_log_solicitud = mod.enviar_log_solicitud
         _now = mod._now
+        TicketSolicitudView = mod.TicketSolicitudView
 
-        async def confirmar(self, interaction: discord.Interaction, button: ui.Button):
-            if not _puede_gestionar(interaction.user):
-                await interaction.response.send_message("❌ No tienes permiso.", ephemeral=True)
-                return
-            motivo = "Cerrada por el staff"
-            reg = actualizar_solicitud(
-                self.solicitud_id, estado="cerrada", motivo_cierre=motivo, fecha_cierre=_now(),
-            )
-            if not reg:
-                reg = obtener_solicitud(self.solicitud_id)
-            embed = embed_ticket(reg or {}, interaction.guild)
-            await interaction.response.edit_message(
-                content=f"🔒 Cerrada por {interaction.user.mention} · generando transcripción…",
-                embed=embed, view=None,
-            )
-            if reg:
-                log = embed_log_accion(reg, "Cierre", interaction.user, motivo)
-                await enviar_log_solicitud(self.bot, log)
+        class ConfirmarCierreViewNueva(ui.View):
+            def __init__(self, bot, solicitud_id: int):
+                super().__init__(timeout=90)
+                self.bot = bot
+                self.solicitud_id = solicitud_id
 
-            if interaction.channel:
-                try:
-                    from ticket_transcript import collect_messages, render_html, html_to_file, embed_resumen
-                    msgs = await collect_messages(interaction.channel, limit=500)
-                    cat_name = interaction.channel.category.name if interaction.channel.category else "—"
-                    opener = "—"
-                    if reg and reg.get("usuario_id") and interaction.guild:
-                        m = interaction.guild.get_member(int(reg["usuario_id"]))
-                        opener = m.mention if m else str(reg["usuario_id"])
-                    titulo = f"Solicitud #{self.solicitud_id:04d}"
-                    if reg and reg.get("categoria"):
-                        titulo += f" · {reg['categoria']}"
-                    html_str = render_html(
-                        titulo=titulo, canal_nombre=interaction.channel.name,
-                        abierto_por=opener, cerrado_por=interaction.user.mention,
-                        categoria=cat_name,
-                        creado=msgs[0].created_at if msgs else interaction.channel.created_at,
-                        cerrado=datetime.now(timezone.utc), messages=msgs, guild=interaction.guild,
-                    )
-                    archivo = html_to_file(html_str, filename=f"solicitud-{self.solicitud_id:04d}.html")
-                    emb = embed_resumen(
-                        titulo=titulo, canal_nombre=interaction.channel.name,
-                        abierto_por=opener, cerrado_por=interaction.user.mention,
-                        categoria=cat_name, n_msgs=len(msgs), color=0x8E44AD,
-                    )
-                    dest = None
+            @ui.button(label="Transcribir y cerrar", style=discord.ButtonStyle.danger, emoji="📜")
+            async def confirmar(self, interaction: discord.Interaction, button: ui.Button):
+                if not _puede_gestionar(interaction.user):
+                    await interaction.response.send_message("❌ No tienes permiso.", ephemeral=True)
+                    return
+                motivo = "Cerrada por el staff (con transcripción)"
+                reg = actualizar_solicitud(
+                    self.solicitud_id, estado="cerrada", motivo_cierre=motivo, fecha_cierre=_now(),
+                )
+                if not reg:
+                    reg = obtener_solicitud(self.solicitud_id)
+                embed = embed_ticket(reg or {}, interaction.guild)
+                await interaction.response.edit_message(
+                    content=f"🔒 Cerrada por {interaction.user.mention} · generando **transcripción**…",
+                    embed=embed,
+                    view=None,
+                )
+                if reg:
                     try:
-                        import logs_store
-                        cid = logs_store.get_canal_id("log_tickets") or logs_store.get_canal_id("log_solicitudes")
-                        if cid:
-                            dest = interaction.client.get_channel(int(cid))
+                        log = embed_log_accion(reg, "Cierre", interaction.user, motivo)
+                        await enviar_log_solicitud(self.bot, log)
                     except Exception:
                         pass
-                    if not dest:
-                        import config
-                        canales = getattr(config, "CANALES", {}) or {}
-                        cid = canales.get("log_tickets") or canales.get("log_solicitudes")
-                        if cid:
-                            dest = interaction.client.get_channel(int(cid))
-                    if dest:
-                        await dest.send(embed=emb, file=archivo)
-                    else:
-                        await interaction.channel.send(embed=emb, file=archivo)
-                except Exception as e:
-                    print("[centro_solicitudes_ui] Transcripción error:", e)
 
-                try:
-                    await interaction.channel.send("🔒 Canal se eliminará en 5 segundos…")
-                    await asyncio.sleep(5)
-                    await interaction.channel.delete(reason=f"Solicitud #{self.solicitud_id} cerrada")
-                except Exception:
-                    pass
+                if interaction.channel:
+                    try:
+                        n = await _hacer_transcripcion(
+                            interaction.channel,
+                            self.bot,
+                            self.solicitud_id,
+                            reg,
+                            interaction.user.mention,
+                        )
+                        await interaction.channel.send(
+                            f"📜 Transcripción generada (**{n}** mensajes). Canal se eliminará en 5 s…"
+                        )
+                    except Exception as e:
+                        print("[centro_solicitudes_ui] Transcripción error:", e)
+                        try:
+                            await interaction.channel.send(
+                                f"⚠️ No se pudo generar transcripción: {e}\nCanal se eliminará en 5 s…"
+                            )
+                        except Exception:
+                            pass
+                    try:
+                        await asyncio.sleep(5)
+                        await interaction.channel.delete(
+                            reason=f"Solicitud #{self.solicitud_id} cerrada"
+                        )
+                    except Exception:
+                        pass
 
-        ConfirmarCierreView.confirmar = confirmar
-        print("[centro_solicitudes_ui] Parche transcripción cierre OK")
+            @ui.button(label="Cancelar", style=discord.ButtonStyle.secondary, emoji="❌")
+            async def cancelar(self, interaction: discord.Interaction, button: ui.Button):
+                await interaction.response.edit_message(
+                    content="Cierre cancelado.", embed=None, view=None
+                )
+
+        mod.ConfirmarCierreView = ConfirmarCierreViewNueva
+
+        async def cerrar(self, interaction: discord.Interaction, button: ui.Button):
+            if not _puede_gestionar(interaction.user):
+                await interaction.response.send_message("❌ Solo staff autorizado.", ephemeral=True)
+                return
+            await interaction.response.send_message(
+                "⚠️ ¿Cerrar esta solicitud?\n"
+                "Se generará una **transcripción HTML** (mensajes ordenados) y se enviará al canal de logs.",
+                view=ConfirmarCierreViewNueva(self.bot, self.solicitud_id),
+                ephemeral=True,
+            )
+
+        TicketSolicitudView.cerrar = cerrar
+        try:
+            fn = TicketSolicitudView.cerrar
+            if hasattr(fn, "__discord_ui_model_kwargs__"):
+                fn.__discord_ui_model_kwargs__["label"] = "Transcribir y cerrar"
+                fn.__discord_ui_model_kwargs__["emoji"] = "📜"
+        except Exception:
+            pass
+
+        print("[centro_solicitudes_ui] Parche Transcribir y cerrar OK")
     except Exception as e:
         print("[centro_solicitudes_ui] Parche cierre falló:", e)
 
