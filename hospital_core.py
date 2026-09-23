@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*
 """
 hospital_core.py — Carga el núcleo del bot y registra los módulos nuevos
-UNA sola vez (comandos_nuevos, centro_solicitudes_ui, verificacion, rp_medico).
+UNA sola vez (comandos_nuevos, centro_solicitudes_ui, verificacion, rp_medico, paneles_miembros).
 """
 from __future__ import annotations
 
@@ -93,6 +93,14 @@ def _cargar(module_globals: dict):
         traceback.print_exc()
 
     try:
+        import paneles_miembros
+        paneles_miembros.registrar(bot)
+        print("[hospital_core] ✓ paneles_miembros.registrar OK")
+    except Exception:
+        print("[hospital_core] ✗ paneles_miembros.registrar FALLÓ:")
+        traceback.print_exc()
+
+    try:
         cmds = list(bot.tree.get_commands())
         nombres = sorted(c.name for c in cmds)
         print(f"[hospital_core] Total comandos en árbol: {len(nombres)}")
@@ -102,6 +110,8 @@ def _cargar(module_globals: dict):
             "panel_solicitudes", "registrar_gasto", "libro_contable", "mi_sanciones",
             "admitir", "evolucion", "alta", "hc", "entrar_servicio", "salir_servicio",
             "panel_guardia", "codigo_activar", "usar_insumo", "qx_solicitar",
+            "panel_staff_disciplina", "panel_postulaciones", "panel_quejas",
+            "panel_miembros", "panel_solicitudes_logs", "configurar_canal_logs",
         ):
             marca = "✓" if n in nombres else "✗ FALTA"
             print(f"  {marca} /{n}")
