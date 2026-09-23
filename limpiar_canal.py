@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""limpiar_canal.py — /limpiar, /limpiar_todo + auto-sync de slash."""
+"""limpiar_canal.py — /limpiar y /limpiar_todo (guild-scoped, sin sync destructivo)."""
 from __future__ import annotations
 
 import asyncio
@@ -14,6 +14,8 @@ try:
     import permisos
 except Exception:
     permisos = None
+
+GUILD_ID = 1381360019467014184
 
 
 def _puede_limpiar(member: discord.Member) -> bool:
@@ -85,13 +87,23 @@ async def _borrar_mensajes(channel: discord.TextChannel, *, cantidad: Optional[i
 
 
 def registrar(bot: commands.Bot) -> None:
+    guild_obj = discord.Object(id=GUILD_ID)
+
     for nombre in ("limpiar", "limpiar_todo", "sincronizar_comandos"):
         try:
             bot.tree.remove_command(nombre)
         except Exception:
             pass
+        try:
+            bot.tree.remove_command(nombre, guild=guild_obj)
+        except Exception:
+            pass
 
-    @bot.tree.command(name="limpiar", description="Borra N mensajes o vacía el canal (incluye antiguos).")
+    @bot.tree.command(
+        name="limpiar",
+        description="Borra N mensajes o vacía el canal (incluye antiguos).",
+        guild=guild_obj,
+    )
     @app_commands.describe(
         cantidad="Cuántos borrar (1-5000). Vacío = hasta 5000.",
         canal="Canal (por defecto: este).",
@@ -154,7 +166,8 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="limpiar_todo",
-        description="Vacía el canal por completo (hasta 5000 msgs, sin límite de antigüedad).",
+        description="Vacía el canal por completo (hasta 5000 msgs).",
+        guild=guild_obj,
     )
     @app_commands.describe(canal="Canal a vaciar (por defecto: este).")
     async def limpiar_todo(
@@ -204,7 +217,8 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="sincronizar_comandos",
-        description="Fuerza la sincronización de slash commands (staff).",
+        description="Resincroniza slash commands de este servidor (admin).",
+        guild=guild_obj,
     )
     async def sincronizar_comandos(inter: discord.Interaction):
         if not isinstance(inter.user, discord.Member):
@@ -223,41 +237,15 @@ def registrar(bot: commands.Bot) -> None:
             return
         await inter.response.defer(ephemeral=True)
         try:
-            if inter.guild:
-                bot.tree.copy_global_to(guild=inter.guild)
-                synced = await bot.tree.sync(guild=inter.guild)
-            else:
-                synced = await bot.tree.sync()
+            synced = await bot.tree.sync(guild=guild_obj)
             nombres = sorted(c.name for c in synced)
             await inter.followup.send(
-                f"✅ **{len(synced)}** comandos sincronizados.\n"
-                f"`{'`, `'.join(nombres[:40])}`"
-                + ("…" if len(nombres) > 40 else ""),
+                f"✅ **{len(synced)}** comandos en el servidor.\n"
+                f"`{'`, `'.join(nombres[:50])}`"
+                + ("…" if len(nombres) > 50 else ""),
                 ephemeral=True,
             )
         except Exception as e:
             await inter.followup.send(f"❌ Error: {e}", ephemeral=True)
 
-    @bot.listen("on_ready")
-    async def _auto_sync_limpiar():
-        if getattr(bot, "_limpiar_synced", False):
-            return
-        bot._limpiar_synced = True
-        await asyncio.sleep(3)
-        try:
-            for g in list(bot.guilds):
-                try:
-                    bot.tree.copy_global_to(guild=g)
-                    synced = await bot.tree.sync(guild=g)
-                    print(f"[limpiar_canal] Sync guild {g.name}: {len(synced)} cmds")
-                except Exception as e:
-                    print(f"[limpiar_canal] Sync falló en {g}: {e}")
-            try:
-                n = await bot.tree.sync()
-                print(f"[limpiar_canal] Sync global: {len(n)} cmds")
-            except Exception as e:
-                print(f"[limpiar_canal] Sync global:", e)
-        except Exception as e:
-            print("[limpiar_canal] auto-sync:", e)
-
-    print("[limpiar_canal] OK — /limpiar /limpiar_todo /sincronizar_comandos")
+    print("[limpiar_canal] OK — /limpiar /limpiar_todo guild-scoped")

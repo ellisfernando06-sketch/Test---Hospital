@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*
-"""
-hospital_core.py — Carga el núcleo del bot y registra módulos nuevos
-(comandos_nuevos, centro_solicitudes_ui, verificacion, rp_medico, paneles_miembros, tienda, comunidad, limpiar_canal).
-"""
+"""hospital_core.py — Carga núcleo + módulos nuevos + re-sync guild."""
 from __future__ import annotations
 
 import traceback
@@ -78,15 +75,31 @@ def _cargar(module_globals: dict):
     try:
         cmds = list(bot.tree.get_commands())
         nombres = sorted(c.name for c in cmds)
-        print(f"[hospital_core] Total comandos en árbol: {len(nombres)}")
-        for n in (
-            "panel_miembros", "panel_tienda", "tienda", "bienvenida", "reglas",
-            "panel_reglas", "mi_inventario", "limpiar", "limpiar_todo",
-        ):
-            marca = "✓" if n in nombres else "✗ FALTA"
-            print(f"  {marca} /{n}")
+        print(f"[hospital_core] Comandos globales en árbol: {len(nombres)}")
+        gcmds = list(bot.tree.get_commands(guild=discord.Object(id=1381360019467014184))) if False else []
     except Exception as e:
         print("[hospital_core] No se pudo listar comandos:", e)
+
+    import asyncio
+    import discord as _discord
+
+    _GUILD_ID = 1381360019467014184
+
+    @bot.listen("on_ready")
+    async def _hospital_core_resync():
+        if getattr(bot, "_hc_resync_done", False):
+            return
+        bot._hc_resync_done = True
+        await asyncio.sleep(5)
+        try:
+            g = _discord.Object(id=_GUILD_ID)
+            synced = await bot.tree.sync(guild=g)
+            names = sorted(c.name for c in synced)
+            print(f"[hospital_core] Re-sync guild: {len(synced)} comandos")
+            for n in ("limpiar", "limpiar_todo", "sincronizar_comandos", "panel_miembros"):
+                print(f"  {'✓' if n in names else '✗'} /{n}")
+        except Exception as e:
+            print("[hospital_core] Re-sync falló:", e)
 
     return bot
 
