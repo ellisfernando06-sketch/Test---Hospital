@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""hospital_core.py — núcleo + módulos + sync. Sin ordenar_roles; con registrar_firma."""
+"""hospital_core.py — núcleo + módulos + sync. Fuerza ONLINE al arrancar."""
 from __future__ import annotations
 
 import asyncio
@@ -90,9 +90,9 @@ def _cargar(module_globals: dict):
         "        print(\"[on_ready] VerificarView:\", _e)\n"
         "    print(f\"Conectado como {bot.user} (ID: {bot.user.id})\")\n"
         "    try:\n"
-        "        if bot_control.get_mode() == \"offline\":\n"
-        "            bot_control.set_mode(\"online\", \"Bot reiniciado y operativo.\", None)\n"
+        "        bot_control.set_mode(\"online\", \"Bot reiniciado y operativo.\", None)\n"
         "        await bot_control.publicar_estado(bot)\n"
+        "        print(\"[on_ready] Estado forzado: ONLINE\")\n"
         "    except Exception as _e:\n"
         "        print(\"[on_ready] bot_control:\", _e)\n"
         "    fn = getattr(bot, \"_hospital_sync_todo\", None)\n"
@@ -125,7 +125,6 @@ def _cargar(module_globals: dict):
         count=1,
     )
 
-    # Textos Owner → Gerente Developer
     source = source.replace(
         'description="[Solo primer uso] Te asigna la key OWNER para poder configurar el bot"',
         'description="[Solo primer uso] Te asigna Gerente Developer (máxima autoridad)"',
@@ -153,7 +152,6 @@ def _cargar(module_globals: dict):
     for n in _QUITAR_SIEMPRE:
         try:
             bot.tree.remove_command(n)
-            print(f"[hospital_core] − quitado /{n}")
         except Exception:
             pass
 
@@ -198,7 +196,7 @@ def _cargar(module_globals: dict):
                     await inter.followup.send(f"❌ `{e}`", ephemeral=True)
                 else:
                     await inter.response.send_message(f"❌ `{e}`", ephemeral=True)
-        print("[hospital_core] + /registrar_firma (forzado)")
+        print("[hospital_core] + /registrar_firma")
 
     if "certificar" not in {c.name for c in bot.tree.get_commands()}:
         @bot.tree.command(name="certificar", description="Certificado RP → autorización Director Investigación y Docencia")
@@ -211,7 +209,7 @@ def _cargar(module_globals: dict):
                 await inter.response.send_modal(ccu.ModalCertificar(bot, usuario))
             except Exception as e:
                 await inter.response.send_message(f"❌ `{e}`", ephemeral=True)
-        print("[hospital_core] + /certificar (forzado)")
+        print("[hospital_core] + /certificar")
 
     def _nombres():
         return sorted({c.name for c in bot.tree.get_commands()})
@@ -222,9 +220,8 @@ def _cargar(module_globals: dict):
                 bot.tree.remove_command(n)
             except Exception:
                 pass
-        names = _nombres()
-        if len(names) <= _MAX_SLASH:
-            return names
+        if len(_nombres()) <= _MAX_SLASH:
+            return _nombres()
         for n in _BAJA_PRIORIDAD:
             if len(_nombres()) <= _MAX_SLASH:
                 break
