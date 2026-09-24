@@ -22,7 +22,7 @@ KEYS_NOMBRES = {
     "DIRECTOR_FINANCIERO":  ("💰 Director Financiero", "#F1C40F"),
     "DIRECTOR_LOGISTICA":   ("📦 Director de Logística", "#E67E22"),
     "DIRECTOR_SEGURIDAD":   ("🛡️ Director de Seguridad", "#34495E"),
-    "DIRECTOR_DOCENCIA":    ("📚 Director de Docencia", "#8E44AD"),
+    "DIRECTOR_DOCENCIA":    ("📚 Director de Investigación y Docencia", "#8E44AD"),
     "ENCARGADO_AREA":       ("🎖️ Encargado de Área", "#2980B9"),
     "JEFE_DEPARTAMENTO":    ("⭐ Jefe de Departamento", "#2ECC71"),
     "SUPERVISOR":           ("📌 Supervisor", "#27AE60"),
@@ -119,7 +119,7 @@ DEPARTAMENTOS = {
         "escalafon_nombres": ["📋 Recepcionista", "📋 Asistente Administrativo", "📋 Jefe Administrativo"],
     },
     "docencia": {
-        "nombre": "Docencia y Capacitación",
+        "nombre": "Investigación y Docencia",
         "emoji": "📚",
         "director_key": "DIRECTOR_DOCENCIA",
         "escalafon_nombres": [
@@ -134,36 +134,31 @@ DEPARTAMENTOS = {
 }
 
 CANALES = {
-    # ── Logs generales ──
     "log_general":         None,
     "log_roles":           None,
     "log_ascensos":        None,
     "log_personal":        None,
     "log_documentos":      None,
-    # ── RP médico ──
-    "log_pacientes":       None,   # Admisiones, evoluciones, altas, HC
-    "log_turnos":          None,   # Entrada/salida de guardia
-    "log_inventario":      None,   # Consumo y stock
-    "log_procedimientos":  None,   # Quirófano
-    "alerta_codigos":      None,   # Códigos de emergencia (ALERTA)
-    # ── Admin / staff ──
+    "log_pacientes":       None,
+    "log_turnos":          None,
+    "log_inventario":      None,
+    "log_procedimientos":  None,
+    "alerta_codigos":      None,
     "log_finanzas":        None,
-    "log_solicitudes":     None,   # Solicitudes generales
+    "log_solicitudes":     None,
     "log_capacitaciones":  None,
-    "log_certificados":    None,   # Emisión de certificados RP (Docencia)
+    "log_certificados":    None,
     "log_quejas":          None,
-    "log_postulaciones":   None,   # Postulaciones a departamentos
+    "log_postulaciones":   None,
     "log_sanciones":       None,
     "log_investigaciones": None,
     "log_sanciones_ooc":   None,
-    # ── Aprobaciones / citatorios ──
     "bot_status":          1481762625279758449,
-    "aprobaciones":        None,   # Aprobaciones generales / OWNER
-    "aprobaciones_rrhh":   None,   # RRHH
+    "aprobaciones":        None,
+    "aprobaciones_rrhh":   None,
     "citatorio_general":   None,
     "citatorio_disciplina": None,
     "citatorio_admin":     None,
-    # ── Opcionales RP ──
     "panel_guardia":       None,
     "log_quirofano":       None,
 }
@@ -179,7 +174,7 @@ SEPARADORES_ROLES = [
     ("sep_logistica", "『 📦 LOGÍSTICA 』", "#E67E22"),
     ("sep_seguridad", "『 🛡️ SEGURIDAD 』", "#34495E"),
     ("sep_admin", "『 📋 ADMINISTRACIÓN HOSPITAL 』", "#16A085"),
-    ("sep_docencia", "『 📚 DOCENCIA Y CAPACITACIÓN 』", "#8E44AD"),
+    ("sep_docencia", "『 📚 INVESTIGACIÓN Y DOCENCIA 』", "#8E44AD"),
     ("sep_staff", "『 🏥 PERSONAL / STAFF 』", "#95A5A6"),
 ]
 
@@ -191,54 +186,14 @@ CATEGORIAS_INVENTARIO = [
 ]
 
 CODIGOS_EMERGENCIA = {
-    "azul": {
-        "nombre": "Código Azul",
-        "descripcion": "Paro cardiorrespiratorio — reanimación inmediata.",
-        "color": "#2980B9",
-        "mencion_keys": ["DIRECTOR_MEDICO", "DIRECTOR_ENFERMERIA", "STAFF"],
-    },
-    "rojo": {
-        "nombre": "Código Rojo",
-        "descripcion": "Incendio dentro de las instalaciones.",
-        "color": "#C0392B",
-        "mencion_keys": ["DIRECTOR_SEGURIDAD", "SUPERVISOR", "STAFF"],
-    },
-    "plata": {
-        "nombre": "Código Plata",
-        "descripcion": "Persona armada o situación con rehenes.",
-        "color": "#95A5A6",
-        "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH"],
-    },
-    "negro": {
-        "nombre": "Código Negro",
-        "descripcion": "Amenaza de bomba.",
-        "color": "#2C3E50",
-        "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH"],
-    },
-    "naranja": {
-        "nombre": "Código Naranja",
-        "descripcion": "Derrame de material peligroso o contaminación.",
-        "color": "#E67E22",
-        "mencion_keys": ["DIRECTOR_LOGISTICA", "DIRECTOR_MEDICO"],
-    },
-    "amarillo": {
-        "nombre": "Código Amarillo",
-        "descripcion": "Desastre externo / llegada masiva de heridos.",
-        "color": "#F1C40F",
-        "mencion_keys": ["DIRECTOR_MEDICO", "DIRECTOR_ENFERMERIA", "STAFF"],
-    },
-    "ambar": {
-        "nombre": "Código Ámbar",
-        "descripcion": "Desaparición o secuestro de un menor.",
-        "color": "#D35400",
-        "mencion_keys": ["DIRECTOR_SEGURIDAD", "SUPERVISOR"],
-    },
-    "verde": {
-        "nombre": "Código Verde",
-        "descripcion": "Evacuación general del edificio.",
-        "color": "#27AE60",
-        "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH", "STAFF"],
-    },
+    "azul": {"nombre": "Código Azul", "descripcion": "Paro cardiorrespiratorio — reanimación inmediata.", "color": "#2980B9", "mencion_keys": ["DIRECTOR_MEDICO", "DIRECTOR_ENFERMERIA", "STAFF"]},
+    "rojo": {"nombre": "Código Rojo", "descripcion": "Incendio dentro de las instalaciones.", "color": "#C0392B", "mencion_keys": ["DIRECTOR_SEGURIDAD", "SUPERVISOR", "STAFF"]},
+    "plata": {"nombre": "Código Plata", "descripcion": "Persona armada o situación con rehenes.", "color": "#95A5A6", "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH"]},
+    "negro": {"nombre": "Código Negro", "descripcion": "Amenaza de bomba.", "color": "#2C3E50", "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH"]},
+    "naranja": {"nombre": "Código Naranja", "descripcion": "Derrame de material peligroso o contaminación.", "color": "#E67E22", "mencion_keys": ["DIRECTOR_LOGISTICA", "DIRECTOR_MEDICO"]},
+    "amarillo": {"nombre": "Código Amarillo", "descripcion": "Desastre externo / llegada masiva de heridos.", "color": "#F1C40F", "mencion_keys": ["DIRECTOR_MEDICO", "DIRECTOR_ENFERMERIA", "STAFF"]},
+    "ambar": {"nombre": "Código Ámbar", "descripcion": "Desaparición o secuestro de un menor.", "color": "#D35400", "mencion_keys": ["DIRECTOR_SEGURIDAD", "SUPERVISOR"]},
+    "verde": {"nombre": "Código Verde", "descripcion": "Evacuación general del edificio.", "color": "#27AE60", "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH", "STAFF"]},
 }
 
 FICHA_CAMPOS = {
