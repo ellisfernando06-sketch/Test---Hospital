@@ -136,6 +136,79 @@ async def on_ready():
     if idx > 0:
         source = source[:idx]
 
+    # ── Patch: /capacitacion certificar genera imagen del diploma ──
+    old_cert = (
+        '@grupo_capacitacion.command(name="certificar", description="Certifica a un usuario como que completó una capacitación")\n'
+        '@app_commands.describe(usuario="Usuario", titulo="Título de la capacitación completada")\n'
+        '@require_key("SUPERVISOR", "JEFE_DEPARTAMENTO", "DIRECTOR", "OWNER")\n'
+        'async def capacitacion_certificar(interaction: discord.Interaction, usuario: discord.Member, titulo: str):\n'
+        '    capacitaciones.certificar(usuario.id, titulo, interaction.user.id)\n'
+        '    await interaction.response.send_message(f"🎓 {usuario.mention} fue certificado en **{titulo}**.")\n'
+        '    await enviar_log("log_capacitaciones", crear_embed(\n'
+        '        "exito", "🎓 Capacitación certificada", f"**{interaction.user}** certificó a **{usuario}** en **{titulo}**"))\n'
+    )
+    new_cert = (
+        '@grupo_capacitacion.command(name="certificar", description="Certifica a un usuario y genera diploma en imagen")\n'
+        '@app_commands.describe(usuario="Usuario certificado", titulo="Título de la capacitación completada")\n'
+        '@require_key("SUPERVISOR", "JEFE_DEPARTAMENTO", "DIRECTOR", "DIRECTOR_DOCENCIA", "OWNER")\n'
+        'async def capacitacion_certificar(interaction: discord.Interaction, usuario: discord.Member, titulo: str):\n'
+        '    await interaction.response.defer()\n'
+        '    capacitaciones.certificar(usuario.id, titulo, interaction.user.id)\n'
+        '    num = ""\n'
+        '    try:\n'
+        '        import docencia as _doc\n'
+        '        reg = _doc.emitir(usuario.id, titulo, "personalizado", "", interaction.user.id)\n'
+        '        num = f"CERT-{int(reg.get(\'id\') or 0):05d}"\n'
+        '    except Exception:\n'
+        '        num = "CERT-RP"\n'
+        '    hospital = getattr(config, "NOMBRE_HOSPITAL", "Hospital") or "Hospital"\n'
+        '    nombre = getattr(usuario, "display_name", None) or str(usuario)\n'
+        '    emisor = getattr(interaction.user, "display_name", None) or str(interaction.user)\n'
+        '    try:\n'
+        '        from certificado_imagen import generar_certificado\n'
+        '        buf = generar_certificado(\n'
+        '            nombre_receptor=nombre,\n'
+        '            titulo=titulo,\n'
+        '            hospital=hospital,\n'
+        '            emisor=emisor,\n'
+        '            numero=num,\n'
+        '        )\n'
+        '        archivo = discord.File(buf, filename=f"certificado_{usuario.id}.png")\n'
+        '        emb = crear_embed(\n'
+        '            "exito",\n'
+        '            "🎓 Certificado emitido",\n'
+        '            f"**{nombre}** ha sido certificado en **{titulo}**.\\n"\n'
+        '            f"N.º `{num}` · Solo Roleplay",\n'
+        '        )\n'
+        '        await interaction.followup.send(\n'
+        '            content=f"🎓 {usuario.mention} — certificado en **{titulo}**",\n'
+        '            embed=emb,\n'
+        '            file=archivo,\n'
+        '        )\n'
+        '        try:\n'
+        '            buf.seek(0)\n'
+        '            await usuario.send(\n'
+        '                content=f"Has recibido un certificado de **{hospital}**:",\n'
+        '                file=discord.File(buf, filename=f"certificado_{usuario.id}.png"),\n'
+        '            )\n'
+        '        except Exception:\n'
+        '            pass\n'
+        '    except Exception as e:\n'
+        '        print("[certificar] imagen:", e)\n'
+        '        await interaction.followup.send(\n'
+        '            f"🎓 {usuario.mention} fue certificado en **{titulo}**.\\n"\n'
+        '            f"(No se pudo generar la imagen: `{e}`)"\n'
+        '        )\n'
+        '    await enviar_log("log_capacitaciones", crear_embed(\n'
+        '        "exito", "🎓 Capacitación certificada",\n'
+        '        f"**{interaction.user}** certificó a **{usuario}** en **{titulo}** (`{num}`)"))\n'
+    )
+    if old_cert in source:
+        source = source.replace(old_cert, new_cert)
+        print("[hospital_core] ✓ capacitacion certificar → imagen")
+    else:
+        print("[hospital_core] ⚠ bloque certificar no encontrado")
+
     print("[hospital_core] Ejecutando núcleo…")
     try:
         exec(compile(source, "hospital_core_remote.py", "exec"), module_globals)
@@ -208,7 +281,6 @@ async def on_ready():
     print(f"[hospital_core] En memoria: {len(names0)} → {', '.join(names0)}")
 
     async def _vaciar_globales():
-        """Quita comandos GLOBALES en Discord (evita duplicados global+guild)."""
         try:
             app_id = bot.application_id
             if app_id is None:
@@ -224,15 +296,11 @@ async def on_ready():
         print(f"[hospital_core] === SYNC ({reason}) ===")
         _recortar_a_limite()
         try:
-            # 1) Vaciar globales → elimina el duplicado en el cliente Discord
             await _vaciar_globales()
-
-            # 2) Publicar SOLO en el/los guild(s)
             targets = list(bot.guilds) if getattr(bot, "guilds", None) else []
             if not targets:
                 targets = [discord.Object(id=_GUILD_ID)]
                 print(f"[hospital_core] Sin guilds en cache → {_GUILD_ID}")
-
             for g in targets:
                 gid = int(getattr(g, "id", _GUILD_ID))
                 obj = discord.Object(id=gid)
