@@ -10,8 +10,9 @@ NOMBRE_HOSPITAL = "Hospital General"
 MONEDA = "$"
 LOGO_URL = None
 
+# Key interna OWNER = rol visible "Gerente Developer" (máxima autoridad del bot).
 KEYS_NOMBRES = {
-    "OWNER":                ("👑 Owner", "#E74C3C"),
+    "OWNER":                ("🛠️ Gerente Developer", "#E74C3C"),
     "CO_OWNER":             ("🤝 Co-Owner", "#C0392B"),
     "DIRECTOR_GENERAL":     ("🖥️ Director General", "#2C3E50"),
     "DIRECTOR_DISCIPLINA":  ("⚖️ Director de Disciplina", "#8E44AD"),
@@ -32,6 +33,9 @@ KEYS_NOMBRES = {
     "VOLUNTARIO":           ("💚 Voluntario", "#27AE60"),
     "STAFF_SERVIDOR":       ("🖥️ Staff del Servidor", "#7F8C8D"),
 }
+
+# Alias legible (misma key interna)
+GERENTE_DEVELOPER_KEY = "OWNER"
 
 JERARQUIA_KEYS = [
     "VOLUNTARIO", "PASANTE", "STAFF", "RESIDENTE", "SUPERVISOR",
@@ -147,7 +151,7 @@ CANALES = {
 }
 
 SEPARADORES_ROLES = [
-    ("sep_cupula", "『 👑 ADMINISTRACIÓN 』", "#2C3E50"),
+    ("sep_cupula", "『 🛠️ GERENCIA / DESARROLLO 』", "#E74C3C"),
     ("sep_servidor", "『 🖥️ STAFF DEL SERVIDOR 』", "#7F8C8D"),
     ("sep_directores", "『 🏛️ DIRECCIÓN HOSPITAL 』", "#2C3E50"),
     ("sep_medico", "『 🩺 CUERPO MÉDICO 』", "#1ABC9C"),
