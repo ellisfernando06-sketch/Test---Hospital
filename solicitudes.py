@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*
-"""
-solicitudes.py — Bootstrap: carga el módulo completo desde un commit conocido
-y aplica el parche on_deny + logs_store para canales de evaluación.
-"""
+"""solicitudes.py — carga segura (nunca tumba el bot si falla la red)."""
 from __future__ import annotations
 
-import urllib.request
 import sys
+import traceback
+import urllib.request
 
 _GOOD_COMMIT = "f20e635067a95dbf3a8b14139e2003e6ca455e7d"
 _URL = (
@@ -14,12 +12,8 @@ _URL = (
     f"{_GOOD_COMMIT}/solicitudes.py"
 )
 
-def _bootstrap():
-    print("[solicitudes] Descargando módulo completo…")
-    with urllib.request.urlopen(_URL, timeout=45) as resp:
-        source = resp.read().decode("utf-8")
-    print(f"[solicitudes] Descargado ({len(source)} bytes)")
 
+def _apply_patches(source: str) -> str:
     old = (
         "        pending = _load_pending()\n"
         "        pending.pop(self.solicitud_id, None)\n"
@@ -59,12 +53,10 @@ def _bootstrap():
     new_view = "AprobacionView(key_aprobador=key_aprobador, solicitud_id=solicitud_id, on_approve=on_approve, on_deny=on_deny)"
     if old_view in source:
         source = source.replace(old_view, new_view, 1)
+    return source
 
-    mod = sys.modules[__name__]
-    exec(compile(source, "solicitudes_remote.py", "exec"), mod.__dict__)
-    print("[solicitudes] Módulo completo cargado")
 
-    # Integrar logs_store (canales elegidos al publicar paneles)
+def _install_logs_store(mod) -> None:
     try:
         import logs_store as _ls
         import config as _cfg
@@ -78,6 +70,7 @@ def _bootstrap():
                 if cid and isinstance(getattr(_cfg, "CANALES", None), dict):
                     _cfg.CANALES[canal_log] = cid
                 return await _orig(interaction, key_destinatario, embed, canal_log)
+
             mod.__dict__["enviar_solicitud"] = enviar_solicitud
 
         if _orig_apr:
@@ -93,10 +86,82 @@ def _bootstrap():
                     interaction, key_aprobador, embed, tipo, datos,
                     canal_key=canal_key, on_approve=on_approve, on_deny=on_deny,
                 )
+
             mod.__dict__["enviar_solicitud_con_aprobacion"] = enviar_solicitud_con_aprobacion
-
-        print("[solicitudes] logs_store integrado")
+        print("[solicitudes] logs_store OK")
     except Exception as e:
-        print("[solicitudes] logs_store no aplicado:", e)
+        print("[solicitudes] logs_store:", e)
 
-_bootstrap()
+
+def _bootstrap() -> None:
+    print("[solicitudes] Descargando módulo…")
+    with urllib.request.urlopen(_URL, timeout=60) as resp:
+        source = resp.read().decode("utf-8")
+    source = _apply_patches(source)
+    mod = sys.modules[__name__]
+    exec(compile(source, "solicitudes_remote.py", "exec"), mod.__dict__)
+    print("[solicitudes] Módulo cargado")
+    _install_logs_store(mod)
+
+
+def _stubs() -> None:
+    """Mínimo para que el núcleo pueda importar si falla la descarga."""
+    import discord
+
+    class AprobacionView(discord.ui.View):
+        def __init__(self, key_aprobador: str, solicitud_id: str, on_approve=None, on_deny=None, timeout=None):
+            super().__init__(timeout=timeout)
+            self.key_aprobador = key_aprobador
+            self.solicitud_id = solicitud_id
+
+    class _Modal(discord.ui.Modal):
+        def __init__(self, *a, **k):
+            super().__init__(title="Solicitud")
+
+        async def on_submit(self, interaction):
+            await interaction.response.send_message(
+                "Módulo solicitudes en modo limitado.", ephemeral=True
+            )
+
+    async def enviar_solicitud(*a, **k):
+        return None
+
+    async def enviar_solicitud_con_aprobacion(*a, **k):
+        return None
+
+    def resolver_ruta(*a, **k):
+        return None
+
+    def canal_para_key(*a, **k):
+        return None
+
+    def nombre_destinatario(*a, **k):
+        return "?"
+
+    g = globals()
+    g.update({
+        "AprobacionView": AprobacionView,
+        "CartaSolicitudModal": _Modal,
+        "SolicitudDescargoModal": _Modal,
+        "SolicitudPermisoModal": _Modal,
+        "CitatorioModal": _Modal,
+        "ReporteProcedimientoModal": _Modal,
+        "enviar_solicitud": enviar_solicitud,
+        "enviar_solicitud_con_aprobacion": enviar_solicitud_con_aprobacion,
+        "resolver_ruta": resolver_ruta,
+        "DESTINATARIOS_CHOICES": [],
+        "canal_para_key": canal_para_key,
+        "nombre_destinatario": nombre_destinatario,
+    })
+    print("[solicitudes] STUBS activos (bootstrap falló)")
+
+
+try:
+    _bootstrap()
+except Exception:
+    print("[solicitudes] ERROR bootstrap:")
+    traceback.print_exc()
+    try:
+        _stubs()
+    except Exception:
+        traceback.print_exc()
