@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""hospital_core.py — núcleo + módulos + sync. Fuerza ONLINE al arrancar."""
+"""hospital_core.py — arranque estable anti-crash."""
 from __future__ import annotations
 
 import asyncio
@@ -35,9 +35,9 @@ _MODULOS = (
     "capacitacion_cert_ui",
 )
 
-_QUITAR_SIEMPRE = ("ordenar_roles",)
+_QUITAR = ("ordenar_roles",)
 
-_BAJA_PRIORIDAD = (
+_BAJA = (
     "ver_canal_logs_tickets", "configurar_logs_tickets", "panel_solicitudes_logs",
     "configurar_canal_logs", "catalogo_tienda", "panel_reglas", "reglas",
     "solicitud_info", "mi_sanciones", "historial_advertencias", "historial_financiero",
@@ -53,17 +53,15 @@ _CRITICOS = {
     "certificar", "registrar_firma", "ver_mi_firma",
     "limpiar", "limpiar_todo", "sincronizar_comandos",
     "panel_solicitudes", "configurar_roles", "otorgar_key", "bootstrap_owner",
-    "tienda", "panel_tienda", "mi_inventario",
-    "sancionar", "verificar_roblox", "expediente",
-    "capacitacion", "crear_certificado", "mis_certificados",
+    "tienda", "sancionar", "expediente", "capacitacion",
 }
 
 
 def _cargar(module_globals: dict):
-    print("[hospital_core] Descargando núcleo…")
-    with urllib.request.urlopen(_URL, timeout=60) as resp:
+    print("[hospital_core] Descargando núcleo…", flush=True)
+    with urllib.request.urlopen(_URL, timeout=90) as resp:
         source = resp.read().decode("utf-8")
-    print(f"[hospital_core] Núcleo: {len(source)} bytes")
+    print(f"[hospital_core] Núcleo {len(source)} bytes", flush=True)
 
     on_ready_pattern = re.compile(
         r"@bot\.event\s*\nasync def on_ready\(\):\n"
@@ -72,43 +70,42 @@ def _cargar(module_globals: dict):
         re.MULTILINE,
     )
 
-    new_on_ready = (
-        "@bot.event\n"
-        "async def on_ready():\n"
-        "    try:\n"
-        "        bot.add_view(AbrirTicketView())\n"
-        "        bot.add_view(CerrarTicketView())\n"
-        "        bot.add_view(PanelAccionesView())\n"
-        "        bot.add_view(PanelEstadoView())\n"
-        "        bot.add_view(AprobacionView(key_aprobador=\"DIRECTOR_RRHH\", solicitud_id=\"persist\"))\n"
-        "    except Exception as _e:\n"
-        "        print(\"[on_ready] vistas:\", _e)\n"
-        "    try:\n"
-        "        import verificacion as _verif\n"
-        "        bot.add_view(_verif.VerificarView(staff_id=0, guild_id=0))\n"
-        "    except Exception as _e:\n"
-        "        print(\"[on_ready] VerificarView:\", _e)\n"
-        "    print(f\"Conectado como {bot.user} (ID: {bot.user.id})\")\n"
-        "    try:\n"
-        "        bot_control.set_mode(\"online\", \"Bot reiniciado y operativo.\", None)\n"
-        "        await bot_control.publicar_estado(bot)\n"
-        "        print(\"[on_ready] Estado forzado: ONLINE\")\n"
-        "    except Exception as _e:\n"
-        "        print(\"[on_ready] bot_control:\", _e)\n"
-        "    fn = getattr(bot, \"_hospital_sync_todo\", None)\n"
-        "    if callable(fn):\n"
-        "        try:\n"
-        "            await asyncio.sleep(2)\n"
-        "            names = await fn(\"on_ready\")\n"
-        "            print(f\"[on_ready] Sync OK: {len(names or [])} comandos\")\n"
-        "        except Exception as _e:\n"
-        "            print(\"[on_ready] Sync falló:\", _e)\n"
-    )
+    new_on_ready = '''@bot.event
+async def on_ready():
+    try:
+        bot.add_view(AbrirTicketView())
+        bot.add_view(CerrarTicketView())
+        bot.add_view(PanelAccionesView())
+        bot.add_view(PanelEstadoView())
+        bot.add_view(AprobacionView(key_aprobador="DIRECTOR_RRHH", solicitud_id="persist"))
+    except Exception as _e:
+        print("[on_ready] vistas:", _e)
+    try:
+        import verificacion as _verif
+        bot.add_view(_verif.VerificarView(staff_id=0, guild_id=0))
+    except Exception as _e:
+        print("[on_ready] VerificarView:", _e)
+    print(f"Conectado como {bot.user} (ID: {bot.user.id})")
+    try:
+        bot_control.set_mode("online", "Bot reiniciado y operativo.", None)
+        await bot_control.publicar_estado(bot)
+        print("[on_ready] ONLINE")
+    except Exception as _e:
+        print("[on_ready] bot_control:", _e)
+    fn = getattr(bot, "_hospital_sync_todo", None)
+    if callable(fn):
+        try:
+            await asyncio.sleep(2)
+            names = await fn("on_ready")
+            print(f"[on_ready] Sync: {len(names or [])} comandos")
+        except Exception as _e:
+            print("[on_ready] Sync error:", _e)
+'''
 
     m = on_ready_pattern.search(source)
     if m:
         source = source[: m.start()] + new_on_ready + source[m.end() :]
-        print("[hospital_core] ✓ on_ready OK")
+        print("[hospital_core] on_ready OK", flush=True)
     else:
         source = source.replace("bot.tree.clear_commands(guild=None)", "pass")
         source = source.replace(
@@ -116,114 +113,136 @@ def _cargar(module_globals: dict):
             "pass",
         )
 
-    source = re.sub(
-        r"@bot\.tree\.command\(name=\"ordenar_roles\"[^\n]*\n"
-        r"(?:@[^\n]+\n)*"
-        r"async def ordenar_roles_cmd\([\s\S]*?\n(?=@bot\.|def |async def |class )",
-        "\n",
-        source,
-        count=1,
-    )
+    try:
+        source = re.sub(
+            r"@bot\.tree\.command\(name=\"ordenar_roles\"[^\n]*\n"
+            r"(?:@[^\n]+\n)*"
+            r"async def ordenar_roles_cmd\([\s\S]*?\n(?=@bot\.|def |async def |class )",
+            "\n",
+            source,
+            count=1,
+        )
+    except Exception:
+        pass
 
     source = source.replace(
         'description="[Solo primer uso] Te asigna la key OWNER para poder configurar el bot"',
-        'description="[Solo primer uso] Te asigna Gerente Developer (máxima autoridad)"',
+        'description="[Solo primer uso] Te asigna Gerente Developer"',
     )
     source = source.replace("la key OWNER", "la key Gerente Developer")
-    source = source.replace("key OWNER configurada", "key Gerente Developer configurada")
-    source = source.replace("/configurar_roles una vez (OWNER)", "/configurar_roles una vez (Gerente Developer)")
 
     marker = "if not config.TOKEN:"
     idx = source.find(marker)
     if idx > 0:
         source = source[:idx]
 
-    print("[hospital_core] Ejecutando núcleo…")
+    print("[hospital_core] Exec núcleo…", flush=True)
     try:
         exec(compile(source, "hospital_core_remote.py", "exec"), module_globals)
     except Exception:
+        print("[hospital_core] ERROR núcleo:", flush=True)
         traceback.print_exc()
         raise
 
     bot = module_globals.get("bot")
     if bot is None:
-        raise RuntimeError("bot no definido")
+        raise RuntimeError("bot no definido tras exec")
 
-    for n in _QUITAR_SIEMPRE:
+    for n in _QUITAR:
         try:
             bot.tree.remove_command(n)
         except Exception:
             pass
 
-    print("[hospital_core] Módulos…")
+    print("[hospital_core] Módulos…", flush=True)
     for name in _MODULOS:
         try:
             mod = __import__(name)
             if hasattr(mod, "registrar"):
                 mod.registrar(bot)
-                print(f"[hospital_core] ✓ {name}")
+            print(f"[hospital_core] ✓ {name}", flush=True)
         except Exception:
-            print(f"[hospital_core] ✗ {name}")
+            print(f"[hospital_core] ✗ {name} (se continúa)", flush=True)
             traceback.print_exc()
 
-    presentes = {c.name for c in bot.tree.get_commands()}
-    if "registrar_firma" not in presentes:
-        @bot.tree.command(name="registrar_firma", description="Registra tu firma digitalizada (imagen PNG/JPG)")
-        @app_commands.describe(imagen="Imagen de tu firma", cargo="Cargo de la firma")
-        @app_commands.choices(cargo=[
-            app_commands.Choice(name="Director de Investigación y Docencia", value="DIRECTOR_DOCENCIA"),
-            app_commands.Choice(name="Director Médico", value="DIRECTOR_MEDICO"),
-            app_commands.Choice(name="Director Administrativo", value="DIRECTOR_ADMINISTRATIVO"),
-            app_commands.Choice(name="Director de RRHH", value="DIRECTOR_RRHH"),
-            app_commands.Choice(name="Director General", value="DIRECTOR_GENERAL"),
-            app_commands.Choice(name="Encargado / Instructor", value="ENCARGADO"),
-            app_commands.Choice(name="Otra firma personal", value="PERSONAL"),
-        ])
-        async def _cmd_reg_firma(inter: discord.Interaction, imagen: discord.Attachment, cargo: app_commands.Choice[str]):
-            try:
-                import firmas
-                if not imagen.content_type or not imagen.content_type.startswith("image/"):
-                    return await inter.response.send_message("❌ Debe ser imagen.", ephemeral=True)
-                key = cargo.value
-                if key not in ("ENCARGADO", "PERSONAL") and not firmas._es_key(inter.user, key, "OWNER"):
-                    return await inter.response.send_message(f"❌ No tienes **{cargo.name}**.", ephemeral=True)
-                await inter.response.defer(ephemeral=True)
-                fname = await firmas.descargar_firma(imagen, inter.user.id)
-                firmas.guardar_firma(inter.user.id, key, fname)
-                await inter.followup.send(f"✅ Firma **{cargo.name}** registrada.", ephemeral=True)
-            except Exception as e:
-                if inter.response.is_done():
-                    await inter.followup.send(f"❌ `{e}`", ephemeral=True)
-                else:
-                    await inter.response.send_message(f"❌ `{e}`", ephemeral=True)
-        print("[hospital_core] + /registrar_firma")
+    # Comandos críticos solo si faltan (sin pisar)
+    try:
+        names = {c.name for c in bot.tree.get_commands()}
+    except Exception:
+        names = set()
+
+    if "registrar_firma" not in names:
+        try:
+            @bot.tree.command(name="registrar_firma", description="Registra tu firma digitalizada")
+            @app_commands.describe(imagen="Imagen de firma", cargo="Cargo")
+            @app_commands.choices(cargo=[
+                app_commands.Choice(name="Director de Investigación y Docencia", value="DIRECTOR_DOCENCIA"),
+                app_commands.Choice(name="Director Médico", value="DIRECTOR_MEDICO"),
+                app_commands.Choice(name="Director Administrativo", value="DIRECTOR_ADMINISTRATIVO"),
+                app_commands.Choice(name="Director de RRHH", value="DIRECTOR_RRHH"),
+                app_commands.Choice(name="Director General", value="DIRECTOR_GENERAL"),
+                app_commands.Choice(name="Encargado / Instructor", value="ENCARGADO"),
+                app_commands.Choice(name="Otra firma personal", value="PERSONAL"),
+            ])
+            async def registrar_firma(inter: discord.Interaction, imagen: discord.Attachment, cargo: app_commands.Choice[str]):
+                try:
+                    import firmas
+                    if not imagen.content_type or not str(imagen.content_type).startswith("image/"):
+                        return await inter.response.send_message("❌ Debe ser imagen.", ephemeral=True)
+                    key = cargo.value
+                    if key not in ("ENCARGADO", "PERSONAL") and not firmas._es_key(inter.user, key, "OWNER"):
+                        return await inter.response.send_message("❌ Sin ese cargo.", ephemeral=True)
+                    await inter.response.defer(ephemeral=True)
+                    fname = await firmas.descargar_firma(imagen, inter.user.id)
+                    firmas.guardar_firma(inter.user.id, key, fname)
+                    await inter.followup.send(f"✅ Firma **{cargo.name}** OK.", ephemeral=True)
+                except Exception as e:
+                    try:
+                        if inter.response.is_done():
+                            await inter.followup.send(f"❌ {e}", ephemeral=True)
+                        else:
+                            await inter.response.send_message(f"❌ {e}", ephemeral=True)
+                    except Exception:
+                        pass
+            print("[hospital_core] + registrar_firma", flush=True)
+        except Exception:
+            traceback.print_exc()
 
     if "certificar" not in {c.name for c in bot.tree.get_commands()}:
-        @bot.tree.command(name="certificar", description="Certificado RP → autorización Director Investigación y Docencia")
-        @app_commands.describe(usuario="Quién recibe el certificado")
-        async def _cmd_cert(inter: discord.Interaction, usuario: discord.Member):
-            try:
-                import capacitacion_cert_ui as ccu
-                if not ccu._puede_iniciar(inter.user):
-                    return await inter.response.send_message("❌ Sin permiso.", ephemeral=True)
-                await inter.response.send_modal(ccu.ModalCertificar(bot, usuario))
-            except Exception as e:
-                await inter.response.send_message(f"❌ `{e}`", ephemeral=True)
-        print("[hospital_core] + /certificar")
+        try:
+            @bot.tree.command(name="certificar", description="Certificado RP con autorización")
+            @app_commands.describe(usuario="Receptor del certificado")
+            async def certificar(inter: discord.Interaction, usuario: discord.Member):
+                try:
+                    import capacitacion_cert_ui as ccu
+                    if not ccu._puede_iniciar(inter.user):
+                        return await inter.response.send_message("❌ Sin permiso.", ephemeral=True)
+                    await inter.response.send_modal(ccu.ModalCertificar(bot, usuario))
+                except Exception as e:
+                    try:
+                        await inter.response.send_message(f"❌ {e}", ephemeral=True)
+                    except Exception:
+                        pass
+            print("[hospital_core] + certificar", flush=True)
+        except Exception:
+            traceback.print_exc()
 
-    def _nombres():
-        return sorted({c.name for c in bot.tree.get_commands()})
+    def _listar():
+        try:
+            return sorted({c.name for c in bot.tree.get_commands()})
+        except Exception:
+            return []
 
     def _recortar():
-        for n in _QUITAR_SIEMPRE:
+        for n in _QUITAR:
             try:
                 bot.tree.remove_command(n)
             except Exception:
                 pass
-        if len(_nombres()) <= _MAX_SLASH:
-            return _nombres()
-        for n in _BAJA_PRIORIDAD:
-            if len(_nombres()) <= _MAX_SLASH:
+        if len(_listar()) <= _MAX_SLASH:
+            return _listar()
+        for n in _BAJA:
+            if len(_listar()) <= _MAX_SLASH:
                 break
             if n in _CRITICOS:
                 continue
@@ -231,42 +250,46 @@ def _cargar(module_globals: dict):
                 bot.tree.remove_command(n)
             except Exception:
                 pass
-        while len(_nombres()) > _MAX_SLASH:
-            rest = [n for n in _nombres() if n not in _CRITICOS]
+        while len(_listar()) > _MAX_SLASH:
+            rest = [n for n in _listar() if n not in _CRITICOS]
             if not rest:
                 break
             try:
                 bot.tree.remove_command(rest[-1])
             except Exception:
                 break
-        return _nombres()
+        return _listar()
 
-    _recortar()
+    try:
+        print(f"[hospital_core] Comandos: {len(_recortar())}", flush=True)
+    except Exception:
+        traceback.print_exc()
 
     async def _sync_todo(reason: str = "") -> list:
         result = []
-        print(f"[hospital_core] === SYNC ({reason}) ===")
-        _recortar()
+        print(f"[hospital_core] SYNC ({reason})", flush=True)
+        try:
+            _recortar()
+        except Exception:
+            pass
         try:
             try:
                 app_id = bot.application_id or (await bot.application_info()).id
                 await bot.http.bulk_upsert_global_commands(int(app_id), [])
             except Exception as e:
-                print("[hospital_core] globales:", e)
+                print("[hospital_core] globales:", e, flush=True)
             targets = list(bot.guilds) if bot.guilds else [discord.Object(id=_GUILD_ID)]
             for g in targets:
                 gid = int(getattr(g, "id", _GUILD_ID))
-                obj = discord.Object(id=gid)
                 try:
+                    obj = discord.Object(id=gid)
                     bot.tree.copy_global_to(guild=obj)
                     synced = await bot.tree.sync(guild=obj)
                     result = sorted(c.name for c in synced)
-                    print(f"[hospital_core] GUILD {gid}: {len(result)}")
+                    print(f"[hospital_core] guild {gid}: {len(result)}", flush=True)
                 except Exception as e:
-                    print(f"[hospital_core] sync {gid}: {e}")
-                    traceback.print_exc()
-        except Exception as e:
-            print("[hospital_core] sync:", e)
+                    print(f"[hospital_core] sync {gid}: {e}", flush=True)
+        except Exception:
             traceback.print_exc()
         return result
 
@@ -282,26 +305,33 @@ def _cargar(module_globals: dict):
         if not ctx.guild or not isinstance(ctx.author, discord.Member):
             return
         if not (ctx.author.guild_permissions.administrator or ctx.author.id == ctx.guild.owner_id):
-            await ctx.reply("❌ Solo admin.")
-            return
+            return await ctx.reply("❌ Solo admin.")
         msg = await ctx.reply("🔄 Sync…")
-        names = await _sync_todo("!forzar_sync")
-        ok = [c for c in ("registrar_firma", "certificar", "ver_mi_firma") if c in names]
-        await msg.edit(content=f"✅ **{len(names)}** comandos. Firma/cert: `{', '.join(ok) or 'FALTAN'}`")
+        try:
+            names = await _sync_todo("!forzar_sync")
+            ok = [c for c in ("registrar_firma", "certificar") if c in names]
+            await msg.edit(content=f"✅ {len(names)} comandos. Clave: {', '.join(ok) or '—'}")
+        except Exception as e:
+            await msg.edit(content=f"❌ {e}")
 
     @bot.listen("on_ready")
-    async def _hc_backup():
+    async def _backup():
         if getattr(bot, "_hc_backup_done", False):
             return
         bot._hc_backup_done = True
-        await asyncio.sleep(5)
+        await asyncio.sleep(6)
         try:
             await _sync_todo("backup")
         except Exception as e:
-            print("[hospital_core] backup:", e)
+            print("[hospital_core] backup:", e, flush=True)
 
-    print("[hospital_core] Listo.")
+    print("[hospital_core] LISTO", flush=True)
     return bot
 
 
-bot = _cargar(globals())
+try:
+    bot = _cargar(globals())
+except Exception:
+    print("[hospital_core] FALLO FATAL AL CARGAR:", flush=True)
+    traceback.print_exc()
+    raise
