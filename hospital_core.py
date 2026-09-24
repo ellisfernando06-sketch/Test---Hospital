@@ -30,7 +30,8 @@ _MODULOS = (
     "entrevista_ui",
     "tickets_cierre",
     "docencia",
-    "capacitacion_cert_ui",  # modal + diploma (debe ir al final)
+    "firmas",                 # firmas digitalizadas + autorizar
+    "capacitacion_cert_ui",   # modal + auth Docencia (al final)
 )
 
 _BAJA_PRIORIDAD = (
@@ -189,6 +190,7 @@ async def on_ready():
             "panel_solicitudes", "configurar_roles", "otorgar_key", "bootstrap_owner",
             "tienda", "panel_tienda", "mi_inventario",
             "sancionar", "verificar_roblox", "expediente",
+            "registrar_firma", "ver_mi_firma",
         }
         while len(_listar_nombres()) > _MAX_SLASH:
             restantes = [n for n in _listar_nombres() if n not in criticos]
