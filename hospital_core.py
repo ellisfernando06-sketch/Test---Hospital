@@ -37,24 +37,34 @@ def _cargar(module_globals: dict):
         source = resp.read().decode("utf-8")
     print(f"[hospital_core] Núcleo descargado ({len(source)} bytes)")
 
-    # ── Anular por completo el bloque de sync del on_ready remoto ──
-    # Ese bloque hacía clear global + sync vacío y dejaba Discord sin comandos.
-    old_sync_block = '''    # global. Si se limpia primero (clear_commands(guild=None)), copy_global_to
-    # no tiene nada que copiar y el servidor se queda sin slash commands.
-        MI_SERVIDOR = discord.Object(id=1381360019467014184)
-        bot.tree.copy_global_to(guild=MI_SERVIDOR)  # copia mientras el global aún tiene comandos
-        sincronizados_guild = await bot.tree.sync(guild=MI_SERVIDOR)
-        bot.tree.clear_commands(guild=None)  # limpia registro global en memoria
-        await bot.tree.sync()  # publica árbol vacío a nivel global (quita duplicados viejos)'''
+    # Bloque exacto del on_ready remoto que vacía los comandos
+    old_sync_block = (
+        "    # Solo sincronización al servidor (evita comandos duplicados global+guild).\n"
+        "    # IMPORTANTE: se copia al guild y se sincroniza ANTES de limpiar el árbol\n"
+        "    # global. Si se limpia primero (clear_commands(guild=None)), copy_global_to\n"
+        "    # no tiene nada que copiar y el guild queda con la lista de comandos vacía.\n"
+        "    try:\n"
+        "        MI_SERVIDOR = discord.Object(id=1381360019467014184)\n"
+        "        bot.tree.copy_global_to(guild=MI_SERVIDOR)  # copia mientras el global aún tiene comandos\n"
+        "        sincronizados_guild = await bot.tree.sync(guild=MI_SERVIDOR)\n"
+        "        bot.tree.clear_commands(guild=None)  # limpia registro global en memoria\n"
+        "        await bot.tree.sync()  # publica árbol vacío a nivel global (quita duplicados viejos)\n"
+        "        print(f\"Sincronizados {len(sincronizados_guild)} comandos slash (solo tu servidor, sin duplicados).\")\n"
+        "    except Exception as e:\n"
+        "        print(f\"Error al sincronizar comandos: {e}\")\n"
+    )
 
-    new_sync_block = '''    # [hospital_core] Sync gestionado fuera del núcleo remoto
-        pass'''
+    new_sync_block = (
+        "    # [hospital_core] Sync del núcleo REMOTO desactivado.\n"
+        "    # hospital_core publica los comandos DESPUÉS de cargar todos los módulos.\n"
+        "    print('[hospital_core] Sync del núcleo omitido — lo gestiona hospital_core')\n"
+    )
 
     if old_sync_block in source:
         source = source.replace(old_sync_block, new_sync_block)
-        print("[hospital_core] Bloque sync remoto anulado (match exacto)")
+        print("[hospital_core] ✓ Bloque sync remoto anulado")
     else:
-        # Fallback por líneas sueltas
+        print("[hospital_core] ⚠ Bloque exacto no encontrado — aplicando parches sueltos")
         source = source.replace(
             "bot.tree.clear_commands(guild=None)  # limpia registro global en memoria",
             "pass  # [hospital_core] NO vaciar global",
@@ -67,8 +77,11 @@ def _cargar(module_globals: dict):
             "bot.tree.clear_commands(guild=None)",
             "pass  # [hospital_core] NO vaciar global",
         )
-        # No tocar sync(guild=...) del remoto si existiera; lo rehacemos nosotros
-        print("[hospital_core] Parches de sync aplicados (fallback)")
+        # Evitar el sync vacío genérico (pero NO el de guild=)
+        source = source.replace(
+            "await bot.tree.sync()  # publica árbol vacío",
+            "pass  # [hospital_core]",
+        )
 
     old_view = (
         'bot.add_view(AprobacionView(key_aprobador="DIRECTOR_RRHH", '
@@ -103,10 +116,8 @@ def _cargar(module_globals: dict):
     if bot is None:
         raise RuntimeError("hospital_core: el núcleo no definió 'bot'")
 
-    # ── Registrar módulos locales ──
     print("[hospital_core] Registrando módulos…")
-    ok_mods = []
-    fail_mods = []
+    ok_mods, fail_mods = [], []
     for mod_name in _MODULOS:
         try:
             mod = __import__(mod_name)
@@ -121,9 +132,7 @@ def _cargar(module_globals: dict):
             print(f"[hospital_core] ✗ {mod_name}:")
             traceback.print_exc()
 
-    print(f"[hospital_core] Módulos OK: {ok_mods}")
-    if fail_mods:
-        print(f"[hospital_core] Módulos FALLIDOS: {fail_mods}")
+    print(f"[hospital_core] OK={ok_mods} FAIL={fail_mods}")
 
     try:
         glob_names = sorted({c.name for c in bot.tree.get_commands()})
@@ -133,36 +142,30 @@ def _cargar(module_globals: dict):
         print("[hospital_core] listar:", e)
 
     async def _sync_todo(reason: str = "") -> list:
-        """Publica todos los slash commands en cada servidor del bot."""
         all_names: list = []
         try:
-            # 1) Sync global (puede tardar en propagarse en clientes Discord)
             try:
                 synced_global = await bot.tree.sync()
                 print(f"[hospital_core] Sync GLOBAL ({reason}): {len(synced_global)}")
             except Exception as e:
                 print(f"[hospital_core] Sync GLOBAL falló ({reason}):", e)
 
-            # 2) Sync por guild (aparece al instante)
-            guilds = list(bot.guilds) if bot.guilds else []
-            if not guilds:
-                # Fallback al ID conocido
-                guilds_objs = [discord.Object(id=_GUILD_ID)]
-            else:
-                guilds_objs = guilds
+            targets = list(bot.guilds) if bot.guilds else []
+            if not targets:
+                targets = [discord.Object(id=_GUILD_ID)]
 
-            for g in guilds_objs:
-                gid = getattr(g, "id", None) or _GUILD_ID
-                obj = discord.Object(id=int(gid))
+            for g in targets:
+                gid = int(getattr(g, "id", _GUILD_ID))
+                obj = discord.Object(id=gid)
                 try:
                     bot.tree.copy_global_to(guild=obj)
                     synced = await bot.tree.sync(guild=obj)
                     names = sorted(c.name for c in synced)
                     all_names = names
-                    print(
-                        f"[hospital_core] Sync GUILD {gid} ({reason}): "
-                        f"{len(names)} → {', '.join(names[:40])}{'…' if len(names) > 40 else ''}"
-                    )
+                    preview = ", ".join(names[:50])
+                    if len(names) > 50:
+                        preview += "…"
+                    print(f"[hospital_core] Sync GUILD {gid} ({reason}): {len(names)} → {preview}")
                 except Exception as e:
                     print(f"[hospital_core] Sync GUILD {gid} falló ({reason}):", e)
                     traceback.print_exc()
@@ -171,26 +174,22 @@ def _cargar(module_globals: dict):
             traceback.print_exc()
         return all_names
 
-    # Prefijo de emergencia (siempre disponible sin sync de Discord)
     @bot.command(name="forzar_sync")
     async def forzar_sync_cmd(ctx: commands.Context):
-        """!forzar_sync — republica todos los slash commands."""
         if not ctx.guild or not isinstance(ctx.author, discord.Member):
             return
-        if not (
-            ctx.author.guild_permissions.administrator
-            or ctx.author.id == ctx.guild.owner_id
-        ):
+        if not (ctx.author.guild_permissions.administrator or ctx.author.id == ctx.guild.owner_id):
             await ctx.send("❌ Solo administrador o dueño del servidor.")
             return
-        msg = await ctx.send("🔄 Sincronizando comandos…")
+        msg = await ctx.send("🔄 Sincronizando todos los slash commands…")
         try:
             names = await _sync_todo("manual-prefix")
             await msg.edit(
                 content=(
-                    f"✅ **{len(names)}** comandos publicados.\n"
-                    f"`{'`, `'.join(names[:50])}`"
-                    + ("…" if len(names) > 50 else "")
+                    f"✅ **{len(names)}** comandos publicados en el servidor.\n"
+                    f"`{'`, `'.join(names[:60])}`"
+                    + ("…" if len(names) > 60 else "")
+                    + "\n\nEscribe `/` en Discord; deberían aparecer ya."
                 )
             )
         except Exception as e:
@@ -205,11 +204,11 @@ def _cargar(module_globals: dict):
         await asyncio.sleep(2)
         try:
             names = await _sync_todo("arranque")
-            print(f"[hospital_core] Arranque terminado: {len(names)} comandos")
+            print(f"[hospital_core] Arranque: {len(names)} comandos")
         except Exception as e:
             print("[hospital_core] Sync arranque falló:", e)
             traceback.print_exc()
-        await asyncio.sleep(8)
+        await asyncio.sleep(10)
         try:
             await _sync_todo("reintento")
         except Exception as e:
