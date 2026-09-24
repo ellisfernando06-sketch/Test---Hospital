@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-roles_setup.py — Detecta/crea roles y ordena por categorías.
-Cúpula: Gerente Developer (OWNER) + Co-Owner
-Dirección Hospital: Director General + resto de directores
+roles_setup.py — Orden de roles:
+  『 🛠️ GERENCIA / DESARROLLO 』 → Gerente Developer (+ Co-Owner)
+  『 🏛️ DIRECCIÓN HOSPITAL 』   → Director General + demás directores
 """
 from __future__ import annotations
 
@@ -27,10 +27,11 @@ def _buscar_rol_por_nombre(guild: discord.Guild, nombre: str) -> Optional[discor
     for r in guild.roles:
         if r.name.lower() == nombre_l:
             return r
-    # Compat: antiguo "Owner" → Gerente Developer
+    # Compat: nombres antiguos → Gerente Developer
     if "gerente developer" in nombre_l:
         for r in guild.roles:
-            if r.name.lower() in ("👑 owner", "owner", "👑owner"):
+            rn = r.name.lower()
+            if rn in ("👑 owner", "owner", "👑owner") or "owner" == rn.strip("👑 ").strip():
                 return r
     return None
 
@@ -43,10 +44,10 @@ async def _asegurar_rol(
 ) -> Optional[discord.Role]:
     existente = _buscar_rol_por_nombre(guild, nombre)
     if existente:
-        # Renombrar Owner antiguo → Gerente Developer
+        # Renombrar Owner → Gerente Developer
         if existente.name != nombre and "owner" in existente.name.lower() and "gerente" in nombre.lower():
             try:
-                await existente.edit(name=nombre, reason="Renombrar a Gerente Developer")
+                await existente.edit(name=nombre, colour=_hex_to_colour(color_hex), reason="Renombrar a Gerente Developer")
                 resumen.append(f"🔄 Renombrado: **{existente.name}** → **{nombre}**")
             except Exception:
                 resumen.append(f"✅ Detectado: **{existente.name}** (ID `{existente.id}`)")
@@ -71,6 +72,13 @@ async def _asegurar_rol(
 
 
 def _orden_deseado() -> List[Tuple[str, str]]:
+    """
+    Orden de arriba → abajo:
+      1. Gerencia: Gerente Developer, Co-Owner
+      2. Staff servidor
+      3. Dirección Hospital: Director General + resto de directores
+      4. Departamentos / escalafones
+    """
     orden: List[Tuple[str, str]] = []
     seps = {s[0]: s[1] for s in getattr(config, "SEPARADORES_ROLES", [])}
 
@@ -78,13 +86,14 @@ def _orden_deseado() -> List[Tuple[str, str]]:
         if key in seps:
             orden.append(("sep", seps[key]))
 
-    # Cúpula: Gerente Developer + Co-Owner
+    # ── 1. Cúpula: SOLO Gerente Developer (+ Co-Owner). NUNCA Director General aquí ──
     sep("sep_cupula")
-    for key in ["OWNER", "CO_OWNER"]:
-        if key in config.KEYS_NOMBRES:
-            orden.append(("key", config.KEYS_NOMBRES[key][0]))
+    if "OWNER" in config.KEYS_NOMBRES:
+        orden.append(("key", config.KEYS_NOMBRES["OWNER"][0]))  # → 🛠️ Gerente Developer
+    if "CO_OWNER" in config.KEYS_NOMBRES:
+        orden.append(("key", config.KEYS_NOMBRES["CO_OWNER"][0]))
 
-    # Staff del servidor (sin Director General)
+    # ── 2. Staff del servidor (sin directores) ──
     sep("sep_servidor")
     if "STAFF_SERVIDOR" in config.KEYS_NOMBRES:
         orden.append(("key", config.KEYS_NOMBRES["STAFF_SERVIDOR"][0]))
@@ -92,11 +101,11 @@ def _orden_deseado() -> List[Tuple[str, str]]:
         for nombre in reversed(config.DEPARTAMENTOS["staff_servidor"]["escalafon_nombres"]):
             orden.append(("escalafon", nombre))
 
-    # Dirección Hospital: Director General primero, luego el resto
+    # ── 3. Dirección Hospital: Director General PRIMERO, luego el resto ──
     sep("sep_directores")
-    if "DIRECTOR_GENERAL" in config.KEYS_NOMBRES:
-        orden.append(("key", config.KEYS_NOMBRES["DIRECTOR_GENERAL"][0]))
+    # Director General va AQUÍ (no en cúpula ni en staff servidor)
     for key in [
+        "DIRECTOR_GENERAL",
         "DIRECTOR_DISCIPLINA",
         "DIRECTOR_ADMINISTRATIVO",
         "DIRECTOR_MEDICO",
@@ -110,6 +119,7 @@ def _orden_deseado() -> List[Tuple[str, str]]:
         if key in config.KEYS_NOMBRES:
             orden.append(("key", config.KEYS_NOMBRES[key][0]))
 
+    # ── 4. Departamentos ──
     depto_sep = {
         "medico": "sep_medico",
         "especialidades": "sep_especialidades",
@@ -178,18 +188,18 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
         return resumen
 
     try:
-        await guild.edit_role_positions(positions=positions, reason="Orden por categorías (bot hospital)")
-        resumen.append(f"✅ Roles reordenados ({len(positions)} roles).")
-        resumen.append("**Orden (arriba → abajo):**")
+        await guild.edit_role_positions(positions=positions, reason="Orden hospital")
+        resumen.append(f"✅ Roles reordenados ({len(positions)}).")
+        resumen.append("**Orden:**")
         for r in roles_ordenados:
             if r in positions:
                 resumen.append(f"  • {r.name}")
         if roles_omitidos:
             resumen.append(f"⚠️ Omitidos: {', '.join(r.name for r in roles_omitidos)}")
     except discord.Forbidden:
-        resumen.append("❌ Sin permisos para reordenar roles.")
+        resumen.append("❌ Sin permisos para reordenar.")
     except Exception as e:
-        resumen.append(f"❌ Error al reordenar: {e}")
+        resumen.append(f"❌ Error: {e}")
 
     return resumen
 
@@ -214,7 +224,7 @@ async def configurar_todo(guild: discord.Guild) -> List[str]:
         roles_store.guardar_escalafon(slug, ids)
 
     resumen.append("")
-    resumen.append("**Separadores de categoría**")
+    resumen.append("**Separadores**")
     for sep_key, nombre, color in getattr(config, "SEPARADORES_ROLES", []):
         rol = await _asegurar_rol(guild, nombre, color, resumen)
         if rol:
@@ -227,7 +237,7 @@ async def configurar_todo(guild: discord.Guild) -> List[str]:
         roles_store.guardar_extra("SUSPENDIDO", rol_sus.id)
 
     resumen.append("")
-    resumen.append("**Ordenamiento por categorías**")
+    resumen.append("**Orden**")
     resumen.extend(await ordenar_roles(guild))
 
     return resumen
