@@ -22,6 +22,7 @@ KEYS_NOMBRES = {
     "DIRECTOR_FINANCIERO":  ("💰 Director Financiero", "#F1C40F"),
     "DIRECTOR_LOGISTICA":   ("📦 Director de Logística", "#E67E22"),
     "DIRECTOR_SEGURIDAD":   ("🛡️ Director de Seguridad", "#34495E"),
+    "DIRECTOR_DOCENCIA":    ("📚 Director de Docencia", "#8E44AD"),
     "ENCARGADO_AREA":       ("🎖️ Encargado de Área", "#2980B9"),
     "JEFE_DEPARTAMENTO":    ("⭐ Jefe de Departamento", "#2ECC71"),
     "SUPERVISOR":           ("📌 Supervisor", "#27AE60"),
@@ -41,6 +42,7 @@ JERARQUIA_KEYS = [
 
 DIRECTOR_KEYS = [k for k in KEYS_NOMBRES if k.startswith("DIRECTOR_")]
 RRHH_KEY = "DIRECTOR_RRHH"
+DOCENCIA_KEY = "DIRECTOR_DOCENCIA"
 
 KEY_DESPIDOS = "DIRECTOR_RRHH"
 KEY_SANCIONES = "DIRECTOR_RRHH"
@@ -116,6 +118,19 @@ DEPARTAMENTOS = {
         "director_key": "DIRECTOR_ADMINISTRATIVO",
         "escalafon_nombres": ["📋 Recepcionista", "📋 Asistente Administrativo", "📋 Jefe Administrativo"],
     },
+    "docencia": {
+        "nombre": "Docencia y Capacitación",
+        "emoji": "📚",
+        "director_key": "DIRECTOR_DOCENCIA",
+        "escalafon_nombres": [
+            "📚 Instructor Junior",
+            "📚 Instructor",
+            "📚 Instructor Senior",
+            "📚 Coordinador de Capacitación",
+            "📚 Jefe de Docencia",
+            "📚 Subdirector de Docencia",
+        ],
+    },
 }
 
 CANALES = {
@@ -135,6 +150,7 @@ CANALES = {
     "log_finanzas":        None,
     "log_solicitudes":     None,   # Solicitudes generales
     "log_capacitaciones":  None,
+    "log_certificados":    None,   # Emisión de certificados RP (Docencia)
     "log_quejas":          None,
     "log_postulaciones":   None,   # Postulaciones a departamentos
     "log_sanciones":       None,
@@ -163,6 +179,7 @@ SEPARADORES_ROLES = [
     ("sep_logistica", "『 📦 LOGÍSTICA 』", "#E67E22"),
     ("sep_seguridad", "『 🛡️ SEGURIDAD 』", "#34495E"),
     ("sep_admin", "『 📋 ADMINISTRACIÓN HOSPITAL 』", "#16A085"),
+    ("sep_docencia", "『 📚 DOCENCIA Y CAPACITACIÓN 』", "#8E44AD"),
     ("sep_staff", "『 🏥 PERSONAL / STAFF 』", "#95A5A6"),
 ]
 
