@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""firmas.py — Firmas digitalizadas + autorización IC (anti-crash)."""
+"""firmas.py — Firmas digitalizadas + autorización de certificados."""
 from __future__ import annotations
 
 import json
@@ -132,34 +132,23 @@ def _es_key(member: discord.Member, *keys: str) -> bool:
 
 
 class VistaAutorizar(ui.View):
+    """Vista temporal (no persistente global) — evita choque de custom_id."""
+
     def __init__(self, bot: commands.Bot, aid: int):
-        super().__init__(timeout=None)
+        super().__init__(timeout=3600)
         self.bot = bot
         self.aid = int(aid)
-        # custom_id con id para persistencia
-        for child in self.children:
-            if isinstance(child, ui.Button):
-                if child.custom_id and child.custom_id.startswith("firma_ok_"):
-                    child.custom_id = f"firma_ok_{self.aid}"
-                elif child.custom_id and child.custom_id.startswith("firma_no_"):
-                    child.custom_id = f"firma_no_{self.aid}"
 
-    @ui.button(label="Autorizar y firmar", style=discord.ButtonStyle.success, emoji="✅", custom_id="firma_ok_0")
-    async def autorizar(self, inter: discord.Interaction, btn: ui.Button):
-        aid = self.aid
-        try:
-            if btn.custom_id and btn.custom_id.startswith("firma_ok_"):
-                aid = int(btn.custom_id.replace("firma_ok_", "") or 0)
-        except Exception:
-            pass
-        reg = obtener_autorizacion(aid)
+    @ui.button(label="Autorizar y firmar", style=discord.ButtonStyle.success, emoji="✅")
+    async def autorizar(self, inter: discord.Interaction, _btn: ui.Button):
+        reg = obtener_autorizacion(self.aid)
         if not reg or reg.get("estado") != "pendiente":
             return await inter.response.send_message("Ya resuelta o no existe.", ephemeral=True)
 
         key_req = reg.get("key_autorizador") or KEY_DOCENCIA
         if not _es_key(inter.user, key_req, "OWNER"):
             return await inter.response.send_message(
-                "❌ Solo el Director de Investigación y Docencia (u OWNER).",
+                "❌ Solo el Director de Investigación y Docencia (o Gerente Developer).",
                 ephemeral=True,
             )
 
@@ -171,43 +160,43 @@ class VistaAutorizar(ui.View):
 
         await inter.response.defer()
         reg = actualizar_autorizacion(
-            aid,
+            self.aid,
             estado="autorizado",
             autorizador_id=inter.user.id,
             firma_autorizador=firma.get("file"),
             fecha_autorizacion=_now(),
         ) or reg
 
-        if (reg.get("tipo") or "") == "certificado":
-            await _emitir_certificado_autorizado(self.bot, inter, reg)
-        else:
-            await inter.followup.send(f"✅ Documento **#{aid}** autorizado.")
+        try:
+            if (reg.get("tipo") or "") == "certificado":
+                await _emitir_certificado_autorizado(self.bot, inter, reg)
+            else:
+                await inter.followup.send(f"✅ Documento **#{self.aid}** autorizado.")
+        except Exception as e:
+            print("[firmas] emitir:", e)
+            await inter.followup.send(f"❌ Error al emitir: {e}", ephemeral=True)
 
         try:
             await inter.message.edit(view=None)
         except Exception:
             pass
+        self.stop()
 
-    @ui.button(label="Rechazar", style=discord.ButtonStyle.danger, emoji="❌", custom_id="firma_no_0")
-    async def rechazar(self, inter: discord.Interaction, btn: ui.Button):
-        aid = self.aid
-        try:
-            if btn.custom_id and btn.custom_id.startswith("firma_no_"):
-                aid = int(btn.custom_id.replace("firma_no_", "") or 0)
-        except Exception:
-            pass
-        reg = obtener_autorizacion(aid)
+    @ui.button(label="Rechazar", style=discord.ButtonStyle.danger, emoji="❌")
+    async def rechazar(self, inter: discord.Interaction, _btn: ui.Button):
+        reg = obtener_autorizacion(self.aid)
         if not reg or reg.get("estado") != "pendiente":
             return await inter.response.send_message("Ya resuelta.", ephemeral=True)
         key_req = reg.get("key_autorizador") or KEY_DOCENCIA
         if not _es_key(inter.user, key_req, "OWNER"):
             return await inter.response.send_message("❌ Sin permiso.", ephemeral=True)
-        actualizar_autorizacion(aid, estado="rechazado", autorizador_id=inter.user.id)
-        await inter.response.send_message(f"❌ #{aid} rechazada.", ephemeral=True)
+        actualizar_autorizacion(self.aid, estado="rechazado", autorizador_id=inter.user.id)
+        await inter.response.send_message(f"❌ #{self.aid} rechazada.", ephemeral=True)
         try:
             await inter.message.edit(view=None)
         except Exception:
             pass
+        self.stop()
 
 
 async def _emitir_certificado_autorizado(bot, inter: discord.Interaction, reg: dict):
@@ -348,51 +337,59 @@ async def solicitar_autorizacion_certificado(
 
 
 def registrar(bot: commands.Bot) -> None:
-    presentes = {c.name for c in bot.tree.get_commands()}
+    """Registra comandos de firma sin romper el bot."""
+    try:
+        presentes = {c.name for c in bot.tree.get_commands()}
+    except Exception:
+        presentes = set()
 
     if "registrar_firma" not in presentes:
-        @bot.tree.command(name="registrar_firma", description="Registra tu firma digitalizada (imagen)")
-        @app_commands.describe(imagen="Imagen de tu firma", cargo="Cargo")
-        @app_commands.choices(cargo=[
-            app_commands.Choice(name="Director de Investigación y Docencia", value="DIRECTOR_DOCENCIA"),
-            app_commands.Choice(name="Director Médico", value="DIRECTOR_MEDICO"),
-            app_commands.Choice(name="Director Administrativo", value="DIRECTOR_ADMINISTRATIVO"),
-            app_commands.Choice(name="Director de RRHH", value="DIRECTOR_RRHH"),
-            app_commands.Choice(name="Director General", value="DIRECTOR_GENERAL"),
-            app_commands.Choice(name="Encargado / Instructor", value="ENCARGADO"),
-            app_commands.Choice(name="Otra firma personal", value="PERSONAL"),
-        ])
-        async def registrar_firma(inter: discord.Interaction, imagen: discord.Attachment, cargo: app_commands.Choice[str]):
-            if not isinstance(inter.user, discord.Member):
-                return await inter.response.send_message("Solo en servidor.", ephemeral=True)
-            if not imagen.content_type or not imagen.content_type.startswith("image/"):
-                return await inter.response.send_message("❌ Debe ser imagen.", ephemeral=True)
-            key = cargo.value
-            if key not in ("ENCARGADO", "PERSONAL") and not _es_key(inter.user, key, "OWNER"):
-                return await inter.response.send_message(f"❌ No tienes **{cargo.name}**.", ephemeral=True)
-            await inter.response.defer(ephemeral=True)
-            try:
-                fname = await descargar_firma(imagen, inter.user.id)
-                guardar_firma(inter.user.id, key, fname)
-                await inter.followup.send(f"✅ Firma **{cargo.name}** registrada.", ephemeral=True)
-            except Exception as e:
-                await inter.followup.send(f"❌ `{e}`", ephemeral=True)
-        print("[firmas] ✓ /registrar_firma")
-    else:
-        print("[firmas] · /registrar_firma ya existe")
+        try:
+            @bot.tree.command(name="registrar_firma", description="Registra tu firma digitalizada (imagen)")
+            @app_commands.describe(imagen="Imagen de tu firma", cargo="Cargo")
+            @app_commands.choices(cargo=[
+                app_commands.Choice(name="Director de Investigación y Docencia", value="DIRECTOR_DOCENCIA"),
+                app_commands.Choice(name="Director Médico", value="DIRECTOR_MEDICO"),
+                app_commands.Choice(name="Director Administrativo", value="DIRECTOR_ADMINISTRATIVO"),
+                app_commands.Choice(name="Director de RRHH", value="DIRECTOR_RRHH"),
+                app_commands.Choice(name="Director General", value="DIRECTOR_GENERAL"),
+                app_commands.Choice(name="Encargado / Instructor", value="ENCARGADO"),
+                app_commands.Choice(name="Otra firma personal", value="PERSONAL"),
+            ])
+            async def registrar_firma(inter: discord.Interaction, imagen: discord.Attachment, cargo: app_commands.Choice[str]):
+                if not isinstance(inter.user, discord.Member):
+                    return await inter.response.send_message("Solo en servidor.", ephemeral=True)
+                if not imagen.content_type or not str(imagen.content_type).startswith("image/"):
+                    return await inter.response.send_message("❌ Debe ser imagen.", ephemeral=True)
+                key = cargo.value
+                if key not in ("ENCARGADO", "PERSONAL") and not _es_key(inter.user, key, "OWNER"):
+                    return await inter.response.send_message(f"❌ No tienes **{cargo.name}**.", ephemeral=True)
+                await inter.response.defer(ephemeral=True)
+                try:
+                    fname = await descargar_firma(imagen, inter.user.id)
+                    guardar_firma(inter.user.id, key, fname)
+                    await inter.followup.send(f"✅ Firma **{cargo.name}** registrada.", ephemeral=True)
+                except Exception as e:
+                    await inter.followup.send(f"❌ {e}", ephemeral=True)
+            print("[firmas] ✓ /registrar_firma")
+        except Exception as e:
+            print("[firmas] registrar_firma omitido:", e)
 
     if "ver_mi_firma" not in presentes:
-        @bot.tree.command(name="ver_mi_firma", description="Muestra tu firma digitalizada")
-        async def ver_mi_firma(inter: discord.Interaction):
-            reg = obtener_firma_usuario(inter.user.id)
-            if not reg:
-                return await inter.response.send_message("Sin firma. Usa `/registrar_firma`.", ephemeral=True)
-            path = ruta_firma(reg["file"])
-            if not os.path.isfile(path):
-                return await inter.response.send_message("Archivo no encontrado.", ephemeral=True)
-            await inter.response.send_message(
-                file=discord.File(path, filename=reg["file"]), ephemeral=True
-            )
-        print("[firmas] ✓ /ver_mi_firma")
+        try:
+            @bot.tree.command(name="ver_mi_firma", description="Muestra tu firma digitalizada")
+            async def ver_mi_firma(inter: discord.Interaction):
+                reg = obtener_firma_usuario(inter.user.id)
+                if not reg:
+                    return await inter.response.send_message("Sin firma. Usa `/registrar_firma`.", ephemeral=True)
+                path = ruta_firma(reg["file"])
+                if not os.path.isfile(path):
+                    return await inter.response.send_message("Archivo no encontrado.", ephemeral=True)
+                await inter.response.send_message(
+                    file=discord.File(path, filename=reg["file"]), ephemeral=True
+                )
+            print("[firmas] ✓ /ver_mi_firma")
+        except Exception as e:
+            print("[firmas] ver_mi_firma omitido:", e)
 
     print("[firmas] OK")
