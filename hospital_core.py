@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""hospital_core.py — núcleo + módulos + sync FIABLE (máx 100 slash)."""
+"""hospital_core.py — núcleo + módulos + sync FIABLE (máx 100 slash, sin duplicados)."""
 from __future__ import annotations
 
 import asyncio
@@ -16,7 +16,7 @@ _URL = (
     f"{_COMMIT}/Bot_Hospital.py"
 )
 _GUILD_ID = 1381360019467014184
-_MAX_SLASH = 100  # Límite de Discord por guild / global
+_MAX_SLASH = 100
 
 _MODULOS = (
     "comandos_nuevos",
@@ -32,7 +32,6 @@ _MODULOS = (
     "docencia",
 )
 
-# Si hay más de 100, se quitan primero estos (menos críticos / redundantes)
 _BAJA_PRIORIDAD = (
     "ver_canal_logs_tickets",
     "configurar_logs_tickets",
@@ -82,7 +81,7 @@ def _cargar(module_globals: dict):
 
     new_on_ready = '''@bot.event
 async def on_ready():
-    """Arranque controlado — no vacía comandos."""
+    """Arranque controlado — no vacía comandos del guild."""
     try:
         bot.add_view(AbrirTicketView())
         bot.add_view(CerrarTicketView())
@@ -170,7 +169,6 @@ async def on_ready():
         return sorted({c.name for c in bot.tree.get_commands()})
 
     def _recortar_a_limite():
-        """Discord solo permite 100 slash commands. Quita los de baja prioridad."""
         names = _listar_nombres()
         print(f"[hospital_core] Comandos antes de recorte: {len(names)}")
         if len(names) <= _MAX_SLASH:
@@ -184,7 +182,6 @@ async def on_ready():
                 quitados.append(n)
             except Exception:
                 pass
-        # Si aún sobran, quitar los últimos alfabéticamente que no sean críticos
         criticos = {
             "limpiar", "limpiar_todo", "sincronizar_comandos",
             "crear_certificado", "mis_certificados", "ver_certificados", "mostrar_certificado",
@@ -210,12 +207,27 @@ async def on_ready():
     names0 = _recortar_a_limite()
     print(f"[hospital_core] En memoria: {len(names0)} → {', '.join(names0)}")
 
+    async def _vaciar_globales():
+        """Quita comandos GLOBALES en Discord (evita duplicados global+guild)."""
+        try:
+            app_id = bot.application_id
+            if app_id is None:
+                appinfo = await bot.application_info()
+                app_id = appinfo.id
+            await bot.http.bulk_upsert_global_commands(int(app_id), [])
+            print("[hospital_core] Globales vaciados (sin duplicados)")
+        except Exception as e:
+            print(f"[hospital_core] No se pudieron vaciar globales: {e}")
+
     async def _sync_todo(reason: str = "") -> list:
         result: list = []
         print(f"[hospital_core] === SYNC ({reason}) ===")
         _recortar_a_limite()
         try:
-            # Solo guild (instantáneo). Evitamos sync global vacío/conflictos.
+            # 1) Vaciar globales → elimina el duplicado en el cliente Discord
+            await _vaciar_globales()
+
+            # 2) Publicar SOLO en el/los guild(s)
             targets = list(bot.guilds) if getattr(bot, "guilds", None) else []
             if not targets:
                 targets = [discord.Object(id=_GUILD_ID)]
@@ -225,30 +237,20 @@ async def on_ready():
                 gid = int(getattr(g, "id", _GUILD_ID))
                 obj = discord.Object(id=gid)
                 try:
-                    # Publicar el árbol actual SOLO en el guild (sin clear previo)
                     bot.tree.copy_global_to(guild=obj)
                     synced = await bot.tree.sync(guild=obj)
                     result = sorted(c.name for c in synced)
-                    print(f"[hospital_core] GUILD {gid}: {len(result)} OK")
+                    print(f"[hospital_core] GUILD {gid}: {len(result)} OK (solo servidor)")
                     print(f"[hospital_core] → {', '.join(result)}")
                 except discord.HTTPException as e:
                     print(
-                        f"[hospital_core] GUILD {gid} HTTPException status={e.status} "
+                        f"[hospital_core] GUILD {gid} HTTP status={e.status} "
                         f"code={getattr(e, 'code', None)}: {e.text}"
                     )
                     traceback.print_exc()
                 except Exception as e:
                     print(f"[hospital_core] GUILD {gid} error: {e}")
                     traceback.print_exc()
-
-            # Global opcional (no bloqueante para el servidor)
-            try:
-                gsync = await bot.tree.sync()
-                print(f"[hospital_core] GLOBAL: {len(gsync)}")
-            except discord.HTTPException as e:
-                print(f"[hospital_core] GLOBAL HTTP {e.status}: {e.text}")
-            except Exception as e:
-                print(f"[hospital_core] GLOBAL error: {e}")
         except Exception as e:
             print(f"[hospital_core] sync error: {e}")
             traceback.print_exc()
@@ -271,15 +273,15 @@ async def on_ready():
         ):
             await ctx.reply("❌ Solo admin / dueño.")
             return
-        m = await ctx.reply("🔄 Publicando comandos (máx. 100)…")
+        m = await ctx.reply("🔄 Publicando comandos (sin duplicados)…")
         try:
             names = await _sync_todo("!forzar_sync")
             await m.edit(
                 content=(
-                    f"✅ **{len(names)}** slash commands publicados.\n"
+                    f"✅ **{len(names)}** comandos (solo este servidor, sin dobles).\n"
                     f"`{'`, `'.join(names[:60])}`"
                     + ("…" if len(names) > 60 else "")
-                    + "\nEscribe `/` en Discord."
+                    + "\nEscribe `/` — ya no deberían estar duplicados."
                 )
             )
         except Exception as e:
