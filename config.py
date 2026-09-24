@@ -127,40 +127,23 @@ DEPARTAMENTOS = {
             "📚 Instructor",
             "📚 Instructor Senior",
             "📚 Coordinador de Capacitación",
-            "📚 Jefe de Docencia",
-            "📚 Subdirector de Docencia",
+            "📚 Jefe de Investigación y Docencia",
+            "📚 Subdirector de Investigación y Docencia",
         ],
     },
 }
 
 CANALES = {
-    "log_general":         None,
-    "log_roles":           None,
-    "log_ascensos":        None,
-    "log_personal":        None,
-    "log_documentos":      None,
-    "log_pacientes":       None,
-    "log_turnos":          None,
-    "log_inventario":      None,
-    "log_procedimientos":  None,
-    "alerta_codigos":      None,
-    "log_finanzas":        None,
-    "log_solicitudes":     None,
-    "log_capacitaciones":  None,
-    "log_certificados":    None,
-    "log_quejas":          None,
-    "log_postulaciones":   None,
-    "log_sanciones":       None,
-    "log_investigaciones": None,
-    "log_sanciones_ooc":   None,
-    "bot_status":          1481762625279758449,
-    "aprobaciones":        None,
-    "aprobaciones_rrhh":   None,
-    "citatorio_general":   None,
-    "citatorio_disciplina": None,
-    "citatorio_admin":     None,
-    "panel_guardia":       None,
-    "log_quirofano":       None,
+    "log_general": None, "log_roles": None, "log_ascensos": None, "log_personal": None,
+    "log_documentos": None, "log_pacientes": None, "log_turnos": None, "log_inventario": None,
+    "log_procedimientos": None, "alerta_codigos": None, "log_finanzas": None,
+    "log_solicitudes": None, "log_capacitaciones": None, "log_certificados": None,
+    "log_quejas": None, "log_postulaciones": None, "log_sanciones": None,
+    "log_investigaciones": None, "log_sanciones_ooc": None,
+    "bot_status": 1481762625279758449,
+    "aprobaciones": None, "aprobaciones_rrhh": None,
+    "citatorio_general": None, "citatorio_disciplina": None, "citatorio_admin": None,
+    "panel_guardia": None, "log_quirofano": None,
 }
 
 SEPARADORES_ROLES = [
@@ -179,12 +162,10 @@ SEPARADORES_ROLES = [
 ]
 
 GRAVEDAD_PACIENTE = ["Estable", "Observación", "Grave", "Crítico"]
-
 CATEGORIAS_INVENTARIO = [
     "Medicamentos", "Material quirúrgico", "Insumos de enfermería",
     "Equipo médico", "Protección personal", "Oficina y papelería", "General",
 ]
-
 CODIGOS_EMERGENCIA = {
     "azul": {"nombre": "Código Azul", "descripcion": "Paro cardiorrespiratorio — reanimación inmediata.", "color": "#2980B9", "mencion_keys": ["DIRECTOR_MEDICO", "DIRECTOR_ENFERMERIA", "STAFF"]},
     "rojo": {"nombre": "Código Rojo", "descripcion": "Incendio dentro de las instalaciones.", "color": "#C0392B", "mencion_keys": ["DIRECTOR_SEGURIDAD", "SUPERVISOR", "STAFF"]},
@@ -195,18 +176,9 @@ CODIGOS_EMERGENCIA = {
     "ambar": {"nombre": "Código Ámbar", "descripcion": "Desaparición o secuestro de un menor.", "color": "#D35400", "mencion_keys": ["DIRECTOR_SEGURIDAD", "SUPERVISOR"]},
     "verde": {"nombre": "Código Verde", "descripcion": "Evacuación general del edificio.", "color": "#27AE60", "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH", "STAFF"]},
 }
-
-FICHA_CAMPOS = {
-    "especialidad": "Especialidad",
-    "licencia": "N° de licencia",
-    "contacto": "Contacto RP",
-    "ingreso": "Fecha de ingreso",
-    "notas": "Notas administrativas",
-}
-
+FICHA_CAMPOS = {"especialidad": "Especialidad", "licencia": "N° de licencia", "contacto": "Contacto RP", "ingreso": "Fecha de ingreso", "notas": "Notas administrativas"}
 TICKET_STAFF_KEYS = ["SUPERVISOR", "DIRECTOR", "DIRECTOR_DISCIPLINA", "DIRECTOR_GENERAL", "DIRECTOR_ADMINISTRATIVO", "CO_OWNER", "OWNER"]
 TICKET_CATEGORIA_ID = 1381426327630118932
-
 TIPOS_SOLICITUD_RRHH = {
     "despido": {"titulo": "🚫 Solicitud de despido", "campos": ["usuario", "motivo", "evidencia"], "key_aprobador": "DIRECTOR_RRHH"},
     "sancion_interna": {"titulo": "⚠️ Solicitud de sanción interna", "campos": ["usuario", "tipo_sancion", "motivo", "evidencia"], "key_aprobador": "DIRECTOR_RRHH"},
@@ -215,10 +187,8 @@ TIPOS_SOLICITUD_RRHH = {
     "suspension": {"titulo": "⛔ Solicitud de suspensión", "campos": ["usuario", "duracion", "motivo"], "key_aprobador": "DIRECTOR_RRHH"},
 }
 
-
 def nombre_key(key: str) -> str:
     return KEYS_NOMBRES.get(key, (key, ""))[0]
-
 
 def keys_de_direccion():
     return [k for k in KEYS_NOMBRES if k.startswith("DIRECTOR_")]
