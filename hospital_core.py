@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*
-"""hospital_core.py — arranque estable. Módulos opcionales; no aborta por fallos parciales."""
+"""hospital_core.py — arranque estable con reintentos y módulos aislados."""
 from __future__ import annotations
 
 import asyncio
 import re
+import time
 import traceback
 import urllib.request
 
@@ -56,11 +57,24 @@ _CRITICOS = {
 }
 
 
+def _descargar_nucleo() -> str:
+    last_err = None
+    for intento in range(1, 4):
+        try:
+            print(f"[hospital_core] Descarga núcleo intento {intento}…", flush=True)
+            with urllib.request.urlopen(_URL, timeout=90) as resp:
+                data = resp.read().decode("utf-8")
+            print(f"[hospital_core] Núcleo {len(data)} bytes", flush=True)
+            return data
+        except Exception as e:
+            last_err = e
+            print(f"[hospital_core] Fallo descarga: {e}", flush=True)
+            time.sleep(2 * intento)
+    raise RuntimeError(f"No se pudo descargar el núcleo: {last_err}")
+
+
 def _cargar(module_globals: dict):
-    print("[hospital_core] Descargando núcleo…", flush=True)
-    with urllib.request.urlopen(_URL, timeout=90) as resp:
-        source = resp.read().decode("utf-8")
-    print(f"[hospital_core] Núcleo {len(source)} bytes", flush=True)
+    source = _descargar_nucleo()
 
     on_ready_pattern = re.compile(
         r"@bot\.event\s*\nasync def on_ready\(\):\n"
@@ -136,11 +150,16 @@ async def on_ready():
         source = source[:idx]
 
     print("[hospital_core] Exec núcleo…", flush=True)
-    exec(compile(source, "hospital_core_remote.py", "exec"), module_globals)
+    try:
+        exec(compile(source, "hospital_core_remote.py", "exec"), module_globals)
+    except Exception:
+        print("[hospital_core] ERROR al ejecutar núcleo:", flush=True)
+        traceback.print_exc()
+        raise
 
     bot = module_globals.get("bot")
     if bot is None:
-        raise RuntimeError("bot no definido")
+        raise RuntimeError("bot no definido tras exec del núcleo")
 
     for n in _QUITAR:
         try:
@@ -148,7 +167,6 @@ async def on_ready():
         except Exception:
             pass
 
-    # Módulos: fallo aislado, no tumba el bot
     print("[hospital_core] Módulos…", flush=True)
     for name in _MODULOS:
         try:
@@ -194,7 +212,7 @@ async def on_ready():
         return _listar()
 
     try:
-        print(f"[hospital_core] Comandos en memoria: {len(_recortar())}", flush=True)
+        print(f"[hospital_core] Comandos: {len(_recortar())}", flush=True)
     except Exception:
         traceback.print_exc()
 
