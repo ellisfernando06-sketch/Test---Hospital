@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""hospital_core.py — arranque estable anti-crash."""
+"""hospital_core.py — arranque estable. Módulos opcionales; no aborta por fallos parciales."""
 from __future__ import annotations
 
 import asyncio
@@ -8,7 +8,6 @@ import traceback
 import urllib.request
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 _COMMIT = "30a15578af8c1459b0d2dcad8af2881c4a8a326b"
@@ -137,16 +136,11 @@ async def on_ready():
         source = source[:idx]
 
     print("[hospital_core] Exec núcleo…", flush=True)
-    try:
-        exec(compile(source, "hospital_core_remote.py", "exec"), module_globals)
-    except Exception:
-        print("[hospital_core] ERROR núcleo:", flush=True)
-        traceback.print_exc()
-        raise
+    exec(compile(source, "hospital_core_remote.py", "exec"), module_globals)
 
     bot = module_globals.get("bot")
     if bot is None:
-        raise RuntimeError("bot no definido tras exec")
+        raise RuntimeError("bot no definido")
 
     for n in _QUITAR:
         try:
@@ -154,6 +148,7 @@ async def on_ready():
         except Exception:
             pass
 
+    # Módulos: fallo aislado, no tumba el bot
     print("[hospital_core] Módulos…", flush=True)
     for name in _MODULOS:
         try:
@@ -162,69 +157,7 @@ async def on_ready():
                 mod.registrar(bot)
             print(f"[hospital_core] ✓ {name}", flush=True)
         except Exception:
-            print(f"[hospital_core] ✗ {name} (se continúa)", flush=True)
-            traceback.print_exc()
-
-    # Comandos críticos solo si faltan (sin pisar)
-    try:
-        names = {c.name for c in bot.tree.get_commands()}
-    except Exception:
-        names = set()
-
-    if "registrar_firma" not in names:
-        try:
-            @bot.tree.command(name="registrar_firma", description="Registra tu firma digitalizada")
-            @app_commands.describe(imagen="Imagen de firma", cargo="Cargo")
-            @app_commands.choices(cargo=[
-                app_commands.Choice(name="Director de Investigación y Docencia", value="DIRECTOR_DOCENCIA"),
-                app_commands.Choice(name="Director Médico", value="DIRECTOR_MEDICO"),
-                app_commands.Choice(name="Director Administrativo", value="DIRECTOR_ADMINISTRATIVO"),
-                app_commands.Choice(name="Director de RRHH", value="DIRECTOR_RRHH"),
-                app_commands.Choice(name="Director General", value="DIRECTOR_GENERAL"),
-                app_commands.Choice(name="Encargado / Instructor", value="ENCARGADO"),
-                app_commands.Choice(name="Otra firma personal", value="PERSONAL"),
-            ])
-            async def registrar_firma(inter: discord.Interaction, imagen: discord.Attachment, cargo: app_commands.Choice[str]):
-                try:
-                    import firmas
-                    if not imagen.content_type or not str(imagen.content_type).startswith("image/"):
-                        return await inter.response.send_message("❌ Debe ser imagen.", ephemeral=True)
-                    key = cargo.value
-                    if key not in ("ENCARGADO", "PERSONAL") and not firmas._es_key(inter.user, key, "OWNER"):
-                        return await inter.response.send_message("❌ Sin ese cargo.", ephemeral=True)
-                    await inter.response.defer(ephemeral=True)
-                    fname = await firmas.descargar_firma(imagen, inter.user.id)
-                    firmas.guardar_firma(inter.user.id, key, fname)
-                    await inter.followup.send(f"✅ Firma **{cargo.name}** OK.", ephemeral=True)
-                except Exception as e:
-                    try:
-                        if inter.response.is_done():
-                            await inter.followup.send(f"❌ {e}", ephemeral=True)
-                        else:
-                            await inter.response.send_message(f"❌ {e}", ephemeral=True)
-                    except Exception:
-                        pass
-            print("[hospital_core] + registrar_firma", flush=True)
-        except Exception:
-            traceback.print_exc()
-
-    if "certificar" not in {c.name for c in bot.tree.get_commands()}:
-        try:
-            @bot.tree.command(name="certificar", description="Certificado RP con autorización")
-            @app_commands.describe(usuario="Receptor del certificado")
-            async def certificar(inter: discord.Interaction, usuario: discord.Member):
-                try:
-                    import capacitacion_cert_ui as ccu
-                    if not ccu._puede_iniciar(inter.user):
-                        return await inter.response.send_message("❌ Sin permiso.", ephemeral=True)
-                    await inter.response.send_modal(ccu.ModalCertificar(bot, usuario))
-                except Exception as e:
-                    try:
-                        await inter.response.send_message(f"❌ {e}", ephemeral=True)
-                    except Exception:
-                        pass
-            print("[hospital_core] + certificar", flush=True)
-        except Exception:
+            print(f"[hospital_core] ✗ {name} (ignorado)", flush=True)
             traceback.print_exc()
 
     def _listar():
@@ -261,7 +194,7 @@ async def on_ready():
         return _listar()
 
     try:
-        print(f"[hospital_core] Comandos: {len(_recortar())}", flush=True)
+        print(f"[hospital_core] Comandos en memoria: {len(_recortar())}", flush=True)
     except Exception:
         traceback.print_exc()
 
@@ -309,8 +242,8 @@ async def on_ready():
         msg = await ctx.reply("🔄 Sync…")
         try:
             names = await _sync_todo("!forzar_sync")
-            ok = [c for c in ("registrar_firma", "certificar") if c in names]
-            await msg.edit(content=f"✅ {len(names)} comandos. Clave: {', '.join(ok) or '—'}")
+            ok = [c for c in ("registrar_firma", "certificar", "ver_mi_firma") if c in names]
+            await msg.edit(content=f"✅ {len(names)} comandos · `{', '.join(ok) or '—'}`")
         except Exception as e:
             await msg.edit(content=f"❌ {e}")
 
@@ -329,9 +262,4 @@ async def on_ready():
     return bot
 
 
-try:
-    bot = _cargar(globals())
-except Exception:
-    print("[hospital_core] FALLO FATAL AL CARGAR:", flush=True)
-    traceback.print_exc()
-    raise
+bot = _cargar(globals())
