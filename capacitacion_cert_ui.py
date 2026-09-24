@@ -1,14 +1,10 @@
 # -*- coding: utf-8 -*
-"""
-capacitacion_cert_ui.py — Comando /certificar visible + formulario + autorización.
-"""
+"""capacitacion_cert_ui.py — Modal y lógica de /certificar."""
 from __future__ import annotations
 
 import discord
 from discord import ui, app_commands
 from discord.ext import commands
-
-import config
 
 try:
     import permisos
@@ -80,12 +76,11 @@ class ModalCertificar(ui.Modal, title="🎓 Datos del certificado"):
                 firma_file = reg_f.get("file")
             else:
                 await inter.followup.send(
-                    "⚠️ No tienes firma registrada. El certificado saldrá sin firma de encargado.\n"
-                    "Usa `/registrar_firma` (cargo: Encargado / Instructor).",
+                    "⚠️ Sin firma registrada. Usa `/registrar_firma` (Encargado / Instructor).",
                     ephemeral=True,
                 )
         except Exception as e:
-            print("[certificar] firma encargado:", e)
+            print("[certificar] firma:", e)
 
         try:
             import firmas
@@ -99,11 +94,10 @@ class ModalCertificar(ui.Modal, title="🎓 Datos del certificado"):
                 firma_encargado_file=firma_file,
             )
             await inter.followup.send(
-                f"📨 Solicitud de certificado **#{aid}** enviada.\n"
+                f"📨 Solicitud **#{aid}** enviada.\n"
                 f"**Graduado:** {self.usuario.mention}\n"
                 f"**Capacitación:** {cap}\n\n"
-                f"Esperando al **Director de Investigación y Docencia** "
-                f"(botón **Autorizar y firmar**).",
+                f"Pendiente: **Director de Investigación y Docencia** → Autorizar y firmar.",
                 ephemeral=True,
             )
         except Exception as e:
@@ -112,50 +106,36 @@ class ModalCertificar(ui.Modal, title="🎓 Datos del certificado"):
 
 
 def registrar(bot: commands.Bot) -> None:
+    """Registra /certificar solo si aún no está en el árbol."""
+    presentes = {c.name for c in bot.tree.get_commands()}
+
     async def _abrir(inter: discord.Interaction, usuario: discord.Member):
         if not isinstance(inter.user, discord.Member) or not _puede_iniciar(inter.user):
-            await inter.response.send_message(
-                "❌ Solo Docencia / Dirección / Supervisión pueden certificar.",
-                ephemeral=True,
-            )
+            await inter.response.send_message("❌ Sin permiso para certificar.", ephemeral=True)
             return
         await inter.response.send_modal(ModalCertificar(bot, usuario))
 
-    # ── Comando PRINCIPAL (siempre visible en /) ──────────────────────
-    for nombre in ("certificar", "certificar_capacitacion"):
-        try:
-            bot.tree.remove_command(nombre)
-        except Exception:
-            pass
+    if "certificar" not in presentes:
+        @bot.tree.command(
+            name="certificar",
+            description="Certificado RP → formulario → autorización Director Investigación y Docencia",
+        )
+        @app_commands.describe(usuario="Personal que recibe el certificado")
+        async def certificar_cmd(inter: discord.Interaction, usuario: discord.Member):
+            await _abrir(inter, usuario)
+        print("[capacitacion_cert_ui] ✓ /certificar")
+    else:
+        print("[capacitacion_cert_ui] · /certificar ya registrado")
 
-    @bot.tree.command(
-        name="certificar",
-        description="Emitir certificado RP (formulario → autorización Director Investigación y Docencia)",
-    )
-    @app_commands.describe(usuario="Personal que recibe el certificado")
-    async def certificar_cmd(inter: discord.Interaction, usuario: discord.Member):
-        await _abrir(inter, usuario)
-
-    # También intentar el subcomando del grupo capacitacion (si existe)
+    # Subcomando del grupo si existe
     try:
         grupo = bot.tree.get_command("capacitacion")
-        if grupo is not None and hasattr(grupo, "remove_command"):
-            try:
-                grupo.remove_command("certificar")
-            except Exception:
-                pass
-
-            @grupo.command(
-                name="certificar",
-                description="Solicitar certificado (igual que /certificar)",
-            )
-            @app_commands.describe(usuario="Personal que recibe el certificado")
-            async def certificar_grupo(inter: discord.Interaction, usuario: discord.Member):
-                await _abrir(inter, usuario)
-
-            print("[capacitacion_cert_ui] ✓ /certificar + capacitacion certificar")
-        else:
-            print("[capacitacion_cert_ui] ✓ /certificar (grupo no disponible)")
+        if grupo is not None and hasattr(grupo, "get_command"):
+            if grupo.get_command("certificar") is None:
+                @grupo.command(name="certificar", description="Igual que /certificar")
+                @app_commands.describe(usuario="Personal que recibe el certificado")
+                async def certificar_g(inter: discord.Interaction, usuario: discord.Member):
+                    await _abrir(inter, usuario)
+                print("[capacitacion_cert_ui] ✓ capacitacion certificar")
     except Exception as e:
-        print("[capacitacion_cert_ui] grupo opcional:", e)
-        print("[capacitacion_cert_ui] ✓ /certificar OK")
+        print("[capacitacion_cert_ui] grupo:", e)
