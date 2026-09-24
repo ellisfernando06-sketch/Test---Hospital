@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""hospital_core.py — núcleo + módulos + sync FIABLE."""
+"""hospital_core.py — núcleo + módulos + sync FIABLE (máx 100 slash)."""
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +16,7 @@ _URL = (
     f"{_COMMIT}/Bot_Hospital.py"
 )
 _GUILD_ID = 1381360019467014184
+_MAX_SLASH = 100  # Límite de Discord por guild / global
 
 _MODULOS = (
     "comandos_nuevos",
@@ -31,6 +32,40 @@ _MODULOS = (
     "docencia",
 )
 
+# Si hay más de 100, se quitan primero estos (menos críticos / redundantes)
+_BAJA_PRIORIDAD = (
+    "ver_canal_logs_tickets",
+    "configurar_logs_tickets",
+    "catalogo_tienda",
+    "panel_reglas",
+    "reglas",
+    "solicitud_info",
+    "mi_sanciones",
+    "historial_advertencias",
+    "historial_financiero",
+    "libro_contable",
+    "registrar_gasto",
+    "registrar_ingreso",
+    "ooc_advertencia",
+    "ooc_kick",
+    "ooc_ban",
+    "ooc_timeout",
+    "citatorio_admin",
+    "citatorio_disciplina",
+    "citatorio_general",
+    "carta_solicitud",
+    "reporte_procedimiento",
+    "solicitud_degrado",
+    "solicitud_descargo",
+    "quejas_pendientes",
+    "queja_resolver",
+    "marcar_asistencia",
+    "asignar_tarea",
+    "convocar_reunion_departamento",
+    "panel_solicitudes_logs",
+    "configurar_canal_logs",
+)
+
 
 def _cargar(module_globals: dict):
     print("[hospital_core] Descargando núcleo…")
@@ -38,12 +73,6 @@ def _cargar(module_globals: dict):
         source = resp.read().decode("utf-8")
     print(f"[hospital_core] Núcleo: {len(source)} bytes")
 
-    # ═══════════════════════════════════════════════════════════════
-    # REEMPLAZAR TODO el on_ready remoto por uno que:
-    #  1) registra vistas persistentes
-    #  2) NO borra ni vacía el árbol de comandos
-    #  3) deja el sync a hospital_core (después de cargar módulos)
-    # ═══════════════════════════════════════════════════════════════
     on_ready_pattern = re.compile(
         r"@bot\.event\s*\nasync def on_ready\(\):\n"
         r"(?:.*\n)*?"
@@ -53,7 +82,7 @@ def _cargar(module_globals: dict):
 
     new_on_ready = '''@bot.event
 async def on_ready():
-    """Arranque controlado por hospital_core — no vacía comandos."""
+    """Arranque controlado — no vacía comandos."""
     try:
         bot.add_view(AbrirTicketView())
         bot.add_view(CerrarTicketView())
@@ -76,7 +105,6 @@ async def on_ready():
     except Exception as _e:
         print("[on_ready] bot_control:", _e)
 
-    # Sync lo hace hospital_core._hospital_sync_todo tras cargar módulos
     fn = getattr(bot, "_hospital_sync_todo", None)
     if callable(fn):
         try:
@@ -85,8 +113,10 @@ async def on_ready():
             print(f"[on_ready] Sync OK: {len(names or [])} comandos")
         except Exception as _e:
             print("[on_ready] Sync falló:", _e)
+            import traceback as _tb
+            _tb.print_exc()
     else:
-        print("[on_ready] _hospital_sync_todo aún no está listo")
+        print("[on_ready] _hospital_sync_todo no listo")
 
 '''
 
@@ -95,14 +125,13 @@ async def on_ready():
         source = source[: m.start()] + new_on_ready + source[m.end() :]
         print("[hospital_core] ✓ on_ready remoto REEMPLAZADO")
     else:
-        print("[hospital_core] ⚠ No se encontró on_ready — parches sueltos")
-        source = source.replace("bot.tree.clear_commands(guild=None)", "pass  # no clear")
+        print("[hospital_core] ⚠ on_ready no encontrado — parches sueltos")
+        source = source.replace("bot.tree.clear_commands(guild=None)", "pass")
         source = source.replace(
             "await bot.tree.sync()  # publica árbol vacío a nivel global (quita duplicados viejos)",
-            "pass  # no empty sync",
+            "pass",
         )
 
-    # Cortar antes del run/token check
     marker = "if not config.TOKEN:"
     idx = source.find(marker)
     if idx > 0:
@@ -120,7 +149,6 @@ async def on_ready():
     if bot is None:
         raise RuntimeError("hospital_core: bot no definido")
 
-    # ── Módulos ──────────────────────────────────────────────────
     print("[hospital_core] Registrando módulos…")
     ok, fail = [], []
     for name in _MODULOS:
@@ -138,40 +166,89 @@ async def on_ready():
             traceback.print_exc()
     print(f"[hospital_core] módulos OK={ok} FAIL={fail}")
 
-    try:
-        names = sorted({c.name for c in bot.tree.get_commands()})
-        print(f"[hospital_core] En memoria: {len(names)} → {', '.join(names)}")
-    except Exception as e:
-        print("[hospital_core] listar:", e)
+    def _listar_nombres():
+        return sorted({c.name for c in bot.tree.get_commands()})
+
+    def _recortar_a_limite():
+        """Discord solo permite 100 slash commands. Quita los de baja prioridad."""
+        names = _listar_nombres()
+        print(f"[hospital_core] Comandos antes de recorte: {len(names)}")
+        if len(names) <= _MAX_SLASH:
+            return names
+        quitados = []
+        for n in _BAJA_PRIORIDAD:
+            if len(_listar_nombres()) <= _MAX_SLASH:
+                break
+            try:
+                bot.tree.remove_command(n)
+                quitados.append(n)
+            except Exception:
+                pass
+        # Si aún sobran, quitar los últimos alfabéticamente que no sean críticos
+        criticos = {
+            "limpiar", "limpiar_todo", "sincronizar_comandos",
+            "crear_certificado", "mis_certificados", "ver_certificados", "mostrar_certificado",
+            "panel_solicitudes", "configurar_roles", "otorgar_key", "bootstrap_owner",
+            "tienda", "panel_tienda", "mi_inventario",
+            "sancionar", "verificar_roblox", "expediente",
+        }
+        while len(_listar_nombres()) > _MAX_SLASH:
+            restantes = [n for n in _listar_nombres() if n not in criticos]
+            if not restantes:
+                break
+            n = restantes[-1]
+            try:
+                bot.tree.remove_command(n)
+                quitados.append(n)
+            except Exception:
+                break
+        final = _listar_nombres()
+        print(f"[hospital_core] Recortados ({len(quitados)}): {quitados}")
+        print(f"[hospital_core] Comandos tras recorte: {len(final)}")
+        return final
+
+    names0 = _recortar_a_limite()
+    print(f"[hospital_core] En memoria: {len(names0)} → {', '.join(names0)}")
 
     async def _sync_todo(reason: str = "") -> list:
         result: list = []
         print(f"[hospital_core] === SYNC ({reason}) ===")
+        _recortar_a_limite()
         try:
-            # Global
-            try:
-                gsync = await bot.tree.sync()
-                print(f"[hospital_core] GLOBAL: {len(gsync)}")
-            except Exception as e:
-                print(f"[hospital_core] GLOBAL error: {e}")
-
+            # Solo guild (instantáneo). Evitamos sync global vacío/conflictos.
             targets = list(bot.guilds) if getattr(bot, "guilds", None) else []
             if not targets:
                 targets = [discord.Object(id=_GUILD_ID)]
-                print(f"[hospital_core] Sin guilds en cache, uso {_GUILD_ID}")
+                print(f"[hospital_core] Sin guilds en cache → {_GUILD_ID}")
 
             for g in targets:
                 gid = int(getattr(g, "id", _GUILD_ID))
                 obj = discord.Object(id=gid)
                 try:
+                    # Publicar el árbol actual SOLO en el guild (sin clear previo)
                     bot.tree.copy_global_to(guild=obj)
                     synced = await bot.tree.sync(guild=obj)
                     result = sorted(c.name for c in synced)
-                    print(f"[hospital_core] GUILD {gid}: {len(result)} comandos")
-                    print(f"[hospital_core] → {', '.join(result[:80])}")
+                    print(f"[hospital_core] GUILD {gid}: {len(result)} OK")
+                    print(f"[hospital_core] → {', '.join(result)}")
+                except discord.HTTPException as e:
+                    print(
+                        f"[hospital_core] GUILD {gid} HTTPException status={e.status} "
+                        f"code={getattr(e, 'code', None)}: {e.text}"
+                    )
+                    traceback.print_exc()
                 except Exception as e:
                     print(f"[hospital_core] GUILD {gid} error: {e}")
                     traceback.print_exc()
+
+            # Global opcional (no bloqueante para el servidor)
+            try:
+                gsync = await bot.tree.sync()
+                print(f"[hospital_core] GLOBAL: {len(gsync)}")
+            except discord.HTTPException as e:
+                print(f"[hospital_core] GLOBAL HTTP {e.status}: {e.text}")
+            except Exception as e:
+                print(f"[hospital_core] GLOBAL error: {e}")
         except Exception as e:
             print(f"[hospital_core] sync error: {e}")
             traceback.print_exc()
@@ -179,7 +256,6 @@ async def on_ready():
 
     bot._hospital_sync_todo = _sync_todo
 
-    # Comando de texto de emergencia (no necesita slash sync)
     try:
         bot.remove_command("forzar_sync")
     except Exception:
@@ -195,31 +271,30 @@ async def on_ready():
         ):
             await ctx.reply("❌ Solo admin / dueño.")
             return
-        m = await ctx.reply("🔄 Publicando comandos…")
+        m = await ctx.reply("🔄 Publicando comandos (máx. 100)…")
         try:
             names = await _sync_todo("!forzar_sync")
             await m.edit(
                 content=(
                     f"✅ **{len(names)}** slash commands publicados.\n"
-                    f"`{'`, `'.join(names[:50])}`"
-                    + ("…" if len(names) > 50 else "")
-                    + "\nEscribe `/` — deben salir ya."
+                    f"`{'`, `'.join(names[:60])}`"
+                    + ("…" if len(names) > 60 else "")
+                    + "\nEscribe `/` en Discord."
                 )
             )
         except Exception as e:
             await m.edit(content=f"❌ `{e}`")
 
-    # Por si on_ready del núcleo ya pasó (reconnect), reintentar
     @bot.listen("on_ready")
     async def _hc_backup_sync():
         if getattr(bot, "_hc_backup_done", False):
             return
         bot._hc_backup_done = True
-        await asyncio.sleep(5)
+        await asyncio.sleep(6)
         try:
             await _sync_todo("backup-listen")
         except Exception as e:
-            print("[hospital_core] backup sync:", e)
+            print("[hospital_core] backup:", e)
 
     return bot
 
