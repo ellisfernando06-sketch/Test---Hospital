@@ -30,8 +30,8 @@ _MODULOS = (
     "entrevista_ui",
     "tickets_cierre",
     "docencia",
-    "firmas",                 # firmas digitalizadas + autorizar
-    "capacitacion_cert_ui",   # modal + auth Docencia (al final)
+    "firmas",
+    "capacitacion_cert_ui",
 )
 
 _BAJA_PRIORIDAD = (
@@ -66,6 +66,16 @@ _BAJA_PRIORIDAD = (
     "panel_solicitudes_logs",
     "configurar_canal_logs",
 )
+
+# Nunca recortar estos
+_CRITICOS = {
+    "limpiar", "limpiar_todo", "sincronizar_comandos",
+    "certificar", "registrar_firma", "ver_mi_firma",
+    "crear_certificado", "mis_certificados", "ver_certificados", "mostrar_certificado",
+    "panel_solicitudes", "configurar_roles", "otorgar_key", "bootstrap_owner",
+    "tienda", "panel_tienda", "mi_inventario",
+    "sancionar", "verificar_roblox", "expediente",
+}
 
 
 def _cargar(module_globals: dict):
@@ -126,7 +136,7 @@ async def on_ready():
         source = source[: m.start()] + new_on_ready + source[m.end() :]
         print("[hospital_core] ✓ on_ready remoto REEMPLAZADO")
     else:
-        print("[hospital_core] ⚠ on_ready no encontrado — parches sueltos")
+        print("[hospital_core] ⚠ on_ready no encontrado")
         source = source.replace("bot.tree.clear_commands(guild=None)", "pass")
         source = source.replace(
             "await bot.tree.sync()  # publica árbol vacío a nivel global (quita duplicados viejos)",
@@ -179,21 +189,15 @@ async def on_ready():
         for n in _BAJA_PRIORIDAD:
             if len(_listar_nombres()) <= _MAX_SLASH:
                 break
+            if n in _CRITICOS:
+                continue
             try:
                 bot.tree.remove_command(n)
                 quitados.append(n)
             except Exception:
                 pass
-        criticos = {
-            "limpiar", "limpiar_todo", "sincronizar_comandos",
-            "crear_certificado", "mis_certificados", "ver_certificados", "mostrar_certificado",
-            "panel_solicitudes", "configurar_roles", "otorgar_key", "bootstrap_owner",
-            "tienda", "panel_tienda", "mi_inventario",
-            "sancionar", "verificar_roblox", "expediente",
-            "registrar_firma", "ver_mi_firma",
-        }
         while len(_listar_nombres()) > _MAX_SLASH:
-            restantes = [n for n in _listar_nombres() if n not in criticos]
+            restantes = [n for n in _listar_nombres() if n not in _CRITICOS]
             if not restantes:
                 break
             n = restantes[-1]
@@ -204,11 +208,11 @@ async def on_ready():
                 break
         final = _listar_nombres()
         print(f"[hospital_core] Recortados ({len(quitados)}): {quitados}")
-        print(f"[hospital_core] Comandos tras recorte: {len(final)}")
+        print(f"[hospital_core] Tras recorte: {len(final)} → {', '.join(final)}")
         return final
 
     names0 = _recortar_a_limite()
-    print(f"[hospital_core] En memoria: {len(names0)} → {', '.join(names0)}")
+    print(f"[hospital_core] En memoria: {len(names0)}")
 
     async def _vaciar_globales():
         try:
@@ -217,9 +221,9 @@ async def on_ready():
                 appinfo = await bot.application_info()
                 app_id = appinfo.id
             await bot.http.bulk_upsert_global_commands(int(app_id), [])
-            print("[hospital_core] Globales vaciados (sin duplicados)")
+            print("[hospital_core] Globales vaciados")
         except Exception as e:
-            print(f"[hospital_core] No se pudieron vaciar globales: {e}")
+            print(f"[hospital_core] Globales: {e}")
 
     async def _sync_todo(reason: str = "") -> list:
         result: list = []
@@ -238,6 +242,12 @@ async def on_ready():
                     synced = await bot.tree.sync(guild=obj)
                     result = sorted(c.name for c in synced)
                     print(f"[hospital_core] GUILD {gid}: {len(result)} OK")
+                    if "certificar" in result:
+                        print("[hospital_core] ✓ /certificar publicado")
+                    else:
+                        print("[hospital_core] ⚠ /certificar NO está en el sync")
+                    if "registrar_firma" in result:
+                        print("[hospital_core] ✓ /registrar_firma publicado")
                 except Exception as e:
                     print(f"[hospital_core] GUILD {gid} error: {e}")
                     traceback.print_exc()
@@ -266,7 +276,17 @@ async def on_ready():
         m = await ctx.reply("🔄 Publicando comandos…")
         try:
             names = await _sync_todo("!forzar_sync")
-            await m.edit(content=f"✅ **{len(names)}** comandos publicados.")
+            tiene = []
+            for c in ("certificar", "registrar_firma", "ver_mi_firma", "limpiar"):
+                if c in names:
+                    tiene.append(c)
+            await m.edit(
+                content=(
+                    f"✅ **{len(names)}** comandos.\n"
+                    f"Clave: `{', '.join(tiene) or 'ninguno'}`\n"
+                    f"Escribe `/certificar` y `/registrar_firma`."
+                )
+            )
         except Exception as e:
             await m.edit(content=f"❌ `{e}`")
 
