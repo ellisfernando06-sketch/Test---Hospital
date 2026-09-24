@@ -94,6 +94,7 @@ def _orden_deseado() -> List[Tuple[str, str]]:
         "logistica": "sep_logistica",
         "seguridad": "sep_seguridad",
         "administracion": "sep_admin",
+        "docencia": "sep_docencia",
     }
     for slug, data in config.DEPARTAMENTOS.items():
         if slug == "staff_servidor":
