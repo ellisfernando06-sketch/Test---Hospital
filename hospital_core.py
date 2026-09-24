@@ -35,41 +35,17 @@ _MODULOS = (
     "capacitacion_cert_ui",
 )
 
-# Se eliminan SIEMPRE del árbol (liberan hueco)
-_QUITAR_SIEMPRE = (
-    "ordenar_roles",
-)
+_QUITAR_SIEMPRE = ("ordenar_roles",)
 
 _BAJA_PRIORIDAD = (
-    "ver_canal_logs_tickets",
-    "configurar_logs_tickets",
-    "panel_solicitudes_logs",
-    "configurar_canal_logs",
-    "catalogo_tienda",
-    "panel_reglas",
-    "reglas",
-    "solicitud_info",
-    "mi_sanciones",
-    "historial_advertencias",
-    "historial_financiero",
-    "libro_contable",
-    "registrar_gasto",
-    "registrar_ingreso",
-    "ooc_advertencia",
-    "ooc_kick",
-    "ooc_ban",
-    "ooc_timeout",
-    "citatorio_admin",
-    "citatorio_disciplina",
-    "citatorio_general",
-    "carta_solicitud",
-    "reporte_procedimiento",
-    "solicitud_degrado",
-    "solicitud_descargo",
-    "quejas_pendientes",
-    "queja_resolver",
-    "marcar_asistencia",
-    "asignar_tarea",
+    "ver_canal_logs_tickets", "configurar_logs_tickets", "panel_solicitudes_logs",
+    "configurar_canal_logs", "catalogo_tienda", "panel_reglas", "reglas",
+    "solicitud_info", "mi_sanciones", "historial_advertencias", "historial_financiero",
+    "libro_contable", "registrar_gasto", "registrar_ingreso",
+    "ooc_advertencia", "ooc_kick", "ooc_ban", "ooc_timeout",
+    "citatorio_admin", "citatorio_disciplina", "citatorio_general",
+    "carta_solicitud", "reporte_procedimiento", "solicitud_degrado", "solicitud_descargo",
+    "quejas_pendientes", "queja_resolver", "marcar_asistencia", "asignar_tarea",
     "convocar_reunion_departamento",
 )
 
@@ -140,7 +116,6 @@ def _cargar(module_globals: dict):
             "pass",
         )
 
-    # Quitar definición de ordenar_roles del núcleo remoto (antes de exec)
     source = re.sub(
         r"@bot\.tree\.command\(name=\"ordenar_roles\"[^\n]*\n"
         r"(?:@[^\n]+\n)*"
@@ -149,6 +124,15 @@ def _cargar(module_globals: dict):
         source,
         count=1,
     )
+
+    # Textos Owner → Gerente Developer
+    source = source.replace(
+        'description="[Solo primer uso] Te asigna la key OWNER para poder configurar el bot"',
+        'description="[Solo primer uso] Te asigna Gerente Developer (máxima autoridad)"',
+    )
+    source = source.replace("la key OWNER", "la key Gerente Developer")
+    source = source.replace("key OWNER configurada", "key Gerente Developer configurada")
+    source = source.replace("/configurar_roles una vez (OWNER)", "/configurar_roles una vez (Gerente Developer)")
 
     marker = "if not config.TOKEN:"
     idx = source.find(marker)
@@ -159,7 +143,6 @@ def _cargar(module_globals: dict):
     try:
         exec(compile(source, "hospital_core_remote.py", "exec"), module_globals)
     except Exception:
-        print("[hospital_core] ERROR núcleo:")
         traceback.print_exc()
         raise
 
@@ -167,7 +150,6 @@ def _cargar(module_globals: dict):
     if bot is None:
         raise RuntimeError("bot no definido")
 
-    # Por si el regex no quitó ordenar_roles
     for n in _QUITAR_SIEMPRE:
         try:
             bot.tree.remove_command(n)
@@ -186,7 +168,6 @@ def _cargar(module_globals: dict):
             print(f"[hospital_core] ✗ {name}")
             traceback.print_exc()
 
-    # Garantizar registrar_firma si el módulo falló
     presentes = {c.name for c in bot.tree.get_commands()}
     if "registrar_firma" not in presentes:
         @bot.tree.command(name="registrar_firma", description="Registra tu firma digitalizada (imagen PNG/JPG)")
@@ -242,7 +223,6 @@ def _cargar(module_globals: dict):
             except Exception:
                 pass
         names = _nombres()
-        print(f"[hospital_core] Comandos: {len(names)}")
         if len(names) <= _MAX_SLASH:
             return names
         for n in _BAJA_PRIORIDAD:
@@ -285,10 +265,6 @@ def _cargar(module_globals: dict):
                     synced = await bot.tree.sync(guild=obj)
                     result = sorted(c.name for c in synced)
                     print(f"[hospital_core] GUILD {gid}: {len(result)}")
-                    for need in ("registrar_firma", "certificar", "configurar_roles"):
-                        print(f"  {need}: {'OK' if need in result else 'FALTA'}")
-                    if "ordenar_roles" in result:
-                        print("  ⚠ ordenar_roles aún presente (no debería)")
                 except Exception as e:
                     print(f"[hospital_core] sync {gid}: {e}")
                     traceback.print_exc()
@@ -314,13 +290,7 @@ def _cargar(module_globals: dict):
         msg = await ctx.reply("🔄 Sync…")
         names = await _sync_todo("!forzar_sync")
         ok = [c for c in ("registrar_firma", "certificar", "ver_mi_firma") if c in names]
-        await msg.edit(
-            content=(
-                f"✅ **{len(names)}** comandos.\n"
-                f"Firma/cert: `{', '.join(ok) or 'FALTAN'}`\n"
-                f"`ordenar_roles` eliminado."
-            )
-        )
+        await msg.edit(content=f"✅ **{len(names)}** comandos. Firma/cert: `{', '.join(ok) or 'FALTAN'}`")
 
     @bot.listen("on_ready")
     async def _hc_backup():
