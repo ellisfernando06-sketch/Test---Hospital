@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-roles_setup.py — Detecta roles existentes por nombre (con emoji).
-Si no existen, los CREA con el nombre + emoji y color de config.py.
-Guarda IDs y ordena roles por categorías.
+roles_setup.py — Detecta/crea roles y ordena por categorías.
+Cúpula: Gerente Developer (OWNER) + Co-Owner
+Dirección Hospital: Director General + resto de directores
 """
 from __future__ import annotations
 
@@ -27,6 +27,11 @@ def _buscar_rol_por_nombre(guild: discord.Guild, nombre: str) -> Optional[discor
     for r in guild.roles:
         if r.name.lower() == nombre_l:
             return r
+    # Compat: antiguo "Owner" → Gerente Developer
+    if "gerente developer" in nombre_l:
+        for r in guild.roles:
+            if r.name.lower() in ("👑 owner", "owner", "👑owner"):
+                return r
     return None
 
 
@@ -38,7 +43,15 @@ async def _asegurar_rol(
 ) -> Optional[discord.Role]:
     existente = _buscar_rol_por_nombre(guild, nombre)
     if existente:
-        resumen.append(f"✅ Detectado: **{nombre}** (ID `{existente.id}`)")
+        # Renombrar Owner antiguo → Gerente Developer
+        if existente.name != nombre and "owner" in existente.name.lower() and "gerente" in nombre.lower():
+            try:
+                await existente.edit(name=nombre, reason="Renombrar a Gerente Developer")
+                resumen.append(f"🔄 Renombrado: **{existente.name}** → **{nombre}**")
+            except Exception:
+                resumen.append(f"✅ Detectado: **{existente.name}** (ID `{existente.id}`)")
+        else:
+            resumen.append(f"✅ Detectado: **{nombre}** (ID `{existente.id}`)")
         return existente
 
     try:
@@ -65,25 +78,37 @@ def _orden_deseado() -> List[Tuple[str, str]]:
         if key in seps:
             orden.append(("sep", seps[key]))
 
+    # Cúpula: Gerente Developer + Co-Owner
     sep("sep_cupula")
     for key in ["OWNER", "CO_OWNER"]:
         if key in config.KEYS_NOMBRES:
             orden.append(("key", config.KEYS_NOMBRES[key][0]))
 
+    # Staff del servidor (sin Director General)
     sep("sep_servidor")
-    for key in ["DIRECTOR_GENERAL", "DIRECTOR_DISCIPLINA", "DIRECTOR_ADMINISTRATIVO", "STAFF_SERVIDOR"]:
-        if key in config.KEYS_NOMBRES:
-            orden.append(("key", config.KEYS_NOMBRES[key][0]))
+    if "STAFF_SERVIDOR" in config.KEYS_NOMBRES:
+        orden.append(("key", config.KEYS_NOMBRES["STAFF_SERVIDOR"][0]))
     if "staff_servidor" in config.DEPARTAMENTOS:
         for nombre in reversed(config.DEPARTAMENTOS["staff_servidor"]["escalafon_nombres"]):
             orden.append(("escalafon", nombre))
 
+    # Dirección Hospital: Director General primero, luego el resto
     sep("sep_directores")
-    skip = {"DIRECTOR_DISCIPLINA", "DIRECTOR_GENERAL", "DIRECTOR_ADMINISTRATIVO"}
-    for key in config.DIRECTOR_KEYS:
-        if key in skip:
-            continue
-        orden.append(("key", config.KEYS_NOMBRES[key][0]))
+    if "DIRECTOR_GENERAL" in config.KEYS_NOMBRES:
+        orden.append(("key", config.KEYS_NOMBRES["DIRECTOR_GENERAL"][0]))
+    for key in [
+        "DIRECTOR_DISCIPLINA",
+        "DIRECTOR_ADMINISTRATIVO",
+        "DIRECTOR_MEDICO",
+        "DIRECTOR_ENFERMERIA",
+        "DIRECTOR_RRHH",
+        "DIRECTOR_FINANCIERO",
+        "DIRECTOR_LOGISTICA",
+        "DIRECTOR_SEGURIDAD",
+        "DIRECTOR_DOCENCIA",
+    ]:
+        if key in config.KEYS_NOMBRES:
+            orden.append(("key", config.KEYS_NOMBRES[key][0]))
 
     depto_sep = {
         "medico": "sep_medico",
@@ -135,7 +160,7 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
             roles_ordenados.append(rol)
 
     if not roles_ordenados:
-        resumen.append("⚠️ No hay roles gestionables para ordenar (¿el rol del bot está por encima?).")
+        resumen.append("⚠️ No hay roles gestionables para ordenar.")
         return resumen
 
     base_pos = bot_top.position - 1
@@ -149,23 +174,18 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
         positions[rol] = nueva
 
     if not positions:
-        resumen.append("⚠️ No hay espacio de posiciones disponible para reordenar.")
+        resumen.append("⚠️ No hay espacio de posiciones.")
         return resumen
 
     try:
         await guild.edit_role_positions(positions=positions, reason="Orden por categorías (bot hospital)")
         resumen.append(f"✅ Roles reordenados ({len(positions)} roles).")
-        resumen.append("")
-        resumen.append("**Orden aplicado (arriba → abajo):**")
+        resumen.append("**Orden (arriba → abajo):**")
         for r in roles_ordenados:
             if r in positions:
                 resumen.append(f"  • {r.name}")
         if roles_omitidos:
-            resumen.append("")
-            resumen.append(
-                f"⚠️ {len(roles_omitidos)} rol(es) no se pudieron reordenar: "
-                + ", ".join(r.name for r in roles_omitidos)
-            )
+            resumen.append(f"⚠️ Omitidos: {', '.join(r.name for r in roles_omitidos)}")
     except discord.Forbidden:
         resumen.append("❌ Sin permisos para reordenar roles.")
     except Exception as e:
