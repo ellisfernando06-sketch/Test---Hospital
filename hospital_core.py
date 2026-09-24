@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*
-"""hospital_core.py — núcleo estable + certificados + sync sin romper comandos."""
+"""hospital_core.py — carga núcleo remoto + módulos + sync (estable)."""
 from __future__ import annotations
 
 import asyncio
@@ -8,7 +8,6 @@ import traceback
 import urllib.request
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 _COMMIT = "30a15578af8c1459b0d2dcad8af2881c4a8a326b"
@@ -35,7 +34,6 @@ _MODULOS = (
     "capacitacion_cert_ui",
 )
 
-# Solo se quitan si hay MÁS de 100 (orden: primero estos)
 _BAJA_PRIORIDAD = (
     "ver_canal_logs_tickets",
     "configurar_logs_tickets",
@@ -92,37 +90,38 @@ def _cargar(module_globals: dict):
         re.MULTILINE,
     )
 
-    new_on_ready = '''@bot.event
-async def on_ready():
-    try:
-        bot.add_view(AbrirTicketView())
-        bot.add_view(CerrarTicketView())
-        bot.add_view(PanelAccionesView())
-        bot.add_view(PanelEstadoView())
-        bot.add_view(AprobacionView(key_aprobador="DIRECTOR_RRHH", solicitud_id="persist"))
-    except Exception as _e:
-        print("[on_ready] vistas:", _e)
-    try:
-        import verificacion as _verif
-        bot.add_view(_verif.VerificarView(staff_id=0, guild_id=0))
-    except Exception as _e:
-        print("[on_ready] VerificarView:", _e)
-    print(f"Conectado como {bot.user} (ID: {bot.user.id})")
-    try:
-        if bot_control.get_mode() == "offline":
-            bot_control.set_mode("online", "Bot reiniciado y operativo.", None)
-        await bot_control.publicar_estado(bot)
-    except Exception as _e:
-        print("[on_ready] bot_control:", _e)
-    fn = getattr(bot, "_hospital_sync_todo", None)
-    if callable(fn):
-        try:
-            await asyncio.sleep(2)
-            names = await fn("on_ready")
-            print(f"[on_ready] Sync OK: {len(names or [])} comandos")
-        except Exception as _e:
-            print("[on_ready] Sync falló:", _e)
-'''
+    new_on_ready = (
+        "@bot.event\n"
+        "async def on_ready():\n"
+        "    try:\n"
+        "        bot.add_view(AbrirTicketView())\n"
+        "        bot.add_view(CerrarTicketView())\n"
+        "        bot.add_view(PanelAccionesView())\n"
+        "        bot.add_view(PanelEstadoView())\n"
+        "        bot.add_view(AprobacionView(key_aprobador=\"DIRECTOR_RRHH\", solicitud_id=\"persist\"))\n"
+        "    except Exception as _e:\n"
+        "        print(\"[on_ready] vistas:\", _e)\n"
+        "    try:\n"
+        "        import verificacion as _verif\n"
+        "        bot.add_view(_verif.VerificarView(staff_id=0, guild_id=0))\n"
+        "    except Exception as _e:\n"
+        "        print(\"[on_ready] VerificarView:\", _e)\n"
+        "    print(f\"Conectado como {bot.user} (ID: {bot.user.id})\")\n"
+        "    try:\n"
+        "        if bot_control.get_mode() == \"offline\":\n"
+        "            bot_control.set_mode(\"online\", \"Bot reiniciado y operativo.\", None)\n"
+        "        await bot_control.publicar_estado(bot)\n"
+        "    except Exception as _e:\n"
+        "        print(\"[on_ready] bot_control:\", _e)\n"
+        "    fn = getattr(bot, \"_hospital_sync_todo\", None)\n"
+        "    if callable(fn):\n"
+        "        try:\n"
+        "            await asyncio.sleep(2)\n"
+        "            names = await fn(\"on_ready\")\n"
+        "            print(f\"[on_ready] Sync OK: {len(names or [])} comandos\")\n"
+        "        except Exception as _e:\n"
+        "            print(\"[on_ready] Sync falló:\", _e)\n"
+    )
 
     m = on_ready_pattern.search(source)
     if m:
@@ -144,14 +143,14 @@ async def on_ready():
     try:
         exec(compile(source, "hospital_core_remote.py", "exec"), module_globals)
     except Exception:
+        print("[hospital_core] ERROR al ejecutar núcleo:")
         traceback.print_exc()
         raise
 
     bot = module_globals.get("bot")
     if bot is None:
-        raise RuntimeError("bot no definido")
+        raise RuntimeError("hospital_core: bot no definido")
 
-    # Módulos
     print("[hospital_core] Módulos…")
     for name in _MODULOS:
         try:
@@ -159,150 +158,64 @@ async def on_ready():
             if hasattr(mod, "registrar"):
                 mod.registrar(bot)
                 print(f"[hospital_core] ✓ {name}")
+            else:
+                print(f"[hospital_core] · {name} (sin registrar)")
         except Exception:
             print(f"[hospital_core] ✗ {name}")
             traceback.print_exc()
 
-    # Asegurar /certificar /registrar_firma /ver_mi_firma (sin duplicar si ya existen)
-    def _asegurar_certificados():
-        presentes = {c.name for c in bot.tree.get_commands()}
+    def _nombres():
+        try:
+            return sorted({c.name for c in bot.tree.get_commands()})
+        except Exception:
+            return []
 
-        if "certificar" not in presentes:
-            @bot.tree.command(
-                name="certificar",
-                description="Certificado RP → formulario → autorización Director Investigación y Docencia",
-            )
-            @app_commands.describe(usuario="Quién recibe el certificado")
-            async def cmd_certificar(inter: discord.Interaction, usuario: discord.Member):
-                try:
-                    import capacitacion_cert_ui as ccu
-                    if not ccu._puede_iniciar(inter.user):
-                        return await inter.response.send_message(
-                            "❌ Sin permiso.", ephemeral=True
-                        )
-                    await inter.response.send_modal(ccu.ModalCertificar(bot, usuario))
-                except Exception as e:
-                    await inter.response.send_message(f"❌ `{e}`", ephemeral=True)
-            print("[hospital_core] + /certificar")
-        else:
-            print("[hospital_core] · /certificar ya existe")
-
-        if "registrar_firma" not in presentes:
-            @bot.tree.command(
-                name="registrar_firma",
-                description="Registra tu firma digitalizada (imagen PNG/JPG)",
-            )
-            @app_commands.describe(imagen="Imagen de firma", cargo="Cargo")
-            @app_commands.choices(cargo=[
-                app_commands.Choice(name="Director de Investigación y Docencia", value="DIRECTOR_DOCENCIA"),
-                app_commands.Choice(name="Director Médico", value="DIRECTOR_MEDICO"),
-                app_commands.Choice(name="Director Administrativo", value="DIRECTOR_ADMINISTRATIVO"),
-                app_commands.Choice(name="Director de RRHH", value="DIRECTOR_RRHH"),
-                app_commands.Choice(name="Director General", value="DIRECTOR_GENERAL"),
-                app_commands.Choice(name="Encargado / Instructor", value="ENCARGADO"),
-                app_commands.Choice(name="Otra firma personal", value="PERSONAL"),
-            ])
-            async def cmd_reg_firma(
-                inter: discord.Interaction,
-                imagen: discord.Attachment,
-                cargo: app_commands.Choice[str],
-            ):
-                try:
-                    import firmas
-                    if not imagen.content_type or not imagen.content_type.startswith("image/"):
-                        return await inter.response.send_message("❌ Debe ser imagen.", ephemeral=True)
-                    key = cargo.value
-                    if key not in ("ENCARGADO", "PERSONAL") and not firmas._es_key(inter.user, key, "OWNER"):
-                        return await inter.response.send_message(
-                            f"❌ No tienes **{cargo.name}**.", ephemeral=True
-                        )
-                    await inter.response.defer(ephemeral=True)
-                    fname = await firmas.descargar_firma(imagen, inter.user.id)
-                    firmas.guardar_firma(inter.user.id, key, fname)
-                    await inter.followup.send(
-                        f"✅ Firma **{cargo.name}** registrada.", ephemeral=True
-                    )
-                except Exception as e:
-                    if inter.response.is_done():
-                        await inter.followup.send(f"❌ `{e}`", ephemeral=True)
-                    else:
-                        await inter.response.send_message(f"❌ `{e}`", ephemeral=True)
-            print("[hospital_core] + /registrar_firma")
-        else:
-            print("[hospital_core] · /registrar_firma ya existe")
-
-        if "ver_mi_firma" not in presentes:
-            @bot.tree.command(name="ver_mi_firma", description="Muestra tu firma digitalizada")
-            async def cmd_ver_firma(inter: discord.Interaction):
-                try:
-                    import firmas, os
-                    reg = firmas.obtener_firma_usuario(inter.user.id)
-                    if not reg:
-                        return await inter.response.send_message(
-                            "Sin firma. Usa `/registrar_firma`.", ephemeral=True
-                        )
-                    path = firmas.ruta_firma(reg["file"])
-                    if not os.path.isfile(path):
-                        return await inter.response.send_message("Archivo no encontrado.", ephemeral=True)
-                    await inter.response.send_message(
-                        file=discord.File(path, filename=reg["file"]), ephemeral=True
-                    )
-                except Exception as e:
-                    await inter.response.send_message(f"❌ `{e}`", ephemeral=True)
-            print("[hospital_core] + /ver_mi_firma")
-
-    _asegurar_certificados()
-
-    def _listar():
-        return sorted({c.name for c in bot.tree.get_commands()})
-
-    def _recortar_solo_si_hace_falta():
-        names = _listar()
-        print(f"[hospital_core] Comandos en memoria: {len(names)}")
+    def _recortar():
+        names = _nombres()
+        print(f"[hospital_core] Comandos: {len(names)}")
         if len(names) <= _MAX_SLASH:
             return names
-        quitados = []
         for n in _BAJA_PRIORIDAD:
-            if len(_listar()) <= _MAX_SLASH:
+            if len(_nombres()) <= _MAX_SLASH:
                 break
             if n in _CRITICOS:
                 continue
             try:
                 bot.tree.remove_command(n)
-                quitados.append(n)
             except Exception:
                 pass
-        while len(_listar()) > _MAX_SLASH:
-            rest = [n for n in _listar() if n not in _CRITICOS]
+        while len(_nombres()) > _MAX_SLASH:
+            rest = [n for n in _nombres() if n not in _CRITICOS]
             if not rest:
                 break
-            n = rest[-1]
             try:
-                bot.tree.remove_command(n)
-                quitados.append(n)
+                bot.tree.remove_command(rest[-1])
             except Exception:
                 break
-        final = _listar()
-        if quitados:
-            print(f"[hospital_core] Recortados por límite 100: {quitados}")
-        print(f"[hospital_core] Final: {len(final)}")
-        return final
+        return _nombres()
 
-    _recortar_solo_si_hace_falta()
+    _recortar()
 
     async def _sync_todo(reason: str = "") -> list:
-        result: list = []
+        result = []
         print(f"[hospital_core] === SYNC ({reason}) ===")
-        _asegurar_certificados()
-        _recortar_solo_si_hace_falta()
+        try:
+            _recortar()
+        except Exception as e:
+            print("[hospital_core] recorte:", e)
         try:
             try:
-                app_id = bot.application_id or (await bot.application_info()).id
+                app_id = bot.application_id
+                if app_id is None:
+                    app_id = (await bot.application_info()).id
                 await bot.http.bulk_upsert_global_commands(int(app_id), [])
             except Exception as e:
                 print("[hospital_core] globales:", e)
 
-            targets = list(bot.guilds) if bot.guilds else [discord.Object(id=_GUILD_ID)]
+            targets = list(bot.guilds) if getattr(bot, "guilds", None) else []
+            if not targets:
+                targets = [discord.Object(id=_GUILD_ID)]
+
             for g in targets:
                 gid = int(getattr(g, "id", _GUILD_ID))
                 obj = discord.Object(id=gid)
@@ -310,14 +223,14 @@ async def on_ready():
                     bot.tree.copy_global_to(guild=obj)
                     synced = await bot.tree.sync(guild=obj)
                     result = sorted(c.name for c in synced)
-                    print(f"[hospital_core] GUILD {gid}: {len(result)} comandos")
+                    print(f"[hospital_core] GUILD {gid}: {len(result)}")
                     for need in ("certificar", "registrar_firma", "ver_mi_firma", "limpiar", "tienda"):
                         print(f"  {need}: {'OK' if need in result else 'FALTA'}")
                 except Exception as e:
-                    print(f"[hospital_core] sync {gid}:", e)
+                    print(f"[hospital_core] sync {gid}: {e}")
                     traceback.print_exc()
         except Exception as e:
-            print("[hospital_core] sync:", e)
+            print(f"[hospital_core] sync error: {e}")
             traceback.print_exc()
         return result
 
@@ -332,22 +245,27 @@ async def on_ready():
     async def _forzar_sync(ctx: commands.Context):
         if not ctx.guild or not isinstance(ctx.author, discord.Member):
             return
-        if not (ctx.author.guild_permissions.administrator or ctx.author.id == ctx.guild.owner_id):
+        if not (
+            ctx.author.guild_permissions.administrator
+            or ctx.author.id == ctx.guild.owner_id
+        ):
             await ctx.reply("❌ Solo admin.")
             return
-        m = await ctx.reply("🔄 Sincronizando…")
+        msg = await ctx.reply("🔄 Sincronizando…")
         try:
             names = await _sync_todo("!forzar_sync")
-            clave = [c for c in ("certificar", "registrar_firma", "ver_mi_firma", "limpiar", "tienda") if c in names]
-            await m.edit(
+            clave = [
+                c for c in ("certificar", "registrar_firma", "ver_mi_firma", "limpiar", "tienda")
+                if c in names
+            ]
+            await msg.edit(
                 content=(
-                    f"✅ **{len(names)}** comandos publicados.\n"
-                    f"Clave: `{', '.join(clave)}`\n"
-                    f"Prueba `/certificar` · `/registrar_firma` · `/tienda` · `/limpiar`"
+                    f"✅ **{len(names)}** comandos.\n"
+                    f"Clave: `{', '.join(clave) or '—'}`"
                 )
             )
         except Exception as e:
-            await m.edit(content=f"❌ `{e}`")
+            await msg.edit(content=f"❌ `{e}`")
 
     @bot.listen("on_ready")
     async def _hc_backup():
@@ -360,6 +278,7 @@ async def on_ready():
         except Exception as e:
             print("[hospital_core] backup:", e)
 
+    print("[hospital_core] Listo.")
     return bot
 
 
