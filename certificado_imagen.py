@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*
 """
-certificado_imagen.py — Diploma PNG profesional (solo Roleplay).
-Si existe assets/certificado_base.png se usa como plantilla.
+certificado_imagen.py — Diploma PNG (solo Roleplay).
+Tipografía unificada: un color principal y tamaños proporcionales.
+Plantilla opcional: assets/certificado_base.png (o .jpg).
 """
 from __future__ import annotations
 
@@ -10,14 +11,22 @@ import os
 from datetime import datetime
 from typing import Optional, Tuple
 
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
+from PIL import Image, ImageDraw, ImageFont
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _PLANTILLA = os.path.join(_DIR, "assets", "certificado_base.png")
 _PLANTILLA_JPG = os.path.join(_DIR, "assets", "certificado_base.jpg")
 
-# Tamaño por defecto si no hay plantilla
+# Lienzo por defecto
 W, H = 1600, 1131
+
+# ── Paleta única (misma familia de color en todo el diploma) ─────────────
+# Tinta principal: casi negro cálido (legible sobre crema y plantillas claras)
+TINTA = (45, 40, 48)
+TINTA_SUAVE = (45, 40, 48)       # mismo tono; se usa alpha visual vía tono idéntico
+TINTA_ACENTO = (45, 40, 48)      # títulos y nombre también en el mismo color
+ORO_LINEA = (160, 130, 70)       # solo líneas decorativas, no texto
+CREMA = (248, 243, 232)
 
 
 def _font(size: int, bold: bool = False):
@@ -49,6 +58,27 @@ def _font(size: int, bold: bool = False):
     return ImageFont.load_default()
 
 
+def _escala(w: int) -> dict:
+    """
+    Escala tipográfica congruente según el ancho del diploma.
+    Proporción ~ base 1000px → tamaños de referencia de imprenta.
+    """
+    u = w / 1000.0  # unidad de escala
+    return {
+        # Jerarquía fija (todos en la misma tinta)
+        "hospital": max(26, int(34 * u)),      # cabecera
+        "subtitulo": max(14, int(16 * u)),     # Dirección de Docencia
+        "certificado": max(30, int(40 * u)),   # CERTIFICADO
+        "frase": max(15, int(18 * u)),         # "Se certifica que…"
+        "nombre": max(32, int(44 * u)),        # nombre del graduado (destacado)
+        "capacitacion": max(24, int(30 * u)),  # título de la capacitación
+        "cuerpo": max(14, int(16 * u)),        # descripción / área
+        "pie": max(13, int(15 * u)),           # fecha, nº, emisor (idénticos entre sí)
+        "nota": max(11, int(12 * u)),          # nota RP al pie
+        "gap": max(8, int(10 * u)),            # espacio entre bloques
+    }
+
+
 def _text_size(draw, text, font) -> Tuple[int, int]:
     bbox = draw.textbbox((0, 0), text, font=font)
     return bbox[2] - bbox[0], bbox[3] - bbox[1]
@@ -71,13 +101,13 @@ def _wrap(draw, text: str, font, max_w: int):
     return lines or [""]
 
 
-def _centrar_texto(draw, text, y, font, fill, max_w=None, width=None):
-    width = width or W
-    max_w = max_w or (width - 200)
+def _centrar(draw, text, y, font, fill, width, max_w=None):
+    max_w = max_w or int(width * 0.78)
     lines = _wrap(draw, text, font, max_w)
-    lh = getattr(font, "size", 22) + 10
+    size = getattr(font, "size", 18)
+    lh = size + max(6, size // 5)
     for i, line in enumerate(lines):
-        tw, th = _text_size(draw, line, font)
+        tw, _ = _text_size(draw, line, font)
         x = (width - tw) // 2
         draw.text((x, y + i * lh), line, font=font, fill=fill)
     return len(lines) * lh
@@ -93,35 +123,17 @@ def _cargar_plantilla() -> Optional[Image.Image]:
     return None
 
 
-def _fondo_elegante() -> Image.Image:
-    """Fondo tipo pergamino premium si no hay plantilla."""
-    img = Image.new("RGB", (W, H), (248, 243, 232))
+def _fondo_elegante(w: int, h: int) -> Image.Image:
+    img = Image.new("RGB", (w, h), CREMA)
     draw = ImageDraw.Draw(img)
-
-    # Viñeta suave en bordes
-    for i in range(80):
-        alpha = int(40 * (1 - i / 80))
-        col = (230 - alpha // 2, 220 - alpha // 2, 200 - alpha // 2)
-        draw.rectangle([i, i, W - 1 - i, H - 1 - i], outline=col)
-
-    oro = (176, 141, 68)
-    oro_osc = (120, 90, 40)
-    morado = (72, 38, 98)
-
-    # Marco exterior
-    for i, c in enumerate([oro, oro_osc, oro]):
-        draw.rectangle([40 + i * 3, 40 + i * 3, W - 40 - i * 3, H - 40 - i * 3], outline=c, width=2)
-
-    # Marco interior fino
-    draw.rectangle([70, 70, W - 70, H - 70], outline=oro, width=1)
-
-    # Esquinas ornamentales
-    for cx, cy in [(95, 95), (W - 95, 95), (95, H - 95), (W - 95, H - 95)]:
-        draw.ellipse([cx - 22, cy - 22, cx + 22, cy + 22], outline=oro, width=3)
-        draw.ellipse([cx - 10, cy - 10, cx + 10, cy + 10], outline=oro_osc, width=2)
-
-    # Franja superior decorativa
-    draw.rectangle([120, 130, W - 120, 134], fill=oro)
+    for i in range(60):
+        col = (235 - i // 3, 228 - i // 3, 212 - i // 3)
+        draw.rectangle([i, i, w - 1 - i, h - 1 - i], outline=col)
+    for i, c in enumerate([ORO_LINEA, (120, 95, 45), ORO_LINEA]):
+        draw.rectangle([36 + i * 3, 36 + i * 3, w - 36 - i * 3, h - 36 - i * 3], outline=c, width=2)
+    draw.rectangle([62, 62, w - 62, h - 62], outline=ORO_LINEA, width=1)
+    for cx, cy in [(85, 85), (w - 85, 85), (85, h - 85), (w - 85, h - 85)]:
+        draw.ellipse([cx - 18, cy - 18, cx + 18, cy + 18], outline=ORO_LINEA, width=2)
     return img
 
 
@@ -137,11 +149,6 @@ def generar_certificado(
     departamento: str = "",
     capacitacion: str = "",
 ) -> io.BytesIO:
-    """
-    Genera el diploma.
-    - capacitacion: nombre de la capacitación recibida (prioridad sobre titulo si viene).
-    - titulo: título del certificado / capacitación.
-    """
     if not fecha:
         fecha = datetime.utcnow().strftime("%d/%m/%Y")
     if not numero:
@@ -150,115 +157,94 @@ def generar_certificado(
     cap = (capacitacion or titulo or "Capacitación").strip()
     nombre = (nombre_receptor or "—").strip()
     hospital = (hospital or "Hospital").strip()
+    emisor = (emisor or "Dirección de Docencia").strip()
 
     plantilla = _cargar_plantilla()
     if plantilla is not None:
         img = plantilla
         w, h = img.size
-        # Escalar a ancho razonable si es muy grande/pequeña
         if w < 900 or w > 2200:
             ratio = 1600 / w
-            img = img.resize((1600, int(h * ratio)), Image.Resampling.LANCZOS)
+            img = img.resize((1600, max(1, int(h * ratio))), Image.Resampling.LANCZOS)
             w, h = img.size
     else:
-        img = _fondo_elegante()
         w, h = W, H
+        img = _fondo_elegante(w, h)
 
     draw = ImageDraw.Draw(img)
-    global W, H
-    W, H = w, h
+    sc = _escala(w)
+    gap = sc["gap"]
 
-    # Paleta según si hay plantilla (texto más contrastado)
-    if plantilla is not None:
-        c_titulo = (55, 35, 75)
-        c_nombre = (30, 25, 40)
-        c_suave = (70, 60, 80)
-        c_oro = (140, 110, 50)
-    else:
-        c_titulo = (72, 38, 98)
-        c_nombre = (40, 30, 50)
-        c_suave = (90, 80, 100)
-        c_oro = (176, 141, 68)
+    # Todas las fuentes de la misma familia; tamaños de la escala
+    f_hospital = _font(sc["hospital"], bold=True)
+    f_sub = _font(sc["subtitulo"], bold=False)
+    f_cert = _font(sc["certificado"], bold=True)
+    f_frase = _font(sc["frase"], bold=False)
+    f_nombre = _font(sc["nombre"], bold=True)
+    f_cap = _font(sc["capacitacion"], bold=True)
+    f_cuerpo = _font(sc["cuerpo"], bold=False)
+    f_pie = _font(sc["pie"], bold=False)
+    f_nota = _font(sc["nota"], bold=False)
 
-    f_h = _font(max(28, w // 40), bold=True)
-    f_sub = _font(max(16, w // 70))
-    f_cert = _font(max(36, w // 32), bold=True)
-    f_nombre = _font(max(40, w // 28), bold=True)
-    f_cap = _font(max(28, w // 38), bold=True)
-    f_body = _font(max(18, w // 60))
-    f_small = _font(max(15, w // 75))
-    f_tiny = _font(max(13, w // 90))
-
-    # Zonas verticales proporcionales
-    y = int(h * 0.12)
+    # Un solo color de texto en todo el certificado
+    ink = TINTA
 
     if plantilla is None:
-        y += _centrar_texto(draw, hospital.upper(), y, f_h, c_titulo, width=w)
-        y += 6
-        y += _centrar_texto(draw, "Dirección de Docencia y Capacitación", y, f_sub, c_suave, width=w)
-        y += 16
-        draw.line([(int(w * 0.2), y), (int(w * 0.8), y)], fill=c_oro, width=2)
-        y += 22
-        y += _centrar_texto(draw, "CERTIFICADO", y, f_cert, c_titulo, width=w)
-        y += 8
-        y += _centrar_texto(draw, "Documento de Roleplay", y, f_tiny, c_suave, width=w)
-        y += 28
+        y = int(h * 0.11)
+        y += _centrar(draw, hospital.upper(), y, f_hospital, ink, w)
+        y += gap // 2
+        y += _centrar(draw, "Dirección de Docencia y Capacitación", y, f_sub, ink, w)
+        y += gap
+        draw.line([(int(w * 0.22), y), (int(w * 0.78), y)], fill=ORO_LINEA, width=2)
+        y += gap + 4
+        y += _centrar(draw, "CERTIFICADO", y, f_cert, ink, w)
+        y += gap // 2
+        y += _centrar(draw, "Documento de Roleplay", y, f_nota, ink, w)
+        y += gap * 2
     else:
-        # Con plantilla: solo rellenar campos en el centro
-        y = int(h * 0.28)
+        y = int(h * 0.30)
 
-    y += _centrar_texto(draw, "Se certifica que", y, f_body, c_suave, width=w)
-    y += 14
-    y += _centrar_texto(draw, nombre, y, f_nombre, c_nombre, width=w)
-    y += 10
-    # Línea bajo el nombre
+    y += _centrar(draw, "Se certifica que", y, f_frase, ink, w)
+    y += gap
+    y += _centrar(draw, nombre, y, f_nombre, ink, w)
+    y += gap // 2
+
     nw, _ = _text_size(draw, nombre, f_nombre)
-    lx0 = (w - min(nw + 80, int(w * 0.6))) // 2
-    lx1 = w - lx0
-    draw.line([(lx0, y), (lx1, y)], fill=c_oro, width=1)
-    y += 20
+    line_w = min(nw + int(w * 0.06), int(w * 0.55))
+    lx0 = (w - line_w) // 2
+    draw.line([(lx0, y), (lx0 + line_w, y)], fill=ORO_LINEA, width=1)
+    y += gap + 4
 
-    y += _centrar_texto(
-        draw,
-        "ha completado satisfactoriamente la capacitación:",
-        y,
-        f_body,
-        c_suave,
-        width=w,
-    )
-    y += 16
-    y += _centrar_texto(draw, f'"{cap}"', y, f_cap, c_titulo, width=w)
+    y += _centrar(draw, "ha completado satisfactoriamente la capacitación:", y, f_frase, ink, w)
+    y += gap
+    y += _centrar(draw, f'"{cap}"', y, f_cap, ink, w)
 
     if descripcion:
-        y += 14
-        y += _centrar_texto(draw, descripcion, y, f_small, c_suave, max_w=int(w * 0.7), width=w)
+        y += gap
+        y += _centrar(draw, descripcion, y, f_cuerpo, ink, w, max_w=int(w * 0.70))
 
     if departamento:
-        y += 12
-        y += _centrar_texto(draw, f"Área / Departamento: {departamento}", y, f_small, c_nombre, width=w)
+        y += gap
+        y += _centrar(draw, f"Área / Departamento: {departamento}", y, f_cuerpo, ink, w)
 
-    # Pie de datos
+    # Pie: tres columnas, MISMO tamaño y MISMO color
     pie_y = int(h * 0.78)
     if plantilla is None:
-        draw.line([(int(w * 0.15), pie_y), (int(w * 0.85), pie_y)], fill=c_oro, width=1)
+        draw.line([(int(w * 0.14), pie_y), (int(w * 0.86), pie_y)], fill=ORO_LINEA, width=1)
 
-    col_y = pie_y + 20
-    draw.text((int(w * 0.14), col_y), f"Fecha\n{fecha}", font=f_small, fill=c_nombre)
-    draw.text((int(w * 0.42), col_y), f"N.º de certificado\n{numero}", font=f_small, fill=c_nombre)
-    draw.text((int(w * 0.68), col_y), f"Emitido por\n{emisor}", font=f_small, fill=c_nombre)
+    col_y = pie_y + gap + 4
+    cols = [
+        (0.14, f"Fecha\n{fecha}"),
+        (0.40, f"N.º de certificado\n{numero}"),
+        (0.66, f"Emitido por\n{emisor}"),
+    ]
+    for frac, txt in cols:
+        draw.text((int(w * frac), col_y), txt, font=f_pie, fill=ink)
 
     if plantilla is None:
-        # Sello
-        sx, sy, sr = int(w * 0.88), int(h * 0.86), 55
-        draw.ellipse([sx - sr, sy - sr, sx + sr, sy + sr], outline=(150, 45, 55), width=4)
-        draw.ellipse([sx - sr + 8, sy - sr + 8, sx + sr - 8, sy + sr - 8], outline=(150, 45, 55), width=2)
-        fs = _font(13, bold=True)
-        draw.text((sx - 26, sy - 16), "SOLO", font=fs, fill=(150, 45, 55))
-        draw.text((sx - 16, sy + 4), "RP", font=fs, fill=(150, 45, 55))
-
         note = "Documento interno de roleplay · Sin validez fuera del servidor"
-        tw, _ = _text_size(draw, note, f_tiny)
-        draw.text(((w - tw) // 2, h - 48), note, font=f_tiny, fill=c_suave)
+        tw, _ = _text_size(draw, note, f_nota)
+        draw.text(((w - tw) // 2, h - int(h * 0.045)), note, font=f_nota, fill=ink)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
