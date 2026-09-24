@@ -15,7 +15,18 @@ try:
 except Exception:
     permisos = None
 
+try:
+    import config
+except Exception:
+    config = None
+
 GUILD_ID = 1381360019467014184
+
+
+def _hospital() -> str:
+    if config is not None:
+        return getattr(config, "NOMBRE_HOSPITAL", "Hospital") or "Hospital"
+    return "Hospital"
 
 
 def _puede_limpiar(member: discord.Member) -> bool:
@@ -86,6 +97,22 @@ async def _borrar_mensajes(channel: discord.TextChannel, *, cantidad: Optional[i
     return {"borrados": borrados, "fallidos": fallidos, "bulk": bulk, "individual": individual}
 
 
+def _embed_resultado(titulo: str, dest: discord.TextChannel, stats: dict, color: int) -> discord.Embed:
+    emb = discord.Embed(
+        title=titulo,
+        description=(
+            f"**Canal:** {dest.mention}\n"
+            f"**Mensajes eliminados:** `{stats['borrados']}`\n"
+            f"**Fallidos:** `{stats['fallidos']}`\n"
+            f"**Bulk:** `{stats.get('bulk', 0)}` · **Individual:** `{stats.get('individual', 0)}`"
+        ),
+        color=color,
+        timestamp=discord.utils.utcnow(),
+    )
+    emb.set_footer(text=f"{_hospital()}  •  Limpieza de canales")
+    return emb
+
+
 def registrar(bot: commands.Bot) -> None:
     for nombre in ("limpiar", "limpiar_todo", "sincronizar_comandos"):
         try:
@@ -93,10 +120,13 @@ def registrar(bot: commands.Bot) -> None:
         except Exception:
             pass
 
-    @bot.tree.command(name="limpiar", description="Borra N mensajes o vacia el canal (incluye antiguos).")
+    @bot.tree.command(
+        name="limpiar",
+        description="Borra N mensajes del canal (incluye mensajes antiguos).",
+    )
     @app_commands.describe(
-        cantidad="Cuantos borrar (1-5000). Vacio = hasta 5000.",
-        canal="Canal (por defecto: este).",
+        cantidad="Cuántos mensajes borrar (1–5000). Si se omite: hasta 5000.",
+        canal="Canal a limpiar (por defecto: el actual).",
     )
     async def limpiar(
         inter: discord.Interaction,
@@ -104,80 +134,92 @@ def registrar(bot: commands.Bot) -> None:
         canal: Optional[discord.TextChannel] = None,
     ):
         if not isinstance(inter.user, discord.Member):
-            await inter.response.send_message("Solo en el servidor.", ephemeral=True)
+            await inter.response.send_message("❌ Solo en el servidor.", ephemeral=True)
             return
         if not _puede_limpiar(inter.user):
-            await inter.response.send_message("Necesitas Gestionar mensajes o staff.", ephemeral=True)
+            await inter.response.send_message(
+                "❌ Necesitas permiso de **Gestionar mensajes** o un cargo de staff autorizado.",
+                ephemeral=True,
+            )
             return
         dest = canal or inter.channel
         if not isinstance(dest, discord.TextChannel):
-            await inter.response.send_message("Solo canales de texto.", ephemeral=True)
+            await inter.response.send_message("❌ Solo canales de texto.", ephemeral=True)
             return
         me = dest.guild.me if dest.guild else None
         if me and not dest.permissions_for(me).manage_messages:
-            await inter.response.send_message("No tengo Gestionar mensajes.", ephemeral=True)
+            await inter.response.send_message(
+                "❌ No tengo permiso de **Gestionar mensajes** en ese canal.",
+                ephemeral=True,
+            )
             return
+
         if cantidad is None:
-            aviso = f"Vaciando {dest.mention} (max. 5000)..."
+            aviso = f"🧹 Vaciando {dest.mention} (máx. 5000 mensajes)…"
         else:
-            aviso = f"Borrando hasta {cantidad} mensajes en {dest.mention}..."
+            aviso = f"🧹 Borrando hasta **{cantidad}** mensajes en {dest.mention}…"
         await inter.response.send_message(aviso, ephemeral=True)
+
         try:
             stats = await _borrar_mensajes(dest, cantidad=cantidad)
         except Exception as e:
-            await inter.followup.send(f"Error: {e}", ephemeral=True)
+            await inter.followup.send(f"❌ Error durante la limpieza: `{e}`", ephemeral=True)
             return
+
         await inter.followup.send(
-            embed=discord.Embed(
-                title="Limpieza completada",
-                description=f"{dest.mention}\nBorrados: {stats['borrados']} | Fallidos: {stats['fallidos']}",
-                color=0xE67E22,
-            ),
+            embed=_embed_resultado("✅ Limpieza completada", dest, stats, 0xE67E22),
             ephemeral=True,
         )
 
-    @bot.tree.command(name="limpiar_todo", description="Vacia el canal por completo (hasta 5000 msgs).")
-    @app_commands.describe(canal="Canal a vaciar (por defecto: este).")
+    @bot.tree.command(
+        name="limpiar_todo",
+        description="Vacía el canal por completo (hasta 5000 mensajes).",
+    )
+    @app_commands.describe(canal="Canal a vaciar (por defecto: el actual).")
     async def limpiar_todo(
         inter: discord.Interaction,
         canal: Optional[discord.TextChannel] = None,
     ):
         if not isinstance(inter.user, discord.Member):
-            await inter.response.send_message("Solo en el servidor.", ephemeral=True)
+            await inter.response.send_message("❌ Solo en el servidor.", ephemeral=True)
             return
         if not _puede_limpiar(inter.user):
-            await inter.response.send_message("Necesitas Gestionar mensajes o staff.", ephemeral=True)
+            await inter.response.send_message(
+                "❌ Necesitas permiso de **Gestionar mensajes** o un cargo de staff autorizado.",
+                ephemeral=True,
+            )
             return
         dest = canal or inter.channel
         if not isinstance(dest, discord.TextChannel):
-            await inter.response.send_message("Solo canales de texto.", ephemeral=True)
+            await inter.response.send_message("❌ Solo canales de texto.", ephemeral=True)
             return
         me = dest.guild.me if dest.guild else None
         if me and not dest.permissions_for(me).manage_messages:
-            await inter.response.send_message("No tengo Gestionar mensajes.", ephemeral=True)
+            await inter.response.send_message(
+                "❌ No tengo permiso de **Gestionar mensajes** en ese canal.",
+                ephemeral=True,
+            )
             return
-        await inter.response.send_message(f"Vaciando {dest.mention}...", ephemeral=True)
+
+        await inter.response.send_message(f"🧹 Vaciando {dest.mention} por completo…", ephemeral=True)
         try:
             stats = await _borrar_mensajes(dest, cantidad=None)
         except Exception as e:
-            await inter.followup.send(f"Error: {e}", ephemeral=True)
+            await inter.followup.send(f"❌ Error durante la limpieza: `{e}`", ephemeral=True)
             return
+
         await inter.followup.send(
-            embed=discord.Embed(
-                title="Canal vaciado",
-                description=f"{dest.mention}\nBorrados: {stats['borrados']}",
-                color=0xE74C3C,
-            ),
+            embed=_embed_resultado("🗑️ Canal vaciado", dest, stats, 0xE74C3C),
             ephemeral=True,
         )
 
     @bot.tree.command(
         name="sincronizar_comandos",
-        description="Restaura TODOS los slash commands del servidor (admin).",
+        description="Restaura todos los slash commands del servidor (admin / owner).",
     )
     async def sincronizar_comandos(inter: discord.Interaction):
         if not isinstance(inter.user, discord.Member):
-            await inter.response.send_message("Solo en el servidor.", ephemeral=True)
+            await inter.response.send_message("❌ Solo en el servidor.", ephemeral=True)
             return
         ok = inter.user.guild_permissions.administrator
         if not ok and permisos is not None:
@@ -188,8 +230,12 @@ def registrar(bot: commands.Bot) -> None:
             except Exception:
                 ok = False
         if not ok:
-            await inter.response.send_message("Solo administracion / owner.", ephemeral=True)
+            await inter.response.send_message(
+                "❌ Solo **OWNER**, **CO-OWNER**, **Director General** o administrador.",
+                ephemeral=True,
+            )
             return
+
         await inter.response.defer(ephemeral=True)
         try:
             fn = getattr(bot, "_hospital_sync_todo", None)
@@ -204,13 +250,20 @@ def registrar(bot: commands.Bot) -> None:
                 bot.tree.copy_global_to(guild=g)
                 synced = await bot.tree.sync(guild=g)
                 names = sorted(c.name for c in synced)
-            await inter.followup.send(
-                f"**{len(names)}** comandos restaurados:\n"
-                f"`{'`, `'.join(names[:80])}`"
-                + ("..." if len(names) > 80 else ""),
-                ephemeral=True,
+
+            emb = discord.Embed(
+                title="🔄 Comandos sincronizados",
+                description=(
+                    f"Se publicaron **{len(names)}** slash commands en el servidor.\n\n"
+                    f"`{'`, `'.join(names[:60])}`"
+                    + ("\n…" if len(names) > 60 else "")
+                ),
+                color=0x2ECC71,
+                timestamp=discord.utils.utcnow(),
             )
+            emb.set_footer(text=f"{_hospital()}  •  Sincronización manual")
+            await inter.followup.send(embed=emb, ephemeral=True)
         except Exception as e:
-            await inter.followup.send(f"Error: {e}", ephemeral=True)
+            await inter.followup.send(f"❌ Error al sincronizar: `{e}`", ephemeral=True)
 
     print("[limpiar_canal] OK")
