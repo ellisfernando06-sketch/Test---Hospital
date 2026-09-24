@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*
 """
-capacitacion_cert_ui.py — Certificar con formulario, firma de encargado
-y autorización del Director de Investigación y Docencia.
+capacitacion_cert_ui.py — Comando /certificar visible + formulario + autorización.
 """
 from __future__ import annotations
 
@@ -73,7 +72,6 @@ class ModalCertificar(ui.Modal, title="🎓 Datos del certificado"):
         desc = str(self.descripcion).strip() if self.descripcion.value else ""
         depto = str(self.departamento).strip() if self.departamento.value else ""
 
-        # Firma del encargado (quien solicita)
         firma_file = None
         try:
             import firmas
@@ -81,14 +79,13 @@ class ModalCertificar(ui.Modal, title="🎓 Datos del certificado"):
             if reg_f:
                 firma_file = reg_f.get("file")
             else:
-                # Permitir continuar pero avisar
                 await inter.followup.send(
-                    "⚠️ No tienes firma registrada. El certificado saldrá sin tu firma de encargado.\n"
-                    "Regístrala con `/registrar_firma` (cargo: Encargado / Instructor).",
+                    "⚠️ No tienes firma registrada. El certificado saldrá sin firma de encargado.\n"
+                    "Usa `/registrar_firma` (cargo: Encargado / Instructor).",
                     ephemeral=True,
                 )
         except Exception as e:
-            print("[capacitacion_cert] firma encargado:", e)
+            print("[certificar] firma encargado:", e)
 
         try:
             import firmas
@@ -105,28 +102,44 @@ class ModalCertificar(ui.Modal, title="🎓 Datos del certificado"):
                 f"📨 Solicitud de certificado **#{aid}** enviada.\n"
                 f"**Graduado:** {self.usuario.mention}\n"
                 f"**Capacitación:** {cap}\n\n"
-                f"Esperando autorización del **Director de Investigación y Docencia** "
+                f"Esperando al **Director de Investigación y Docencia** "
                 f"(botón **Autorizar y firmar**).",
                 ephemeral=True,
             )
         except Exception as e:
-            print("[capacitacion_cert] auth:", e)
-            await inter.followup.send(f"❌ Error al solicitar autorización: `{e}`", ephemeral=True)
+            print("[certificar] auth:", e)
+            await inter.followup.send(f"❌ Error: `{e}`", ephemeral=True)
 
 
 def registrar(bot: commands.Bot) -> None:
     async def _abrir(inter: discord.Interaction, usuario: discord.Member):
         if not isinstance(inter.user, discord.Member) or not _puede_iniciar(inter.user):
             await inter.response.send_message(
-                "❌ Solo Docencia / Dirección / Supervisión pueden iniciar un certificado.",
+                "❌ Solo Docencia / Dirección / Supervisión pueden certificar.",
                 ephemeral=True,
             )
             return
         await inter.response.send_modal(ModalCertificar(bot, usuario))
 
+    # ── Comando PRINCIPAL (siempre visible en /) ──────────────────────
+    for nombre in ("certificar", "certificar_capacitacion"):
+        try:
+            bot.tree.remove_command(nombre)
+        except Exception:
+            pass
+
+    @bot.tree.command(
+        name="certificar",
+        description="Emitir certificado RP (formulario → autorización Director Investigación y Docencia)",
+    )
+    @app_commands.describe(usuario="Personal que recibe el certificado")
+    async def certificar_cmd(inter: discord.Interaction, usuario: discord.Member):
+        await _abrir(inter, usuario)
+
+    # También intentar el subcomando del grupo capacitacion (si existe)
     try:
         grupo = bot.tree.get_command("capacitacion")
-        if grupo is not None and hasattr(grupo, "get_command"):
+        if grupo is not None and hasattr(grupo, "remove_command"):
             try:
                 grupo.remove_command("certificar")
             except Exception:
@@ -134,20 +147,15 @@ def registrar(bot: commands.Bot) -> None:
 
             @grupo.command(
                 name="certificar",
-                description="Solicitar certificado (formulario → firma Director Investigación y Docencia)",
+                description="Solicitar certificado (igual que /certificar)",
             )
             @app_commands.describe(usuario="Personal que recibe el certificado")
-            async def certificar(inter: discord.Interaction, usuario: discord.Member):
+            async def certificar_grupo(inter: discord.Interaction, usuario: discord.Member):
                 await _abrir(inter, usuario)
 
-            print("[capacitacion_cert_ui] ✓ certificar → autorización Docencia")
-            return
+            print("[capacitacion_cert_ui] ✓ /certificar + capacitacion certificar")
+        else:
+            print("[capacitacion_cert_ui] ✓ /certificar (grupo no disponible)")
     except Exception as e:
-        print("[capacitacion_cert_ui] grupo:", e)
-
-    @bot.tree.command(name="certificar_capacitacion", description="Solicitar certificado con autorización")
-    @app_commands.describe(usuario="Personal que recibe el certificado")
-    async def certificar_capacitacion(inter: discord.Interaction, usuario: discord.Member):
-        await _abrir(inter, usuario)
-
-    print("[capacitacion_cert_ui] fallback OK")
+        print("[capacitacion_cert_ui] grupo opcional:", e)
+        print("[capacitacion_cert_ui] ✓ /certificar OK")
