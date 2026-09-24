@@ -56,6 +56,138 @@ def apply(mod):
     enviar_log = mod.enviar_log_solicitud
     _now = mod._now
 
+    # CO_OWNER puede gestionar (añadir, entrevista, cerrar, solicitar aprobación)
+    # pero NO puede aprobar ni rechazar. Solo OWNER (y directores autorizados) aprueban.
+    def _es_co_owner(member) -> bool:
+        if not isinstance(member, discord.Member):
+            return False
+        try:
+            import permisos
+            return permisos.member_tiene_key(member, "CO_OWNER") and not permisos.member_tiene_key(member, "OWNER")
+        except Exception:
+            return False
+
+    def _puede_aprobar(member) -> bool:
+        """Solo OWNER y cargos de dirección/staff operativo (excluye CO_OWNER puro)."""
+        if not isinstance(member, discord.Member):
+            return False
+        if _es_co_owner(member):
+            return False
+        try:
+            import permisos
+            return permisos.member_tiene_alguna_key(
+                member,
+                "OWNER",
+                "DIRECTOR", "DIRECTOR_GENERAL", "DIRECTOR_ADMINISTRATIVO",
+                "DIRECTOR_DISCIPLINA", "DIRECTOR_RRHH", "DIRECTOR_MEDICO",
+                "DIRECTOR_ENFERMERIA", "DIRECTOR_SEGURIDAD", "DIRECTOR_DOCENCIA",
+                "SUPERVISOR", "STAFF_SERVIDOR",
+            )
+        except Exception:
+            return _puede(member) and not _es_co_owner(member)
+
+    async def _solicitar_aprobacion_owner(bot, inter, sid: int):
+        """CO_OWNER (u otros sin poder de aprobación) pide decisión al OWNER."""
+        if not isinstance(inter.user, discord.Member):
+            return await inter.response.send_message("Solo en el servidor.", ephemeral=True)
+        if not (_es_co_owner(inter.user) or _puede(inter.user)):
+            return await inter.response.send_message("Sin permiso.", ephemeral=True)
+        if _puede_aprobar(inter.user):
+            return await inter.response.send_message(
+                "Ya puedes aprobar o rechazar directamente. No hace falta solicitar al OWNER.",
+                ephemeral=True,
+            )
+        reg = obtener(sid) or {}
+        guild = inter.guild
+        emb = discord.Embed(
+            title=f"🔐 Solicitud de aprobación · #{sid:04d}",
+            description=(
+                f"**Solicitado por:** {inter.user.mention} (**CO-OWNER**)\n"
+                f"**Acción:** Revisar y decidir sobre esta solicitud.\n"
+                f"**Nota:** El CO-OWNER no puede aprobar ni rechazar; requiere decisión del **OWNER**.\n\n"
+                f"Use los botones del ticket o del log para **Aprobar** / **Rechazar**."
+            ),
+            color=0xF39C12,
+            timestamp=discord.utils.utcnow(),
+        )
+        try:
+            emb_t = embed_ticket(reg, guild)
+            if emb_t and emb_t.description:
+                emb.add_field(name="Resumen", value=(emb_t.description or "—")[:1000], inline=False)
+        except Exception:
+            pass
+        emb.set_footer(text=getattr(config, "NOMBRE_HOSPITAL", "Hospital") + "  •  Escalado a OWNER")
+
+        enviado = False
+        content = ""
+        try:
+            import roles_store
+            rid = roles_store.obtener_id_key("OWNER")
+            if rid and guild:
+                rol = guild.get_role(int(rid))
+                if rol:
+                    content = rol.mention + " "
+        except Exception:
+            pass
+
+        dest = None
+        try:
+            import logs_store
+            dest = logs_store.resolver_canal_log(bot, guild, "aprobaciones")
+            if not dest:
+                dest = logs_store.resolver_canal_log(bot, guild, "log_solicitudes")
+        except Exception:
+            pass
+        if not dest and guild:
+            cid = (getattr(config, "CANALES", {}) or {}).get("aprobaciones")
+            if cid:
+                dest = guild.get_channel(int(cid))
+
+        view = PanelDecisionLog(bot, sid)
+        if dest:
+            await dest.send(content=content or None, embed=emb, view=view)
+            enviado = True
+        elif guild:
+            try:
+                import roles_store
+                rid = roles_store.obtener_id_key("OWNER")
+                if rid:
+                    rol = guild.get_role(int(rid))
+                    if rol:
+                        for m in rol.members[:3]:
+                            try:
+                                await m.send(embed=emb, view=view)
+                                enviado = True
+                                break
+                            except Exception:
+                                continue
+            except Exception:
+                pass
+
+        if enviado:
+            try:
+                actualizar(sid, estado="escalada", resolucion=f"Escalada a OWNER por {inter.user}", fecha_actualizacion=_now())
+            except Exception:
+                pass
+            await inter.response.send_message(
+                "📨 Solicitud de aprobación enviada al **OWNER**. "
+                "Como **CO-OWNER** no puedes aprobar ni rechazar; el OWNER debe decidir.",
+                ephemeral=True,
+            )
+            try:
+                if inter.channel:
+                    await inter.channel.send(
+                        f"🔐 {inter.user.mention} (**CO-OWNER**) solicitó aprobación del **OWNER** "
+                        f"para la solicitud **#{sid:04d}**."
+                    )
+            except Exception:
+                pass
+        else:
+            await inter.response.send_message(
+                "❌ No se pudo contactar al OWNER. Configura el canal `aprobaciones` o asegúrate de que haya un OWNER.",
+                ephemeral=True,
+            )
+
     # ── Entrevista helpers (integrado) ──────────────────────────────
     def _puede_entrevista(member) -> bool:
         if not isinstance(member, discord.Member):
@@ -202,7 +334,6 @@ def apply(mod):
                     rol = guild.get_role(int(rid))
                     if rol:
                         overwrites[rol] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
-            # RRHH y Docencia también
             for extra_key in ("DIRECTOR_RRHH", "DIRECTOR_DOCENCIA"):
                 rid = roles_store.obtener_id_key(extra_key)
                 if rid:
@@ -264,8 +395,11 @@ def apply(mod):
             super().__init__()
             self.bot, self.sid = bot, sid
         async def on_submit(self, inter):
-            if not _puede(inter.user):
-                return await inter.response.send_message("Sin permiso.", ephemeral=True)
+            if _es_co_owner(inter.user) or not _puede_aprobar(inter.user):
+                return await inter.response.send_message(
+                    "Sin permiso para rechazar. Como CO-OWNER debes solicitar aprobación al OWNER.",
+                    ephemeral=True,
+                )
             reg = actualizar(self.sid, estado="rechazada", resolucion=str(self.motivo),
                              responsable_id=inter.user.id, fecha_actualizacion=_now()) or obtener(self.sid)
             await inter.response.send_message(
@@ -333,7 +467,7 @@ def apply(mod):
             await inter.response.edit_message(content="Cancelado.", view=None)
 
     class TicketSolicitudView(ui.View):
-        """Vista completa en el ticket de solicitud: Aprobar | Rechazar | Entrevista | Añadir | Cerrar."""
+        """Vista en ticket: Aprobar | Rechazar | Entrevista | Solicitar OWNER | Añadir | Cerrar."""
         def __init__(self, bot, solicitud_id: int):
             super().__init__(timeout=None)
             self.bot = bot
@@ -341,8 +475,14 @@ def apply(mod):
 
         @ui.button(label="Aprobar", style=discord.ButtonStyle.success, emoji="✅", custom_id="sol_ok_v7", row=0)
         async def aprobar(self, inter, btn):
-            if not _puede(inter.user):
-                return await inter.response.send_message("Solo staff.", ephemeral=True)
+            if _es_co_owner(inter.user):
+                return await inter.response.send_message(
+                    "❌ Como **CO-OWNER** no puedes aprobar solicitudes.\n"
+                    "Usa el botón **Solicitar aprobación OWNER** para escalar la decisión.",
+                    ephemeral=True,
+                )
+            if not _puede_aprobar(inter.user):
+                return await inter.response.send_message("Solo staff autorizado puede aprobar.", ephemeral=True)
             reg = actualizar(self.solicitud_id, estado="resuelta", resolucion="Aprobada",
                              responsable_id=inter.user.id, fecha_actualizacion=_now()) or obtener(self.solicitud_id)
             await inter.response.send_message(
@@ -358,13 +498,23 @@ def apply(mod):
 
         @ui.button(label="Rechazar", style=discord.ButtonStyle.danger, emoji="❌", custom_id="sol_no_v7", row=0)
         async def rechazar(self, inter, btn):
-            if not _puede(inter.user):
-                return await inter.response.send_message("Solo staff.", ephemeral=True)
+            if _es_co_owner(inter.user):
+                return await inter.response.send_message(
+                    "❌ Como **CO-OWNER** no puedes rechazar solicitudes.\n"
+                    "Usa el botón **Solicitar aprobación OWNER** para escalar la decisión.",
+                    ephemeral=True,
+                )
+            if not _puede_aprobar(inter.user):
+                return await inter.response.send_message("Solo staff autorizado puede rechazar.", ephemeral=True)
             await inter.response.send_modal(MotivoRechazo(self.bot, self.solicitud_id))
 
         @ui.button(label="Hacer entrevista", style=discord.ButtonStyle.primary, emoji="🎤", custom_id="sol_ent_v7", row=0)
         async def entrevista(self, inter, btn):
             await _crear_entrevista(self.bot, inter, self.solicitud_id)
+
+        @ui.button(label="Solicitar aprobación OWNER", style=discord.ButtonStyle.secondary, emoji="🔐", custom_id="sol_esc_v7", row=1)
+        async def solicitar_owner(self, inter, btn):
+            await _solicitar_aprobacion_owner(self.bot, inter, self.solicitud_id)
 
         @ui.button(label="Añadir personas", style=discord.ButtonStyle.secondary, emoji="👥", custom_id="sol_add_v7", row=1)
         async def adduser(self, inter, btn):
@@ -393,7 +543,7 @@ def apply(mod):
     mod.TicketSolicitudView = TicketSolicitudView
 
     class PanelDecisionLog(ui.View):
-        """Panel en el canal de log RRHH: Aprobar | Rechazar | Entrevista | Ir al ticket."""
+        """Panel en log RRHH: Aprobar | Rechazar | Entrevista | Solicitar OWNER | Ir al ticket."""
         def __init__(self, bot, sid):
             super().__init__(timeout=None)
             self.bot, self.sid = bot, sid
@@ -405,13 +555,22 @@ def apply(mod):
 
         @ui.button(label="Rechazar", style=discord.ButtonStyle.danger, emoji="❌", custom_id="sol_log_no_v7", row=0)
         async def re(self, inter, btn):
-            if not _puede(inter.user):
-                return await inter.response.send_message("Solo staff.", ephemeral=True)
+            if _es_co_owner(inter.user):
+                return await inter.response.send_message(
+                    "❌ Como **CO-OWNER** no puedes rechazar. Usa **Solicitar aprobación OWNER**.",
+                    ephemeral=True,
+                )
+            if not _puede_aprobar(inter.user):
+                return await inter.response.send_message("Solo staff autorizado.", ephemeral=True)
             await inter.response.send_modal(MotivoRechazo(self.bot, self.sid))
 
         @ui.button(label="Hacer entrevista", style=discord.ButtonStyle.primary, emoji="🎤", custom_id="sol_log_ent_v7", row=0)
         async def entrevista(self, inter, btn):
             await _crear_entrevista(self.bot, inter, self.sid)
+
+        @ui.button(label="Solicitar aprobación OWNER", style=discord.ButtonStyle.secondary, emoji="🔐", custom_id="sol_log_esc_v7", row=1)
+        async def solicitar_owner(self, inter, btn):
+            await _solicitar_aprobacion_owner(self.bot, inter, self.sid)
 
         @ui.button(label="Ir al ticket", style=discord.ButtonStyle.secondary, emoji="🎫", custom_id="sol_log_go_v7", row=1)
         async def go(self, inter, btn):
@@ -527,4 +686,4 @@ def apply(mod):
 
         mod.registrar = registrar
 
-    print("[cs_ui] OK — Aprobar|Rechazar|Hacer entrevista|Añadir|Cerrar + logs RRHH")
+    print("[cs_ui] OK — Aprobar|Rechazar|Entrevista|Solicitar OWNER|Añadir|Cerrar (CO_OWNER no aprueba)")
