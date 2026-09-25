@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*
 """
 mejoras_ui.py — Aplica plantillas del cuaderno a comandos existentes.
-Reemplaza solo comandos sueltos de forma segura; no toca el arranque.
 """
 from __future__ import annotations
 
-import traceback
 from typing import Optional
 
 import discord
@@ -19,7 +17,6 @@ from plantillas_comandos import (
     PlantillaBalanceGeneral,
     PlantillaBan,
     PlantillaCapacitacion,
-    PlantillaDespido,
     PlantillaHistorialFinanciero,
     PlantillaLogistica,
     PlantillaSancion,
@@ -51,33 +48,86 @@ def _es_finanzas(member: discord.Member) -> bool:
 
 
 class VistaApelarBan(ui.View):
-    def __init__(self, motivo: str = ""):
-        super().__init__(timeout=86400)
-        self.motivo = motivo
+    """Botón de apelación en DM. Guarda guild_id para enviar al canal de logs."""
 
-    @ui.button(label="Apelar ban", style=discord.ButtonStyle.primary, emoji="📨")
+    def __init__(self, motivo: str = "", guild_id: int = 0, staff_id: int = 0):
+        super().__init__(timeout=None)  # no expira mientras el bot esté online
+        self.motivo = motivo
+        self.guild_id = int(guild_id or 0)
+        self.staff_id = int(staff_id or 0)
+
+    @ui.button(
+        label="Apelar ban",
+        style=discord.ButtonStyle.primary,
+        emoji="📨",
+        custom_id="ooc_ban_apelar",
+    )
     async def apelar(self, inter: discord.Interaction, _btn: ui.Button):
         await inter.response.send_message(
-            "📨 Tu apelación quedó registrada. Un administrador revisará el caso.\n"
-            f"Motivo original del ban: **{self.motivo or '—'}**",
+            "📨 Tu **apelación** fue enviada al staff del servidor.\n"
+            f"Motivo del ban: **{self.motivo or '—'}**\n"
+            "Un administrador la revisará.",
             ephemeral=True,
         )
-        # Intentar avisar en log de sanciones OOC si existe canal
-        try:
-            import logs_store
-            ch = logs_store.resolver_canal_log(inter.client, inter.guild, "log_sanciones_ooc")
-            if ch:
-                await ch.send(
-                    f"📨 **Apelación de ban** de {inter.user.mention}\n"
-                    f"Motivo del ban: {self.motivo or '—'}"
-                )
-        except Exception:
-            pass
-        self.stop()
+
+        bot = inter.client
+        guild = bot.get_guild(self.guild_id) if self.guild_id else None
+
+        emb = discord.Embed(
+            title="📨 Apelación de ban OOC",
+            description=(
+                f"**Usuario:** {inter.user.mention} (`{inter.user.id}`)\n"
+                f"**Motivo del ban:** {self.motivo or '—'}\n"
+                f"**Staff que baneó:** <@{self.staff_id}>" if self.staff_id else
+                f"**Usuario:** {inter.user.mention} (`{inter.user.id}`)\n"
+                f"**Motivo del ban:** {self.motivo or '—'}"
+            ),
+            color=0xF39C12,
+        )
+        emb.set_footer(text="Apelación enviada desde DM del baneado")
+
+        enviado = False
+        if guild:
+            # 1) Canal de logs OOC / sanciones
+            for tipo in ("log_sanciones_ooc", "log_sanciones", "log_moderacion", "log_solicitudes"):
+                try:
+                    import logs_store
+                    ch = logs_store.resolver_canal_log(bot, guild, tipo)
+                    if ch:
+                        await ch.send(embed=emb)
+                        enviado = True
+                        break
+                except Exception:
+                    continue
+            # 2) Fallback: canal del sistema o primer canal de texto donde pueda escribir
+            if not enviado:
+                try:
+                    ch = guild.system_channel
+                    if ch and ch.permissions_for(guild.me).send_messages:
+                        await ch.send(embed=emb)
+                        enviado = True
+                except Exception:
+                    pass
+            if not enviado:
+                for ch in guild.text_channels:
+                    try:
+                        if ch.permissions_for(guild.me).send_messages:
+                            await ch.send(embed=emb)
+                            enviado = True
+                            break
+                    except Exception:
+                        continue
+
+        if not enviado:
+            print(f"[mejoras_ui] Apelación de {inter.user.id} sin canal destino (guild={self.guild_id})")
 
 
 def registrar(bot: commands.Bot) -> None:
-    """Reemplaza comandos clave con versión plantilla (si existen)."""
+    # Vista persistente para el botón de apelar (tras reinicio del bot)
+    try:
+        bot.add_view(VistaApelarBan())
+    except Exception:
+        pass
 
     # ── /balance ──────────────────────────────────────────────────────
     try:
@@ -141,12 +191,7 @@ def registrar(bot: commands.Bot) -> None:
         try:
             resumen = economia.resumen_general(10)
         except Exception:
-            resumen = {
-                "total_en_circulacion": 0,
-                "cuentas_activas": 0,
-                "ultimos": [],
-            }
-        # normalizar claves
+            resumen = {"total_en_circulacion": 0, "cuentas_activas": 0, "ultimos": []}
         if "ultimos" not in resumen and "movimientos" in resumen:
             resumen["ultimos"] = resumen["movimientos"]
         emb = PlantillaBalanceGeneral.principal(resumen)
@@ -199,54 +244,87 @@ def registrar(bot: commands.Bot) -> None:
         try:
             await usuario.send(embed=emb_dm)
         except Exception:
-            await inter.response.send_message(
+            return await inter.response.send_message(
                 "⚠️ No pude enviar DM; revisa privacidad del usuario.", ephemeral=True
             )
-            return
         emb_ok = PlantillaTarea.confirmacion(usuario, titulo)
         await inter.response.send_message(embed=emb_ok, ephemeral=True)
 
-    # ── /ooc_ban mejorado (DM + botón apelar) ─────────────────────────
+    # ── /ooc_ban (arreglado) ──────────────────────────────────────────
     try:
         bot.tree.remove_command("ooc_ban")
     except Exception:
         pass
 
     @bot.tree.command(name="ooc_ban", description="[OOC] Ban con DM de motivo y botón de apelación")
-    @app_commands.describe(usuario="Usuario", motivo="Motivo del ban")
+    @app_commands.describe(usuario="Usuario a banear", motivo="Motivo del ban (se envía por DM)")
     async def ooc_ban_cmd(inter: discord.Interaction, usuario: discord.Member, motivo: str):
-        if not isinstance(inter.user, discord.Member):
-            return
+        if not isinstance(inter.user, discord.Member) or not inter.guild:
+            return await inter.response.send_message("Solo en un servidor.", ephemeral=True)
+
         if not (
             inter.user.guild_permissions.ban_members
             or inter.user.guild_permissions.administrator
         ):
             return await inter.response.send_message("❌ Sin permiso de ban.", ephemeral=True)
 
+        if usuario.id == inter.user.id:
+            return await inter.response.send_message("❌ No puedes banearte a ti mismo.", ephemeral=True)
+
+        if usuario.top_role >= inter.user.top_role and not inter.user.guild_permissions.administrator:
+            return await inter.response.send_message(
+                "❌ No puedes banear a alguien con rol igual o superior.", ephemeral=True
+            )
+
+        # Responder YA para evitar "error de interacción"
         await inter.response.defer(ephemeral=True)
-        # DM antes del ban
+
+        guild = inter.guild
+        guild_id = guild.id
+        staff_id = inter.user.id
+        dm_ok = False
+
+        # 1) DM con motivo + botón apelar (ANTES del ban)
         try:
-            emb = PlantillaBan.dm_baneado(motivo, inter.user, inter.guild.name if inter.guild else "el servidor")
-            await usuario.send(embed=emb, view=VistaApelarBan(motivo))
-        except Exception:
-            pass
-        try:
-            await inter.guild.ban(usuario, reason=f"[OOC] {motivo}"[:500], delete_message_days=0)
+            emb = PlantillaBan.dm_baneado(motivo, inter.user, guild.name)
+            vista = VistaApelarBan(motivo=motivo, guild_id=guild_id, staff_id=staff_id)
+            await usuario.send(embed=emb, view=vista)
+            dm_ok = True
         except Exception as e:
-            return await inter.followup.send(f"❌ No se pudo banear: {e}", ephemeral=True)
+            print(f"[ooc_ban] DM falló: {e}")
+
+        # 2) Ban (API moderna: delete_message_seconds)
+        try:
+            await guild.ban(
+                usuario,
+                reason=f"[OOC] {motivo}"[:500],
+                delete_message_seconds=0,
+            )
+        except TypeError:
+            # Compatibilidad con discord.py antiguo
+            try:
+                await guild.ban(usuario, reason=f"[OOC] {motivo}"[:500])
+            except Exception as e:
+                return await inter.followup.send(f"❌ No se pudo banear: `{e}`", ephemeral=True)
+        except Exception as e:
+            return await inter.followup.send(f"❌ No se pudo banear: `{e}`", ephemeral=True)
 
         log_emb = PlantillaBan.log(inter.user, usuario, motivo)
-        await inter.followup.send(embed=log_emb, ephemeral=True)
-        try:
-            import logs_store
-            ch = logs_store.resolver_canal_log(bot, inter.guild, "log_sanciones_ooc")
-            if ch:
-                await ch.send(embed=log_emb)
-        except Exception:
-            pass
+        extra = "" if dm_ok else "\n⚠️ No se pudo enviar el DM (el usuario tiene cerrados los mensajes)."
+        await inter.followup.send(embed=log_emb, content=extra or None, ephemeral=True)
 
-    # ── /sancion_modalidad (abierta / apelación) ───────────────────────
-    # Comando nuevo para no romper sancion_interna existente
+        # 3) Log en canal del servidor
+        for tipo in ("log_sanciones_ooc", "log_sanciones", "log_moderacion"):
+            try:
+                import logs_store
+                ch = logs_store.resolver_canal_log(bot, guild, tipo)
+                if ch:
+                    await ch.send(embed=log_emb)
+                    break
+            except Exception:
+                continue
+
+    # ── /sancion_aplicar ──────────────────────────────────────────────
     if "sancion_aplicar" not in {c.name for c in bot.tree.get_commands()}:
         @bot.tree.command(
             name="sancion_aplicar",
@@ -293,7 +371,7 @@ def registrar(bot: commands.Bot) -> None:
             except Exception:
                 pass
 
-    # ── /solicitar_insumo (logística) ─────────────────────────────────
+    # ── /solicitar_insumo ─────────────────────────────────────────────
     if "solicitar_insumo" not in {c.name for c in bot.tree.get_commands()}:
         @bot.tree.command(name="solicitar_insumo", description="Solicita insumos a logística")
         @app_commands.describe(item="Nombre del ítem", cantidad="Cantidad", area="Área", notas="Notas")
@@ -313,15 +391,6 @@ def registrar(bot: commands.Bot) -> None:
                     await ch.send(embed=emb)
             except Exception:
                 pass
-
-    # ── capacitacion historial: mejorar si el grupo existe ─────────────
-    try:
-        grupo = bot.tree.get_command("capacitacion")
-        if grupo is not None and capacitaciones is not None:
-            # no eliminamos subcomandos del remoto; añadimos alias mejorado
-            pass
-    except Exception:
-        pass
 
     if "cap_historial" not in {c.name for c in bot.tree.get_commands()}:
         @bot.tree.command(name="cap_historial", description="Historial de capacitaciones (plantilla estructurada)")
