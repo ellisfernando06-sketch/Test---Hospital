@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*
-"""mejoras_ui.py — plantillas + ban OOC con apelación opcional."""
+"""mejoras_ui.py — plantillas + ban OOC con apelación (cuarentena si hay apelación)."""
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Dict, Optional
 
 import discord
@@ -31,7 +32,7 @@ try:
 except Exception:
     capacitaciones = None
 
-# user_id -> datos de apelación (solo si el ban tiene derecho a apelar)
+# user_id -> datos de apelación
 _APELACIONES: Dict[int, dict] = {}
 
 
@@ -92,9 +93,7 @@ class ModalNotasEntrevista(ui.Modal, title="Notas de entrevista de apelación"):
         )
         try:
             u = await inter.client.fetch_user(uid)
-            await u.send(
-                "🎤 El staff registró tu entrevista de apelación. Pronto decidirán."
-            )
+            await u.send("🎤 El staff registró tu entrevista. Pronto decidirán.")
         except Exception:
             pass
 
@@ -106,6 +105,7 @@ class VistaResolverApelacion(ui.View):
         guild_id: int = 0,
         motivo: str = "",
         version_hechos: str = "",
+        en_cuarentena: bool = True,
     ):
         super().__init__(timeout=None)
         self.user_id = int(user_id or 0)
@@ -113,6 +113,7 @@ class VistaResolverApelacion(ui.View):
         self.motivo = motivo or ""
         self.version_hechos = version_hechos or ""
         self.notas_entrevista = ""
+        self.en_cuarentena = en_cuarentena
 
     @ui.button(label="Citar a entrevista", style=discord.ButtonStyle.primary, emoji="🎤")
     async def citar_entrevista(self, inter: discord.Interaction, _btn: ui.Button):
@@ -122,8 +123,7 @@ class VistaResolverApelacion(ui.View):
             u = await inter.client.fetch_user(self.user_id)
             await u.send(
                 f"🎤 **Cita de entrevista — apelación**\n"
-                f"Staff: {inter.user.display_name}\n"
-                f"Motivo del ban: {self.motivo or '—'}"
+                f"Staff: {inter.user.display_name}\nMotivo: {self.motivo or '—'}"
             )
         except Exception:
             pass
@@ -131,22 +131,36 @@ class VistaResolverApelacion(ui.View):
             _APELACIONES[self.user_id]["estado"] = "cita_entrevista"
         await inter.response.send_modal(ModalNotasEntrevista(self))
 
-    @ui.button(label="Aprobar (desbanear)", style=discord.ButtonStyle.success, emoji="✅")
+    @ui.button(label="Aprobar (liberar)", style=discord.ButtonStyle.success, emoji="✅")
     async def aprobar(self, inter: discord.Interaction, _btn: ui.Button):
         if not isinstance(inter.user, discord.Member) or not _puede_moderar(inter.user):
             return await inter.response.send_message("❌ Solo staff con ban.", ephemeral=True)
         guild = inter.guild or inter.client.get_guild(self.guild_id)
         if not guild:
             return await inter.response.send_message("❌ Servidor no encontrado.", ephemeral=True)
+
         await inter.response.defer()
-        try:
-            await guild.unban(
-                discord.Object(id=self.user_id),
-                reason=f"Apelación aprobada por {inter.user}"[:500],
-            )
-            resultado = f"✅ **APROBADA** por {inter.user.mention}\nDesbaneado: <@{self.user_id}>"
-        except Exception as e:
-            resultado = f"❌ No se pudo desbanear: `{e}`"
+        resultado = f"✅ **APROBADA** por {inter.user.mention}\nUsuario: <@{self.user_id}>"
+
+        # Si estaba en cuarentena: quitar timeout (sigue en el server)
+        member = guild.get_member(self.user_id)
+        if member:
+            try:
+                await member.timeout(None, reason=f"Apelación aprobada por {inter.user}")
+                resultado += "\nTimeout/cuarentena **retirado**."
+            except Exception as e:
+                resultado += f"\n⚠️ No se pudo quitar timeout: {e}"
+        else:
+            # Por si llegó a estar baneado
+            try:
+                await guild.unban(
+                    discord.Object(id=self.user_id),
+                    reason=f"Apelación aprobada por {inter.user}"[:500],
+                )
+                resultado += "\nUsuario **desbaneado**."
+            except Exception:
+                resultado += "\n_(No estaba baneado / no en el servidor.)_"
+
         try:
             emb = inter.message.embeds[0] if inter.message.embeds else discord.Embed(title="Apelación")
             emb.color = 0x2ECC71
@@ -157,18 +171,46 @@ class VistaResolverApelacion(ui.View):
         await inter.followup.send(resultado, ephemeral=True)
         try:
             u = await inter.client.fetch_user(self.user_id)
-            await u.send("✅ Tu apelación fue **aprobada**. Puedes volver a unirte si tienes invitación.")
+            await u.send(
+                "✅ Tu **apelación fue aprobada**.\n"
+                "Tu restricción fue retirada. Respeta las normas del servidor."
+            )
         except Exception:
             pass
         _APELACIONES.pop(self.user_id, None)
         self.stop()
 
-    @ui.button(label="Negar apelación", style=discord.ButtonStyle.danger, emoji="❌")
+    @ui.button(label="Negar (ban definitivo)", style=discord.ButtonStyle.danger, emoji="❌")
     async def negar(self, inter: discord.Interaction, _btn: ui.Button):
         if not isinstance(inter.user, discord.Member) or not _puede_moderar(inter.user):
             return await inter.response.send_message("❌ Solo staff con ban.", ephemeral=True)
+        guild = inter.guild or inter.client.get_guild(self.guild_id)
+        if not guild:
+            return await inter.response.send_message("❌ Servidor no encontrado.", ephemeral=True)
+
         await inter.response.defer()
-        resultado = f"❌ **NEGADA** por {inter.user.mention}\nBan de <@{self.user_id}> se mantiene."
+        resultado = f"❌ **NEGADA** por {inter.user.mention}\n"
+
+        # Ban definitivo
+        try:
+            await guild.ban(
+                discord.Object(id=self.user_id),
+                reason=f"Apelación negada por {inter.user} · {self.motivo}"[:500],
+                delete_message_seconds=0,
+            )
+            resultado += f"Ban definitivo aplicado a <@{self.user_id}>."
+        except TypeError:
+            try:
+                await guild.ban(
+                    discord.Object(id=self.user_id),
+                    reason=f"Apelación negada por {inter.user}"[:500],
+                )
+                resultado += f"Ban definitivo aplicado a <@{self.user_id}>."
+            except Exception as e:
+                resultado += f"No se pudo banear: `{e}`"
+        except Exception as e:
+            resultado += f"No se pudo banear: `{e}`"
+
         try:
             emb = inter.message.embeds[0] if inter.message.embeds else discord.Embed(title="Apelación")
             emb.color = 0xE74C3C
@@ -180,7 +222,8 @@ class VistaResolverApelacion(ui.View):
         try:
             u = await inter.client.fetch_user(self.user_id)
             await u.send(
-                f"❌ Tu apelación fue **negada**. El ban se mantiene.\nMotivo: {self.motivo or '—'}"
+                f"❌ Tu apelación fue **negada**.\n"
+                f"Has sido **baneado** del servidor.\nMotivo: {self.motivo or '—'}"
             )
         except Exception:
             pass
@@ -200,20 +243,25 @@ async def _enviar_apelacion_a_staff(bot, user: discord.abc.User, data: dict) -> 
         return False
 
     emb = discord.Embed(
-        title="📨 Apelación de ban OOC",
+        title="📨 Apelación de sanción OOC",
         description=(
             f"**Usuario:** {user.mention} (`{user.id}`)\n"
-            f"**Motivo del ban:** {motivo}\n"
-            + (f"**Staff que baneó:** <@{staff_id}>\n" if staff_id else "")
-            + "\nRecomendado: **entrevista** antes de decidir."
+            f"**Motivo:** {motivo}\n"
+            + (f"**Staff:** <@{staff_id}>\n" if staff_id else "")
+            + "\nEl usuario está en **cuarentena** (aún en el servidor).\n"
+            "Haz **entrevista** y luego aprueba o aplica ban definitivo."
         ),
         color=0xF39C12,
     )
     emb.add_field(name="📝 Versión del usuario", value=str(version)[:1000], inline=False)
-    emb.set_footer(text="1) Entrevista → 2) Aprobar o Negar")
+    emb.set_footer(text="1) Entrevista → 2) Aprobar o Negar (ban)")
 
     vista = VistaResolverApelacion(
-        user_id=user.id, guild_id=guild_id, motivo=motivo, version_hechos=str(version)
+        user_id=user.id,
+        guild_id=guild_id,
+        motivo=motivo,
+        version_hechos=str(version),
+        en_cuarentena=True,
     )
 
     for tipo in ("log_sanciones_ooc", "log_sanciones", "log_moderacion", "log_solicitudes"):
@@ -249,13 +297,13 @@ class VistaApelarBan(ui.View):
         self.guild_id = int(guild_id or 0)
         self.staff_id = int(staff_id or 0)
 
-    @ui.button(label="Apelar ban", style=discord.ButtonStyle.primary, emoji="📨")
+    @ui.button(label="Apelar", style=discord.ButtonStyle.primary, emoji="📨")
     async def apelar(self, inter: discord.Interaction, _btn: ui.Button):
         data = _APELACIONES.get(inter.user.id)
         if not data or not data.get("permite_apelacion", False):
             try:
                 await inter.response.send_message(
-                    "⛔ Este ban **no tiene derecho a apelación**."
+                    "⛔ Esta sanción **no tiene derecho a apelación**."
                 )
             except Exception:
                 pass
@@ -264,13 +312,13 @@ class VistaApelarBan(ui.View):
         data["estado"] = "esperando_version"
         texto = (
             "📨 **Apelación iniciada.**\n\n"
-            f"**Motivo de tu ban:** {self.motivo or data.get('motivo') or '—'}\n\n"
+            f"**Motivo:** {self.motivo or data.get('motivo') or '—'}\n\n"
             "**Paso a paso:**\n"
             "1️⃣ Escribe en **un mensaje** tu versión de los hechos\n"
-            "2️⃣ El staff revisará tu caso\n"
-            "3️⃣ Pueden **citarte a entrevista**\n"
-            "4️⃣ Luego **aprueban** o **niegan**\n\n"
-            "Envía ahora tu versión de los hechos."
+            "2️⃣ El staff revisará\n"
+            "3️⃣ Pueden citarte a **entrevista**\n"
+            "4️⃣ Aprueban (te liberan) o niegan (ban definitivo)\n\n"
+            "Envía ahora tu versión."
         )
         try:
             await inter.response.send_message(texto)
@@ -302,8 +350,8 @@ def registrar(bot: commands.Bot) -> None:
                 try:
                     await msg.channel.send(
                         "⛔ No puedes apelar.\n"
-                        "Este ban **no tiene derecho a apelación**, "
-                        "o no hay un ban reciente registrado."
+                        "Esta sanción no tiene derecho a apelación "
+                        "o no hay un caso reciente."
                     )
                 except Exception:
                     pass
@@ -312,12 +360,11 @@ def registrar(bot: commands.Bot) -> None:
             try:
                 await msg.channel.send(
                     f"📨 **Apelación iniciada.**\n\n"
-                    f"**Motivo de tu ban:** {data.get('motivo') or '—'}\n\n"
-                    f"**Paso a paso:**\n"
-                    f"1️⃣ Escribe tu versión de los hechos (un mensaje)\n"
-                    f"2️⃣ Staff revisa\n"
-                    f"3️⃣ Pueden citarte a **entrevista**\n"
-                    f"4️⃣ Aprueban o niegan\n\n"
+                    f"**Motivo:** {data.get('motivo') or '—'}\n\n"
+                    f"**Pasos:**\n"
+                    f"1️⃣ Escribe tu versión (un mensaje)\n"
+                    f"2️⃣ Staff revisa / entrevista\n"
+                    f"3️⃣ Aprueban o ban definitivo\n\n"
                     f"Envía ahora tu versión."
                 )
             except Exception:
@@ -340,27 +387,26 @@ def registrar(bot: commands.Bot) -> None:
                 if ok:
                     await msg.channel.send(
                         "✅ Versión enviada al staff.\n"
-                        "Pueden entrevistarte y luego aprobar o negar."
+                        "Pueden entrevistarte y luego liberarte o banearte."
                     )
                 else:
                     await msg.channel.send("No pude enviar la apelación (logs no configurados).")
             except Exception:
                 pass
 
-    # ── resto de comandos (balance, etc.) ─────────────────────────────
     try:
         bot.tree.remove_command("balance")
     except Exception:
         pass
 
-    @bot.tree.command(name="balance", description="Consulta tu balance (plantilla mejorada)")
-    @app_commands.describe(usuario="Usuario a consultar (solo finanzas/admin)")
+    @bot.tree.command(name="balance", description="Consulta tu balance")
+    @app_commands.describe(usuario="Usuario (solo finanzas/admin)")
     async def balance_cmd(inter: discord.Interaction, usuario: Optional[discord.Member] = None):
         objetivo = usuario or inter.user
         if usuario and usuario.id != inter.user.id:
             if not isinstance(inter.user, discord.Member) or not _es_finanzas(inter.user):
                 return await inter.response.send_message(
-                    "❌ Solo puedes ver tu propio balance.", ephemeral=True
+                    "❌ Solo tu balance.", ephemeral=True
                 )
         saldo = economia.obtener_balance(objetivo.id)
         movs = []
@@ -380,7 +426,7 @@ def registrar(bot: commands.Bot) -> None:
     except Exception:
         pass
 
-    @bot.tree.command(name="historial_financiero", description="Historial financiero estructurado")
+    @bot.tree.command(name="historial_financiero", description="Historial financiero")
     @app_commands.describe(usuario="Usuario (solo finanzas/admin)")
     async def hist_fin_cmd(inter: discord.Interaction, usuario: Optional[discord.Member] = None):
         objetivo = usuario or inter.user
@@ -419,7 +465,7 @@ def registrar(bot: commands.Bot) -> None:
     except Exception:
         pass
 
-    @bot.tree.command(name="anuncio", description="Publica un anuncio oficial")
+    @bot.tree.command(name="anuncio", description="Anuncio oficial")
     @app_commands.describe(titulo="Título", mensaje="Contenido")
     async def anuncio_cmd(inter: discord.Interaction, titulo: str, mensaje: str):
         if not isinstance(inter.user, discord.Member):
@@ -459,7 +505,6 @@ def registrar(bot: commands.Bot) -> None:
             embed=PlantillaTarea.confirmacion(usuario, titulo), ephemeral=True
         )
 
-    # ── /ooc_ban con opción de apelación ──────────────────────────────
     try:
         bot.tree.remove_command("ooc_ban")
     except Exception:
@@ -467,17 +512,23 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="ooc_ban",
-        description="[OOC] Ban — elige si tiene derecho a apelación",
+        description="[OOC] Sanción grave — con o sin derecho a apelación",
     )
     @app_commands.describe(
-        usuario="Usuario a banear",
-        motivo="Motivo del ban (se envía por DM)",
-        apelacion="¿Este ban tiene derecho a apelación?",
+        usuario="Usuario",
+        motivo="Motivo (se envía por DM)",
+        apelacion="¿Tiene derecho a apelación?",
     )
     @app_commands.choices(
         apelacion=[
-            app_commands.Choice(name="Sí — con derecho a apelación", value="si"),
-            app_commands.Choice(name="No — sin apelación", value="no"),
+            app_commands.Choice(
+                name="Sí — cuarentena + puede apelar (sigue en el servidor)",
+                value="si",
+            ),
+            app_commands.Choice(
+                name="No — ban inmediato sin apelación",
+                value="no",
+            ),
         ]
     )
     async def ooc_ban_cmd(
@@ -496,11 +547,11 @@ def registrar(bot: commands.Bot) -> None:
             return await inter.response.send_message("❌ Sin permiso de ban.", ephemeral=True)
 
         if usuario.id == inter.user.id:
-            return await inter.response.send_message("❌ No puedes banearte a ti mismo.", ephemeral=True)
+            return await inter.response.send_message("❌ No puedes sancionarte a ti mismo.", ephemeral=True)
 
         if usuario.top_role >= inter.user.top_role and not inter.user.guild_permissions.administrator:
             return await inter.response.send_message(
-                "❌ No puedes banear a alguien con rol igual o superior.", ephemeral=True
+                "❌ No puedes sancionar a alguien con rol igual o superior.", ephemeral=True
             )
 
         await inter.response.defer(ephemeral=True)
@@ -509,7 +560,6 @@ def registrar(bot: commands.Bot) -> None:
         permite = apelacion.value == "si"
         dm_ok = False
 
-        # Solo registrar apelación si tiene derecho
         if permite:
             _APELACIONES[usuario.id] = {
                 "motivo": motivo,
@@ -518,17 +568,18 @@ def registrar(bot: commands.Bot) -> None:
                 "permite_apelacion": True,
                 "estado": "puede_apelar",
                 "version_hechos": "",
+                "cuarentena": True,
             }
         else:
             _APELACIONES.pop(usuario.id, None)
 
-        # DM al baneado
+        # —— DM ——
         try:
             emb = discord.Embed(
-                title=f"🔨 Has sido baneado de {guild.name}",
-                color=0xED4245,
+                title=f"{'⚠️ Sanción con apelación' if permite else '🔨 Ban sin apelación'} · {guild.name}",
+                color=0xF39C12 if permite else 0xED4245,
             )
-            emb.add_field(name="📋 Motivo del ban", value=motivo or "No especificado", inline=False)
+            emb.add_field(name="📋 Motivo", value=motivo or "No especificado", inline=False)
             emb.add_field(
                 name="👮 Staff",
                 value=getattr(inter.user, "display_name", str(inter.user)),
@@ -537,17 +588,18 @@ def registrar(bot: commands.Bot) -> None:
 
             if permite:
                 emb.add_field(
-                    name="✅ Derecho a apelación",
-                    value="**Sí** — puedes apelar",
-                    inline=True,
+                    name="✅ Apelación",
+                    value="**Sí** — estás en **cuarentena** (sigues en el servidor, silenciado)",
+                    inline=False,
                 )
                 emb.add_field(
-                    name="📨 Cómo apelar (paso a paso)",
+                    name="📨 Cómo apelar",
                     value=(
-                        "**1.** Pulsa el botón **Apelar ban** o escribe **APELAR** aquí\n"
+                        "**1.** Pulsa **Apelar** o escribe **APELAR** aquí\n"
                         "**2.** Cuenta tu versión de los hechos\n"
                         "**3.** El staff puede citarte a **entrevista**\n"
-                        "**4.** El staff **aprueba** (desban) o **niega**"
+                        "**4.** Te **liberan** o aplican **ban definitivo**\n\n"
+                        "_Puedes escribir al bot porque aún compartes servidor._"
                     ),
                     inline=False,
                 )
@@ -557,44 +609,49 @@ def registrar(bot: commands.Bot) -> None:
                 await usuario.send(embed=emb, view=vista)
             else:
                 emb.add_field(
-                    name="⛔ Derecho a apelación",
-                    value="**No** — este ban **no** admite apelación",
-                    inline=True,
-                )
-                emb.add_field(
-                    name="ℹ️ Información",
-                    value=(
-                        "No podrás usar el botón de apelar ni el comando **APELAR**.\n"
-                        "La decisión del staff es definitiva para este caso."
-                    ),
+                    name="⛔ Apelación",
+                    value="**No** — ban inmediato, sin apelación",
                     inline=False,
                 )
                 await usuario.send(embed=emb)
 
             dm_ok = True
         except Exception as e:
-            print(f"[ooc_ban] DM falló: {e}")
+            print(f"[ooc_ban] DM: {e}")
 
-        try:
-            await guild.ban(
-                usuario,
-                reason=f"[OOC] {motivo}"[:500],
-                delete_message_seconds=0,
-            )
-        except TypeError:
+        # —— Acción en el servidor ——
+        if permite:
+            # CUARENTENA: timeout (sigue en el guild → puede hablar al bot por DM)
             try:
-                await guild.ban(usuario, reason=f"[OOC] {motivo}"[:500])
+                await usuario.timeout(
+                    timedelta(days=28),
+                    reason=f"[OOC cuarentena/apelación] {motivo}"[:500],
+                )
             except Exception as e:
-                return await inter.followup.send(f"❌ No se pudo banear: `{e}`", ephemeral=True)
-        except Exception as e:
-            return await inter.followup.send(f"❌ No se pudo banear: `{e}`", ephemeral=True)
+                return await inter.followup.send(
+                    f"❌ No se pudo poner en cuarentena (timeout): `{e}`\n"
+                    "¿El bot tiene permiso de Moderar miembros y rol más alto?",
+                    ephemeral=True,
+                )
+            estado_txt = "Cuarentena (timeout 28d) — puede apelar"
+        else:
+            try:
+                await guild.ban(
+                    usuario,
+                    reason=f"[OOC] {motivo}"[:500],
+                    delete_message_seconds=0,
+                )
+            except TypeError:
+                try:
+                    await guild.ban(usuario, reason=f"[OOC] {motivo}"[:500])
+                except Exception as e:
+                    return await inter.followup.send(f"❌ Ban falló: `{e}`", ephemeral=True)
+            except Exception as e:
+                return await inter.followup.send(f"❌ Ban falló: `{e}`", ephemeral=True)
+            estado_txt = "Ban inmediato — sin apelación"
 
         log_emb = PlantillaBan.log(inter.user, usuario, motivo)
-        log_emb.add_field(
-            name="Apelación",
-            value="✅ Con derecho" if permite else "⛔ Sin derecho",
-            inline=True,
-        )
+        log_emb.add_field(name="Modo", value=estado_txt, inline=False)
         extra = "" if dm_ok else "\n⚠️ No se pudo enviar el DM."
         await inter.followup.send(embed=log_emb, content=extra or None, ephemeral=True)
 
@@ -646,7 +703,7 @@ def registrar(bot: commands.Bot) -> None:
                 pass
 
     if "solicitar_insumo" not in {c.name for c in bot.tree.get_commands()}:
-        @bot.tree.command(name="solicitar_insumo", description="Solicita insumos a logística")
+        @bot.tree.command(name="solicitar_insumo", description="Solicita insumos")
         @app_commands.describe(item="Ítem", cantidad="Cantidad", area="Área", notas="Notas")
         async def solicitar_insumo_cmd(
             inter: discord.Interaction,
