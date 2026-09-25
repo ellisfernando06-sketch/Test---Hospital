@@ -134,7 +134,7 @@ async def on_ready():
         source = re.sub(
             r"@bot\.tree\.command\(name=\"ordenar_roles\"[^\n]*\n"
             r"(?:@[^\n]+\n)*"
-            r"async def ordenar_roles_cmd\([\s\S]*?\n(?=@bot\.|def |async def |class )",
+            r"async def ordenar_roles_cmd\([\s\S]*?\n(?=\S)",
             "\n",
             source,
             count=1,
