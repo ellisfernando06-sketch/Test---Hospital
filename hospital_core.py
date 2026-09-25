@@ -85,17 +85,21 @@ def _cargar(module_globals: dict):
 
     new_on_ready = '''@bot.event
 async def on_ready():
-    try:
-        bot.add_view(AbrirTicketView())
-        bot.add_view(CerrarTicketView())
-        bot.add_view(PanelAccionesView())
-        bot.add_view(PanelEstadoView())
-        bot.add_view(AprobacionView(key_aprobador="DIRECTOR_RRHH", solicitud_id="persist"))
-    except Exception as _e:
-        print("[on_ready] vistas:", _e)
+    if not getattr(bot, "_hospital_views_ok", False):
+        try:
+            bot.add_view(AbrirTicketView())
+            bot.add_view(CerrarTicketView())
+            bot.add_view(PanelAccionesView())
+            bot.add_view(PanelEstadoView())
+            bot.add_view(AprobacionView(key_aprobador="DIRECTOR_RRHH", solicitud_id="persist"))
+            bot._hospital_views_ok = True
+        except Exception as _e:
+            print("[on_ready] vistas:", _e)
     try:
         import verificacion as _verif
-        bot.add_view(_verif.VerificarView(staff_id=0, guild_id=0))
+        if not getattr(bot, "_verif_view_ok", False):
+            bot.add_view(_verif.VerificarView(staff_id=0, guild_id=0))
+            bot._verif_view_ok = True
     except Exception as _e:
         print("[on_ready] VerificarView:", _e)
     print(f"Conectado como {bot.user} (ID: {bot.user.id})")
