@@ -33,6 +33,7 @@ _MODULOS = (
     "docencia",
     "firmas",
     "capacitacion_cert_ui",
+    "mejoras_ui",  # plantillas del cuaderno (después del núcleo)
 )
 
 _QUITAR = ("ordenar_roles",)
@@ -40,12 +41,12 @@ _QUITAR = ("ordenar_roles",)
 _BAJA = (
     "ver_canal_logs_tickets", "configurar_logs_tickets", "panel_solicitudes_logs",
     "configurar_canal_logs", "catalogo_tienda", "panel_reglas", "reglas",
-    "solicitud_info", "mi_sanciones", "historial_advertencias", "historial_financiero",
+    "solicitud_info", "mi_sanciones", "historial_advertencias",
     "libro_contable", "registrar_gasto", "registrar_ingreso",
-    "ooc_advertencia", "ooc_kick", "ooc_ban", "ooc_timeout",
+    "ooc_advertencia", "ooc_kick", "ooc_timeout",
     "citatorio_admin", "citatorio_disciplina", "citatorio_general",
     "carta_solicitud", "reporte_procedimiento", "solicitud_degrado", "solicitud_descargo",
-    "quejas_pendientes", "queja_resolver", "marcar_asistencia", "asignar_tarea",
+    "quejas_pendientes", "queja_resolver", "marcar_asistencia",
     "convocar_reunion_departamento",
 )
 
@@ -54,6 +55,9 @@ _CRITICOS = {
     "limpiar", "limpiar_todo", "sincronizar_comandos",
     "panel_solicitudes", "configurar_roles", "otorgar_key", "bootstrap_owner",
     "tienda", "sancionar", "expediente", "capacitacion",
+    "balance", "balance_general", "historial_financiero",
+    "anuncio", "asignar_tarea", "ooc_ban", "sancion_aplicar",
+    "solicitar_insumo", "cap_historial",
 }
 
 
@@ -264,7 +268,7 @@ async def on_ready():
         msg = await ctx.reply("🔄 Sync…")
         try:
             names = await _sync_todo("!forzar_sync")
-            ok = [c for c in ("registrar_firma", "certificar", "ver_mi_firma") if c in names]
+            ok = [c for c in ("balance", "ooc_ban", "sancion_aplicar", "registrar_firma") if c in names]
             await msg.edit(content=f"✅ {len(names)} comandos · `{', '.join(ok) or '—'}`")
         except Exception as e:
             await msg.edit(content=f"❌ {e}")
