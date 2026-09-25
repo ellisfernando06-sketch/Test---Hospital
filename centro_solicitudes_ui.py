@@ -1,15 +1,20 @@
 # -*- coding: utf-8 -*
-"""centro_solicitudes_ui.py — bootstrap + apply patches from cs_ui_patches."""
+"""centro_solicitudes_ui.py — bootstrap + parches (nunca tumba el bot)."""
 from __future__ import annotations
-import urllib.request
+
 import sys
+import traceback
+import urllib.request
+
+from discord.ext import commands
 
 _GOOD = "a6e30cbaefe3ab422f1b108b42dbe5a6c83d1f92"
 _URL = f"https://raw.githubusercontent.com/ellisfernando06-sketch/Test---Hospital/{_GOOD}/centro_solicitudes_ui.py"
 
-def _bootstrap():
+
+def _bootstrap() -> None:
     print("[centro_solicitudes_ui] Descargando módulo completo…")
-    with urllib.request.urlopen(_URL, timeout=45) as resp:
+    with urllib.request.urlopen(_URL, timeout=60) as resp:
         source = resp.read().decode("utf-8")
     print(f"[centro_solicitudes_ui] Descargado ({len(source)} bytes)")
     mod = sys.modules[__name__]
@@ -21,7 +26,15 @@ def _bootstrap():
         print("[centro_solicitudes_ui] Parches OK")
     except Exception as e:
         print("[centro_solicitudes_ui] Parches FALLARON:", e)
-        import traceback
         traceback.print_exc()
 
-_bootstrap()
+
+def registrar(bot: commands.Bot) -> None:
+    print("[centro_solicitudes_ui] registrar base")
+
+
+try:
+    _bootstrap()
+except Exception:
+    print("[centro_solicitudes_ui] ERROR bootstrap (se continúa):")
+    traceback.print_exc()
