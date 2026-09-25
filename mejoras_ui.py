@@ -4,7 +4,7 @@ mejoras_ui.py — Aplica plantillas del cuaderno a comandos existentes.
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Dict, Optional
 
 import discord
 from discord import app_commands, ui
@@ -33,6 +33,9 @@ try:
 except Exception:
     capacitaciones = None
 
+# Apelaciones pendientes por user_id (para cuando el botón del DM falla tras el ban)
+_APELACIONES: Dict[int, dict] = {}
+
 
 def _es_finanzas(member: discord.Member) -> bool:
     if member.guild_permissions.administrator:
@@ -47,8 +50,54 @@ def _es_finanzas(member: discord.Member) -> bool:
         return False
 
 
+async def _enviar_apelacion_a_staff(bot, user: discord.abc.User, data: dict) -> bool:
+    """Envía la apelación al canal de logs del servidor."""
+    guild_id = int(data.get("guild_id") or 0)
+    staff_id = int(data.get("staff_id") or 0)
+    motivo = data.get("motivo") or "—"
+    guild = bot.get_guild(guild_id) if guild_id else None
+    if not guild:
+        return False
+
+    emb = discord.Embed(
+        title="📨 Apelación de ban OOC",
+        description=(
+            f"**Usuario:** {user.mention} (`{user.id}`)\n"
+            f"**Motivo del ban:** {motivo}\n"
+            + (f"**Staff que baneó:** <@{staff_id}>" if staff_id else "")
+        ),
+        color=0xF39C12,
+    )
+    emb.set_footer(text="Apelación desde DM del baneado")
+
+    for tipo in ("log_sanciones_ooc", "log_sanciones", "log_moderacion", "log_solicitudes"):
+        try:
+            import logs_store
+            ch = logs_store.resolver_canal_log(bot, guild, tipo)
+            if ch:
+                await ch.send(embed=emb)
+                return True
+        except Exception:
+            continue
+    try:
+        ch = guild.system_channel
+        if ch and guild.me and ch.permissions_for(guild.me).send_messages:
+            await ch.send(embed=emb)
+            return True
+    except Exception:
+        pass
+    for ch in guild.text_channels:
+        try:
+            if guild.me and ch.permissions_for(guild.me).send_messages:
+                await ch.send(embed=emb)
+                return True
+        except Exception:
+            continue
+    return False
+
+
 class VistaApelarBan(ui.View):
-    """Botón de apelación en DM."""
+    """Botón de apelación en DM (puede fallar si ya no hay servidor en común)."""
 
     def __init__(self, motivo: str = "", guild_id: int = 0, staff_id: int = 0):
         super().__init__(timeout=None)
@@ -56,83 +105,75 @@ class VistaApelarBan(ui.View):
         self.guild_id = int(guild_id or 0)
         self.staff_id = int(staff_id or 0)
 
-    @ui.button(
-        label="Apelar ban",
-        style=discord.ButtonStyle.primary,
-        emoji="📨",
-        custom_id="ooc_ban_apelar",
-    )
+    @ui.button(label="Apelar ban", style=discord.ButtonStyle.primary, emoji="📨")
     async def apelar(self, inter: discord.Interaction, _btn: ui.Button):
-        # En DM no existe ephemeral → provoca "error de interacción"
-        msg = (
-            "📨 Tu **apelación** fue enviada al staff del servidor.\n"
-            f"Motivo del ban: **{self.motivo or '—'}**\n"
-            "Un administrador la revisará."
+        # Nunca ephemeral: en DM provoca error de interacción
+        data = {
+            "motivo": self.motivo,
+            "guild_id": self.guild_id,
+            "staff_id": self.staff_id,
+        }
+        ok = False
+        try:
+            ok = await _enviar_apelacion_a_staff(inter.client, inter.user, data)
+        except Exception as e:
+            print("[apelar botón]", e)
+
+        texto = (
+            "📨 Tu apelación fue enviada al staff."
+            if ok
+            else (
+                "📨 No pude notificar al staff automáticamente.\n"
+                "Escribe **APELAR** en este chat y lo intentaré de nuevo."
+            )
         )
         try:
-            if inter.guild is None:
-                await inter.response.send_message(msg)
-            else:
-                await inter.response.send_message(msg, ephemeral=True)
+            await inter.response.send_message(texto)
         except Exception:
             try:
-                if not inter.response.is_done():
-                    await inter.response.send_message(msg)
-                else:
-                    await inter.followup.send(msg)
+                await inter.followup.send(texto)
             except Exception:
-                return
+                pass
 
-        bot = inter.client
-        guild = bot.get_guild(self.guild_id) if self.guild_id else None
-
-        desc = (
-            f"**Usuario:** {inter.user.mention} (`{inter.user.id}`)\n"
-            f"**Motivo del ban:** {self.motivo or '—'}\n"
-        )
-        if self.staff_id:
-            desc += f"**Staff que baneó:** <@{self.staff_id}>"
-
-        emb = discord.Embed(
-            title="📨 Apelación de ban OOC",
-            description=desc,
-            color=0xF39C12,
-        )
-        emb.set_footer(text="Apelación enviada desde DM del baneado")
-
-        if not guild:
-            return
-
-        for tipo in ("log_sanciones_ooc", "log_sanciones", "log_moderacion", "log_solicitudes"):
-            try:
-                import logs_store
-                ch = logs_store.resolver_canal_log(bot, guild, tipo)
-                if ch:
-                    await ch.send(embed=emb)
-                    return
-            except Exception:
-                continue
         try:
-            ch = guild.system_channel
-            if ch and ch.permissions_for(guild.me).send_messages:
-                await ch.send(embed=emb)
-                return
+            _btn.disabled = True
+            await inter.message.edit(view=self)
         except Exception:
             pass
-        for ch in guild.text_channels:
-            try:
-                if ch.permissions_for(guild.me).send_messages:
-                    await ch.send(embed=emb)
-                    return
-            except Exception:
-                continue
+        self.stop()
 
 
 def registrar(bot: commands.Bot) -> None:
-    try:
-        bot.add_view(VistaApelarBan())
-    except Exception:
-        pass
+
+    # Escucha en DM: el baneado escribe APELAR (funciona aunque el botón falle)
+    @bot.listen("on_message")
+    async def _apelacion_por_mensaje(msg: discord.Message):
+        if msg.guild is not None or msg.author.bot:
+            return
+        if msg.content.strip().upper() != "APELAR":
+            return
+        data = _APELACIONES.get(msg.author.id)
+        if not data:
+            try:
+                await msg.channel.send(
+                    "No hay un ban reciente registrado para apelar. "
+                    "Si te banearon, pide a un admin que revise tu caso."
+                )
+            except Exception:
+                pass
+            return
+        ok = await _enviar_apelacion_a_staff(bot, msg.author, data)
+        try:
+            if ok:
+                await msg.channel.send("📨 Apelación enviada al staff del servidor.")
+                _APELACIONES.pop(msg.author.id, None)
+            else:
+                await msg.channel.send(
+                    "No pude enviar la apelación (canal de logs no configurado). "
+                    "Contacta a un administrador por otro medio."
+                )
+        except Exception:
+            pass
 
     try:
         bot.tree.remove_command("balance")
@@ -255,7 +296,7 @@ def registrar(bot: commands.Bot) -> None:
     except Exception:
         pass
 
-    @bot.tree.command(name="ooc_ban", description="[OOC] Ban con DM de motivo y botón de apelación")
+    @bot.tree.command(name="ooc_ban", description="[OOC] Ban con DM de motivo y forma de apelar")
     @app_commands.describe(usuario="Usuario a banear", motivo="Motivo del ban (se envía por DM)")
     async def ooc_ban_cmd(inter: discord.Interaction, usuario: discord.Member, motivo: str):
         if not isinstance(inter.user, discord.Member) or not inter.guild:
@@ -282,8 +323,22 @@ def registrar(bot: commands.Bot) -> None:
         staff_id = inter.user.id
         dm_ok = False
 
+        # Guardar datos de apelación ANTES del ban
+        _APELACIONES[usuario.id] = {
+            "motivo": motivo,
+            "guild_id": guild_id,
+            "staff_id": staff_id,
+        }
+
         try:
             emb = PlantillaBan.dm_baneado(motivo, inter.user, guild.name)
+            emb.description = (
+                (emb.description or "")
+                + "\n\n**Cómo apelar:**\n"
+                "• Pulsa el botón **Apelar ban**, o\n"
+                "• Escribe **APELAR** en este chat privado.\n"
+                "_(Si el botón falla, usa la palabra APELAR.)_"
+            )
             vista = VistaApelarBan(motivo=motivo, guild_id=guild_id, staff_id=staff_id)
             await usuario.send(embed=emb, view=vista)
             dm_ok = True
@@ -305,7 +360,7 @@ def registrar(bot: commands.Bot) -> None:
             return await inter.followup.send(f"❌ No se pudo banear: `{e}`", ephemeral=True)
 
         log_emb = PlantillaBan.log(inter.user, usuario, motivo)
-        extra = "" if dm_ok else "\n⚠️ No se pudo enviar el DM (el usuario tiene cerrados los mensajes)."
+        extra = "" if dm_ok else "\n⚠️ No se pudo enviar el DM (mensajes cerrados)."
         await inter.followup.send(embed=log_emb, content=extra or None, ephemeral=True)
 
         for tipo in ("log_sanciones_ooc", "log_sanciones", "log_moderacion"):
