@@ -38,6 +38,7 @@ _MODULOS = (
     "reuniones_voice",
     "expedientes",
     "roles_otorgados",
+    "licencia_medica",
 )
 
 _QUITAR = (
@@ -88,7 +89,6 @@ _QUITAR = (
 _BAJA = (
     "sancion_interna",
     "advertencia",
-    "licencia",
     "transferir_departamento",
     "descenso",
     "ascenso",
@@ -118,6 +118,7 @@ _CRITICOS = {
     "citatorio_general", "citatorio_disciplina", "citatorio_admin",
     "abrir_expediente",
     "mis_otorgados",
+    "licencia",
     "paciente", "inventario", "turno", "codigo", "ficha", "postulacion",
 }
 
@@ -215,12 +216,12 @@ def _cargar(module_globals: dict):
     except Exception:
         pass
 
-    for _cmd in ("mi_expediente", "expediente"):
+    for _cmd in ("mi_expediente", "expediente", "licencia"):
         try:
             source = re.sub(
                 rf"@bot\.tree\.command\(name=\"{_cmd}\"[^\n]*\n"
                 r"(?:@[^\n]+\n)*"
-                rf"async def {_cmd}\([\s\S]*?\n(?=\n@|\n# |\nif |\nasync def |\ndef )",
+                rf"async def \w+\([\s\S]*?\n(?=\n@|\n# |\nif |\nasync def |\ndef )",
                 "\n",
                 source,
                 count=1,
@@ -256,6 +257,10 @@ def _cargar(module_globals: dict):
             bot.tree.remove_command(n)
         except Exception:
             pass
+    try:
+        bot.tree.remove_command("licencia")
+    except Exception:
+        pass
 
     print("[hospital_core] Módulos…", flush=True)
     for name in _MODULOS:
@@ -301,10 +306,10 @@ def _cargar(module_globals: dict):
             except Exception:
                 break
         names = _listar()
-        if "abrir_expediente" not in names:
+        if "licencia" not in names:
             try:
-                import expedientes as _exp
-                _exp.registrar(bot)
+                import licencia_medica as _lic
+                _lic.registrar(bot)
                 names = _listar()
             except Exception:
                 traceback.print_exc()
@@ -360,7 +365,7 @@ def _cargar(module_globals: dict):
         msg = await ctx.reply("🔄 Sync…")
         try:
             names = await _sync_todo("!forzar_sync")
-            ok = [c for c in ("abrir_expediente", "mis_otorgados", "certificar") if c in names]
+            ok = [c for c in ("licencia", "certificar", "abrir_expediente") if c in names]
             await msg.edit(content=f"✅ {len(names)} comandos · `{', '.join(ok) or '—'}`")
         except Exception as e:
             await msg.edit(content=f"❌ {e}")
