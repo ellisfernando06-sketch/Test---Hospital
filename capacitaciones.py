@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*
 """
-capacitaciones.py — Programación, postulaciones y certificaciones.
+capacitaciones.py — Programación, postulaciones y enlace a certificaciones.
 """
 from __future__ import annotations
 
@@ -34,7 +34,14 @@ def _save(data: dict) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def programar(titulo: str, fecha_hora: str, departamento_slug: str, descripcion: str, por: int) -> int:
+def programar(
+    titulo: str,
+    fecha_hora: str,
+    departamento_slug: str,
+    descripcion: str,
+    por: int,
+    certificacion_id: int = 0,
+) -> int:
     data = _load()
     cid = data["next_id"]
     data["next_id"] = cid + 1
@@ -45,6 +52,7 @@ def programar(titulo: str, fecha_hora: str, departamento_slug: str, descripcion:
         "departamento_slug": departamento_slug or "",
         "descripcion": descripcion,
         "por": por,
+        "certificacion_id": int(certificacion_id or 0),
         "fecha": datetime.now(timezone.utc).isoformat(),
         "postulados": [],
     })
@@ -57,14 +65,12 @@ def obtener(cap_id: int) -> Optional[dict]:
     for c in data["programadas"]:
         if int(c.get("id", 0)) == int(cap_id):
             c.setdefault("postulados", [])
+            c.setdefault("certificacion_id", 0)
             return c
     return None
 
 
 def postular(cap_id: int, uid: int) -> tuple:
-    """
-    Postula a un usuario. Devuelve (ok: bool, mensaje: str).
-    """
     data = _load()
     for c in data["programadas"]:
         if int(c.get("id", 0)) != int(cap_id):
@@ -119,4 +125,13 @@ def listar_programadas() -> List[dict]:
     data = _load()
     for c in data["programadas"]:
         c.setdefault("postulados", [])
+        c.setdefault("certificacion_id", 0)
     return data["programadas"]
+
+
+def listar_por_departamento(slug: str) -> List[dict]:
+    slug = (slug or "").strip().lower()
+    return [
+        c for c in listar_programadas()
+        if not slug or (c.get("departamento_slug") or "").lower() == slug
+    ]
