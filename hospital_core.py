@@ -35,6 +35,7 @@ _MODULOS = (
     "capacitacion_cert_ui",
     "mejoras_ui",
     "reuniones_voice",
+    "expedientes",
 )
 
 _QUITAR = ("ordenar_roles",)
@@ -59,6 +60,7 @@ _CRITICOS = {
     "anuncio", "asignar_tarea", "ooc_ban", "sancion_aplicar",
     "solicitar_insumo", "cap_historial",
     "convocar_directores", "convocar_reunion_departamento",
+    "abrir_expediente", "agregar_sancion_expediente", "ver_expediente_tipo",
 }
 
 
