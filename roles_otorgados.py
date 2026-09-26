@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*
 """
-roles_otorgados.py — Asigna roles DENTRO de las categorías del servidor
-(『 GRADUADOS 』, 『 IDENTIFICACIÓN 』, 『 EQUIPO 』, 『 UNIFORMES 』).
-Usa ROLES_OTORGADOS de config.py (mismos que crea /configurar_roles).
+roles_otorgados.py — Roles dentro de categorías del servidor.
 """
 from __future__ import annotations
 
@@ -36,7 +34,6 @@ async def _asegurar_rol_otorgado(guild: discord.Guild, clave: str) -> Optional[d
     if clave not in tabla:
         return None
     nombre, color, _sep = tabla[clave]
-    # ID guardado
     rid = roles_store.obtener_extra(f"otorgado_{clave}") if hasattr(roles_store, "obtener_extra") else None
     if rid:
         rol = guild.get_role(int(rid))
@@ -67,7 +64,6 @@ async def _asegurar_rol_otorgado(guild: discord.Guild, clave: str) -> Optional[d
 
 
 async def asignar_clave(member: discord.Member, clave: str, reason: str = "Otorgado") -> Tuple[bool, str]:
-    """Asigna el rol fijo de ROLES_OTORGADOS[clave]."""
     if not isinstance(member, discord.Member):
         return False, "Miembro inválido"
     tabla = getattr(config, "ROLES_OTORGADOS", {}) or {}
@@ -88,7 +84,9 @@ async def asignar_clave(member: discord.Member, clave: str, reason: str = "Otorg
         return False, str(e)
 
 
-def _clave_cert(nombre_cert: str) -> str:
+def _clave_cert(nombre_cert: str, rol_clave: str = "") -> str:
+    if rol_clave and rol_clave in getattr(config, "ROLES_OTORGADOS", {}):
+        return rol_clave
     n = (nombre_cert or "").strip().lower()
     mapa = getattr(config, "MAP_CERT_A_ROL", {}) or {}
     for k, v in mapa.items():
@@ -97,12 +95,16 @@ def _clave_cert(nombre_cert: str) -> str:
     return "certificado_general"
 
 
-async def otorgar_certificado_rol(member: discord.Member, nombre_cert: str, numero: str = "") -> Tuple[bool, str]:
-    """Graduado + certificado específico."""
+async def otorgar_certificado_rol(
+    member: discord.Member,
+    nombre_cert: str,
+    numero: str = "",
+    rol_clave: str = "",
+) -> Tuple[bool, str]:
     msgs = []
     ok1, m1 = await asignar_clave(member, "graduado", reason=f"Graduado {numero or nombre_cert}")
     msgs.append(m1)
-    clave = _clave_cert(nombre_cert)
+    clave = _clave_cert(nombre_cert, rol_clave)
     ok2, m2 = await asignar_clave(member, clave, reason=f"Cert {nombre_cert}")
     msgs.append(m2)
     return ok1 or ok2, " · ".join(msgs)
@@ -131,7 +133,6 @@ async def otorgar_item_tienda_rol(member: discord.Member, item_id: str, info: di
 
 
 def roles_por_categoria(member: discord.Member) -> dict:
-    """Agrupa roles del miembro según ROLES_OTORGADOS / separadores."""
     tabla = getattr(config, "ROLES_OTORGADOS", {}) or {}
     seps = {s[0]: s[1] for s in getattr(config, "SEPARADORES_ROLES", [])}
     out = {}
@@ -211,10 +212,21 @@ def _parche_firmas() -> None:
                     member = await guild.fetch_member(uid)
                 except Exception:
                     return
+            rol_clave = ""
+            cid = reg.get("certificacion_id")
+            if cid:
+                try:
+                    import certificaciones_abiertas as ca
+                    cert = ca.obtener_certificacion(int(cid))
+                    if cert:
+                        rol_clave = cert.get("rol_clave") or ""
+                except Exception:
+                    pass
             ok, msg = await otorgar_certificado_rol(
                 member,
                 reg.get("capacitacion") or "Certificación",
                 reg.get("numero") or "",
+                rol_clave=rol_clave,
             )
             print(f"[roles_otorgados] cert: {ok} {msg}")
             try:
@@ -244,7 +256,6 @@ def _cmd_ver(bot: commands.Bot) -> None:
         if not isinstance(inter.user, discord.Member):
             return await inter.response.send_message("❌ Solo en el servidor.", ephemeral=True)
 
-        # Aplicar compras pendientes
         try:
             import tienda1
             pend = list(getattr(tienda1, "_pend_roles", []) or [])
@@ -260,17 +271,13 @@ def _cmd_ver(bot: commands.Bot) -> None:
         grupos = roles_por_categoria(inter.user)
         emb = discord.Embed(
             title=f"🎭 Roles otorgados · {inter.user.display_name}",
-            description=(
-                "Roles **dentro de las categorías** del servidor.\n"
-                "(Graduados, identificación, equipo RP, uniformes)"
-            ),
+            description="Roles **dentro de las categorías** del servidor.",
             color=0x9B59B6,
         )
         if not grupos:
             emb.description += (
                 "\n\n_Aún no tienes roles de estas categorías._\n"
-                "Se asignan al certificar o comprar en la tienda.\n"
-                "Un admin debe ejecutar **configurar roles** para crear las categorías."
+                "Ejecuta **configurar roles** si faltan categorías."
             )
         for titulo, roles in grupos.items():
             emb.add_field(
