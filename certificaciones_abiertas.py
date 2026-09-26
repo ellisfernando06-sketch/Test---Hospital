@@ -1,7 +1,6 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*
 """
 certificaciones_abiertas.py — Gestión de certificaciones abiertas del sistema.
-Permite crear, listar y gestionar certificaciones disponibles para certificar.
 """
 from __future__ import annotations
 
@@ -13,9 +12,16 @@ from typing import List, Optional
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 _PATH = os.path.join(_DATA_DIR, "certificaciones_abiertas.json")
 
+_DEFAULTS = [
+    {"nombre": "RCP Básico", "descripcion": "Reanimación cardiopulmonar básica", "departamento": "medico", "director_zona_key": "DIRECTOR_MEDICO"},
+    {"nombre": "Primeros auxilios", "descripcion": "Atención inicial de emergencias", "departamento": "medico", "director_zona_key": "DIRECTOR_MEDICO"},
+    {"nombre": "Bioseguridad", "descripcion": "Normas de bioseguridad hospitalaria", "departamento": "enfermeria", "director_zona_key": "DIRECTOR_ENFERMERIA"},
+    {"nombre": "Laboratorista", "descripcion": "Manejo básico de laboratorio", "departamento": "medico", "director_zona_key": "DIRECTOR_MEDICO"},
+    {"nombre": "Atención al paciente", "descripcion": "Protocolo de atención y trato al paciente", "departamento": "rrhh", "director_zona_key": "DIRECTOR_RRHH"},
+]
+
 
 def _load() -> dict:
-    """Carga el archivo de certificaciones abiertas."""
     os.makedirs(_DATA_DIR, exist_ok=True)
     if not os.path.isfile(_PATH):
         return {"certificaciones": [], "next_id": 1}
@@ -30,13 +36,35 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
-    """Guarda el archivo de certificaciones abiertas."""
     os.makedirs(_DATA_DIR, exist_ok=True)
     try:
         with open(_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print(f"[certificaciones_abiertas] Error al guardar: {e}")
+
+
+def asegurar_defaults() -> None:
+    """Si no hay certificaciones, crea un set básico para que /certificar funcione."""
+    data = _load()
+    if data.get("certificaciones"):
+        return
+    nid = data.get("next_id", 1)
+    for d in _DEFAULTS:
+        data["certificaciones"].append({
+            "id": nid,
+            "nombre": d["nombre"],
+            "descripcion": d.get("descripcion", ""),
+            "departamento": d.get("departamento", ""),
+            "director_zona_key": d.get("director_zona_key", "DIRECTOR_DOCENCIA"),
+            "requiere_dos_firmas": True,
+            "activa": True,
+            "fecha_creacion": datetime.now(timezone.utc).isoformat(),
+        })
+        nid += 1
+    data["next_id"] = nid
+    _save(data)
+    print(f"[certificaciones_abiertas] defaults creados: {len(_DEFAULTS)}")
 
 
 def crear_certificacion(
@@ -47,24 +75,9 @@ def crear_certificacion(
     requiere_dos_firmas: bool = True,
     activa: bool = True,
 ) -> int:
-    """
-    Crea una nueva certificación abierta.
-    
-    Args:
-        nombre: Nombre de la certificación (ej: "Laboratorista", "RCP Básico")
-        descripcion: Descripción detallada
-        departamento: Departamento/Zona asociada
-        director_zona_key: Clave del rol del director de la zona
-        requiere_dos_firmas: Si requiere firma de 2 directores
-        activa: Si está activa para certificar
-    
-    Returns:
-        ID de la certificación creada
-    """
     data = _load()
     cert_id = data.get("next_id", 1)
     data["next_id"] = cert_id + 1
-    
     data.setdefault("certificaciones", []).append({
         "id": cert_id,
         "nombre": nombre,
@@ -80,31 +93,29 @@ def crear_certificacion(
 
 
 def listar_certificaciones_activas() -> List[dict]:
-    """Lista todas las certificaciones activas."""
+    asegurar_defaults()
     data = _load()
     return [c for c in data.get("certificaciones", []) if c.get("activa", True)]
 
 
 def listar_todas_certificaciones() -> List[dict]:
-    """Lista todas las certificaciones (activas e inactivas)."""
+    asegurar_defaults()
     data = _load()
     return data.get("certificaciones", [])
 
 
 def obtener_certificacion(cert_id: int) -> Optional[dict]:
-    """Obtiene una certificación por ID."""
     data = _load()
     for cert in data.get("certificaciones", []):
-        if cert.get("id") == cert_id:
+        if int(cert.get("id", -1)) == int(cert_id):
             return cert
     return None
 
 
 def activar_certificacion(cert_id: int) -> bool:
-    """Activa una certificación."""
     data = _load()
     for cert in data.get("certificaciones", []):
-        if cert.get("id") == cert_id:
+        if int(cert.get("id", -1)) == int(cert_id):
             cert["activa"] = True
             _save(data)
             return True
@@ -112,10 +123,9 @@ def activar_certificacion(cert_id: int) -> bool:
 
 
 def desactivar_certificacion(cert_id: int) -> bool:
-    """Desactiva una certificación."""
     data = _load()
     for cert in data.get("certificaciones", []):
-        if cert.get("id") == cert_id:
+        if int(cert.get("id", -1)) == int(cert_id):
             cert["activa"] = False
             _save(data)
             return True
@@ -123,10 +133,9 @@ def desactivar_certificacion(cert_id: int) -> bool:
 
 
 def actualizar_certificacion(cert_id: int, **kwargs) -> Optional[dict]:
-    """Actualiza los datos de una certificación."""
     data = _load()
     for cert in data.get("certificaciones", []):
-        if cert.get("id") == cert_id:
+        if int(cert.get("id", -1)) == int(cert_id):
             cert.update(kwargs)
             _save(data)
             return cert
@@ -134,12 +143,11 @@ def actualizar_certificacion(cert_id: int, **kwargs) -> Optional[dict]:
 
 
 def eliminar_certificacion(cert_id: int) -> bool:
-    """Elimina una certificación."""
     data = _load()
     original_len = len(data.get("certificaciones", []))
     data["certificaciones"] = [
         c for c in data.get("certificaciones", [])
-        if c.get("id") != cert_id
+        if int(c.get("id", -1)) != int(cert_id)
     ]
     if len(data["certificaciones"]) < original_len:
         _save(data)
