@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*
 """
-expedientes.py — Abrir expediente por tipo, sanciones y acción al límite.
+expedientes.py — Un solo comando /abrir_expediente (reemplaza mi_expediente).
+No suma comandos extra al límite de 100.
 """
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ import json
 import os
 import traceback
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 import discord
 from discord import app_commands
@@ -119,16 +120,10 @@ def embed_exp(usuario: discord.Member, exp: dict) -> discord.Embed:
     emb.add_field(name="Sanciones", value=f"**{len(s)} / {lim}**", inline=True)
     emb.add_field(name="Acción al límite", value=accion, inline=True)
     if s:
-        lineas = []
-        for i, x in enumerate(s[-8:], 1):
-            lineas.append(f"`{str(x.get('fecha',''))[:10]}` {x.get('motivo','—')[:80]}")
+        lineas = [f"`{str(x.get('fecha',''))[:10]}` {x.get('motivo','—')[:80]}" for x in s[-8:]]
         emb.add_field(name="Últimas sanciones", value="\n".join(lineas), inline=False)
     if exp.get("accion_pendiente"):
-        emb.add_field(
-            name="⚠️ LÍMITE ALCANZADO",
-            value="El director debe **confirmar** la acción automática.",
-            inline=False,
-        )
+        emb.add_field(name="⚠️ LÍMITE ALCANZADO", value="Confirma la acción con el botón.", inline=False)
     emb.set_footer(text=f"Abierto por ID {exp.get('autor_id')} · {str(exp.get('fecha_apertura',''))[:16]}")
     return emb
 
@@ -149,7 +144,7 @@ class ConfirmarAccionView(discord.ui.View):
                     return True
             except Exception:
                 pass
-            await inter.response.send_message("❌ Solo el director a cargo del expediente puede confirmar.", ephemeral=True)
+            await inter.response.send_message("❌ Solo el director a cargo puede confirmar.", ephemeral=True)
             return False
         return True
 
@@ -166,11 +161,11 @@ class ConfirmarAccionView(discord.ui.View):
                 try:
                     until = datetime.now(timezone.utc) + timedelta(hours=24)
                     await member.timeout(until, reason=f"Expediente disciplinario al límite (por {inter.user})")
-                    resultado.append(f"🔇 Mute 24h aplicado a {member.mention}")
+                    resultado.append(f"🔇 Mute 24h a {member.mention}")
                 except Exception as e:
-                    resultado.append(f"⚠️ No pude aplicar mute: `{e}`")
+                    resultado.append(f"⚠️ Mute falló: `{e}`")
             else:
-                resultado.append("⚠️ Usuario no está en el servidor; no se aplicó mute.")
+                resultado.append("⚠️ Usuario no en el servidor.")
         else:
             if member:
                 quitados = []
@@ -180,16 +175,16 @@ class ConfirmarAccionView(discord.ui.View):
                     n = (r.name or "").lower()
                     if any(x in n for x in ("director", "jefe", "supervisor", "staff", "médico", "medico", "enfermer", "rrhh", "seguridad", "logíst", "logist", "finan", "docen", "residente", "pasante", "voluntario", "encargado")):
                         try:
-                            await member.remove_roles(r, reason=f"Despido por expediente al límite ({inter.user})")
+                            await member.remove_roles(r, reason=f"Despido por expediente ({inter.user})")
                             quitados.append(r.name)
                         except Exception:
                             pass
-                if quitados:
-                    resultado.append(f"🚫 Despido: roles quitados → {', '.join(quitados[:15])}")
-                else:
-                    resultado.append("🚫 Despido registrado (no se quitaron roles automáticos; revisa manualmente).")
+                resultado.append(
+                    f"🚫 Despido: roles quitados → {', '.join(quitados[:15])}" if quitados
+                    else "🚫 Despido registrado (revisa roles manualmente)."
+                )
             else:
-                resultado.append("🚫 Despido registrado (usuario ausente del servidor).")
+                resultado.append("🚫 Despido registrado (usuario ausente).")
 
         marcar_ejecutada(self.uid, self.tipo)
         for c in self.children:
@@ -198,10 +193,9 @@ class ConfirmarAccionView(discord.ui.View):
             await inter.message.edit(view=self)
         except Exception:
             pass
-        txt = "\n".join(resultado) or "Acción ejecutada."
-        await inter.followup.send(f"✅ **Acción confirmada y ejecutada.**\n{txt}")
+        await inter.followup.send("✅ **Acción ejecutada.**\n" + "\n".join(resultado))
 
-    @discord.ui.button(label="❌ Cancelar / no ejecutar", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="❌ Cancelar", style=discord.ButtonStyle.secondary)
     async def cancelar(self, inter: discord.Interaction, btn: discord.ui.Button):
         data = _load()
         k = _key(self.uid, self.tipo)
@@ -211,10 +205,10 @@ class ConfirmarAccionView(discord.ui.View):
         for c in self.children:
             c.disabled = True
         await inter.response.edit_message(view=self)
-        await inter.followup.send("Acción cancelada. El expediente sigue abierto.", ephemeral=True)
+        await inter.followup.send("Acción cancelada.", ephemeral=True)
 
 
-async def _avisar_limite(bot, guild: discord.Guild, usuario: discord.Member, exp: dict, director: discord.Member):
+async def _avisar_limite(usuario: discord.Member, exp: dict, director: discord.Member):
     accion = exp.get("accion") or "despido"
     tipo = exp.get("tipo") or ""
     nombre = TIPOS.get(tipo, {}).get("nombre", tipo)
@@ -224,8 +218,8 @@ async def _avisar_limite(bot, guild: discord.Guild, usuario: discord.Member, exp
             f"**Usuario:** {usuario.mention}\n"
             f"**Expediente:** {nombre}\n"
             f"**Sanciones:** {len(exp.get('sanciones') or [])} / {exp.get('limite')}\n"
-            f"**Acción propuesta:** `{accion}`\n\n"
-            f"El director a cargo debe **confirmar** para ejecutarla."
+            f"**Acción:** `{accion}`\n\n"
+            f"Confirma para ejecutar."
         ),
         color=0xE74C3C,
     )
@@ -241,7 +235,7 @@ def registrar(bot: commands.Bot) -> None:
     print("[expedientes] cargando…")
     try:
         _reg(bot)
-        print("[expedientes] ✓ OK")
+        print("[expedientes] ✓ OK (1 comando: abrir_expediente)")
     except Exception:
         print("[expedientes] ✗ error (bot sigue):")
         traceback.print_exc()
@@ -250,123 +244,108 @@ def registrar(bot: commands.Bot) -> None:
 def _reg(bot: commands.Bot) -> None:
     import permisos
 
-    TIPO_CHOICES = [
-        app_commands.Choice(name=v["nombre"], value=k) for k, v in TIPOS.items()
-    ]
-    ACCION_CHOICES = [
-        app_commands.Choice(name="Despido al llegar al límite", value="despido"),
-        app_commands.Choice(name="Mute 24h al llegar al límite", value="mute_24h"),
-    ]
-
-    for n in ("mi_expediente", "abrir_expediente", "agregar_sancion_expediente", "ver_expediente_tipo"):
+    # Quitar viejos para LIBERAR slot (no sumar al tope de 100)
+    for n in ("mi_expediente", "expediente", "abrir_expediente", "agregar_sancion_expediente", "ver_expediente_tipo"):
         try:
             bot.tree.remove_command(n)
         except Exception:
             pass
 
-    @bot.tree.command(name="abrir_expediente", description="Abre un expediente (menú: tipo + límite de sanciones)")
-    @app_commands.describe(
-        usuario="Persona del expediente",
-        tipo="Tipo de expediente",
-        limite_sanciones="Límite de sanciones (default 5). Al llegar se propone la acción.",
-        accion_al_limite="Qué se ejecuta al llegar al límite (requiere tu confirmación)",
-        notas="Notas iniciales (opcional)",
+    TIPO_CHOICES = [app_commands.Choice(name=v["nombre"], value=k) for k, v in TIPOS.items()]
+    ACCION_CMD = [
+        app_commands.Choice(name="📂 Abrir expediente", value="abrir"),
+        app_commands.Choice(name="➕ Agregar sanción", value="sancion"),
+        app_commands.Choice(name="👁️ Ver expediente", value="ver"),
+    ]
+    ACCION_LIMITE = [
+        app_commands.Choice(name="Despido al límite", value="despido"),
+        app_commands.Choice(name="Mute 24h al límite", value="mute_24h"),
+    ]
+
+    @bot.tree.command(
+        name="abrir_expediente",
+        description="Expediente: abrir / sanción / ver (menú tipo). Reemplaza mi_expediente",
     )
-    @app_commands.choices(tipo=TIPO_CHOICES, accion_al_limite=ACCION_CHOICES)
+    @app_commands.describe(
+        accion="Qué hacer",
+        tipo="Tipo de expediente",
+        usuario="Persona (vacío = tú, solo en Ver)",
+        limite_sanciones="Al abrir: límite (default 5)",
+        accion_al_limite="Al abrir: despido o mute 24h",
+        motivo="Al agregar sanción: motivo",
+        notas="Al abrir: notas opcionales",
+    )
+    @app_commands.choices(accion=ACCION_CMD, tipo=TIPO_CHOICES, accion_al_limite=ACCION_LIMITE)
     async def abrir_expediente(
         inter: discord.Interaction,
-        usuario: discord.Member,
+        accion: app_commands.Choice[str],
         tipo: app_commands.Choice[str],
+        usuario: discord.Member = None,
         limite_sanciones: app_commands.Range[int, 1, 20] = 5,
         accion_al_limite: app_commands.Choice[str] = None,
+        motivo: str = "",
         notas: str = "",
     ):
         if not isinstance(inter.user, discord.Member):
             return
+
         t = tipo.value
         info = TIPOS[t]
-        if not permisos.member_tiene_alguna_key(inter.user, *info["keys"]):
-            raise permisos.SinPermiso(list(info["keys"]))
-
-        accion = (accion_al_limite.value if accion_al_limite else None) or info["accion_default"]
-        if t == "disciplinario" and accion_al_limite is None:
-            accion = "mute_24h"
-
-        exp = abrir_exp(usuario.id, t, limite_sanciones, inter.user.id, accion, notas)
-        emb = embed_exp(usuario, exp)
-        emb.description = (
-            f"Expediente **{info['nombre']}** abierto por {inter.user.mention}.\n"
-            f"Límite: **{limite_sanciones}** sanciones → acción: `{accion}` (con confirmación).\n"
-            f"Usa `/agregar_sancion_expediente` para registrar sanciones."
-        )
-        await inter.response.send_message(embed=emb)
-
-    @bot.tree.command(name="agregar_sancion_expediente", description="Añade una sanción a un expediente abierto")
-    @app_commands.describe(usuario="Persona", tipo="Tipo de expediente", motivo="Motivo de la sanción")
-    @app_commands.choices(tipo=TIPO_CHOICES)
-    async def agregar_sancion_expediente(
-        inter: discord.Interaction,
-        usuario: discord.Member,
-        tipo: app_commands.Choice[str],
-        motivo: str,
-    ):
-        if not isinstance(inter.user, discord.Member):
-            return
-        t = tipo.value
-        info = TIPOS[t]
-        if not permisos.member_tiene_alguna_key(inter.user, *info["keys"]):
-            raise permisos.SinPermiso(list(info["keys"]))
-        try:
-            exp = add_sancion(usuario.id, t, motivo, inter.user.id)
-        except ValueError as e:
-            return await inter.response.send_message(f"❌ {e}", ephemeral=True)
-
-        emb = embed_exp(usuario, exp)
-        await inter.response.send_message(embed=emb)
-
-        if exp.get("accion_pendiente") and not exp.get("accion_ejecutada"):
-            emb2, view = await _avisar_limite(bot, inter.guild, usuario, exp, inter.user)
-            await inter.followup.send(
-                content=f"⚠️ **Límite alcanzado** ({len(exp['sanciones'])}/{exp['limite']}). Confirma la acción:",
-                embed=emb2,
-                view=view,
-            )
-
-    @bot.tree.command(name="ver_expediente_tipo", description="Ver expediente por tipo (o el tuyo)")
-    @app_commands.describe(tipo="Tipo", usuario="Usuario (opcional; por defecto tú)")
-    @app_commands.choices(tipo=TIPO_CHOICES)
-    async def ver_expediente_tipo(
-        inter: discord.Interaction,
-        tipo: app_commands.Choice[str],
-        usuario: discord.Member = None,
-    ):
+        act = accion.value
         target = usuario or inter.user
-        if not isinstance(inter.user, discord.Member):
-            return
-        t = tipo.value
-        info = TIPOS[t]
-        if target.id != inter.user.id:
-            if not permisos.member_tiene_alguna_key(inter.user, *info["keys"], "DIRECTOR", "OWNER", "CO_OWNER"):
-                raise permisos.SinPermiso(list(info["keys"]))
-        exp = get_exp(target.id, t)
-        if not exp:
-            return await inter.response.send_message(
-                f"No hay expediente **{info['nombre']}** para {target.mention}.", ephemeral=True
-            )
-        await inter.response.send_message(embed=embed_exp(target, exp), ephemeral=True)
 
-    @bot.tree.command(name="mi_expediente", description="Ver tus expedientes abiertos (por tipo)")
-    async def mi_expediente(inter: discord.Interaction):
-        data = _load()
-        uid = inter.user.id
-        encontrados = [v for k, v in data.items() if str(v.get("uid")) == str(uid)]
-        if not encontrados:
+        # --- VER ---
+        if act == "ver":
+            if target.id != inter.user.id:
+                if not permisos.member_tiene_alguna_key(inter.user, *info["keys"], "DIRECTOR", "OWNER", "CO_OWNER"):
+                    raise permisos.SinPermiso(list(info["keys"]))
+            exp = get_exp(target.id, t)
+            if not exp:
+                return await inter.response.send_message(
+                    f"No hay expediente **{info['nombre']}** para {target.mention}.",
+                    ephemeral=True,
+                )
+            return await inter.response.send_message(embed=embed_exp(target, exp), ephemeral=True)
+
+        # Abrir / sanción: requiere key del tipo
+        if not permisos.member_tiene_alguna_key(inter.user, *info["keys"]):
+            raise permisos.SinPermiso(list(info["keys"]))
+
+        if not usuario:
             return await inter.response.send_message(
-                "No tienes expedientes tipados. Un director puede usar `/abrir_expediente`.",
-                ephemeral=True,
+                "❌ Indica el **usuario** para abrir o agregar sanción.", ephemeral=True
             )
-        embeds = []
-        for exp in encontrados[:5]:
-            if isinstance(inter.user, discord.Member):
-                embeds.append(embed_exp(inter.user, exp))
-        await inter.response.send_message(embeds=embeds or None, ephemeral=True)
+
+        # --- ABRIR ---
+        if act == "abrir":
+            acc = (accion_al_limite.value if accion_al_limite else None) or info["accion_default"]
+            if t == "disciplinario" and accion_al_limite is None:
+                acc = "mute_24h"
+            exp = abrir_exp(usuario.id, t, limite_sanciones, inter.user.id, acc, notas)
+            emb = embed_exp(usuario, exp)
+            emb.description = (
+                f"Abierto por {inter.user.mention}.\n"
+                f"Límite **{limite_sanciones}** → `{acc}` (con confirmación).\n"
+                f"Para sancionar: `/abrir_expediente` → **Agregar sanción**."
+            )
+            return await inter.response.send_message(embed=emb)
+
+        # --- SANCIÓN ---
+        if act == "sancion":
+            if not (motivo or "").strip():
+                return await inter.response.send_message("❌ Escribe el **motivo** de la sanción.", ephemeral=True)
+            try:
+                exp = add_sancion(usuario.id, t, motivo.strip(), inter.user.id)
+            except ValueError as e:
+                return await inter.response.send_message(f"❌ {e}\nAbre primero con acción **Abrir expediente**.", ephemeral=True)
+
+            emb = embed_exp(usuario, exp)
+            await inter.response.send_message(embed=emb)
+
+            if exp.get("accion_pendiente") and not exp.get("accion_ejecutada"):
+                emb2, view = await _avisar_limite(usuario, exp, inter.user)
+                await inter.followup.send(
+                    content=f"⚠️ **Límite {len(exp['sanciones'])}/{exp['limite']}**. Confirma:",
+                    embed=emb2,
+                    view=view,
+                )
