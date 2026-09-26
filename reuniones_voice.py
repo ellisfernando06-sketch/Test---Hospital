@@ -40,7 +40,7 @@ async def _mover(member: discord.Member, vc: discord.VoiceChannel):
             return False, (
                 f"No estás en ningún canal de voz. "
                 f"Entra a **cualquier** canal de voz y vuelve a pulsar **Confirmar**, "
-                f"o entra directo a **{vc.name**."
+                f"o entra directo a **{vc.name}**."
             )
         if member.voice.channel.id == vc.id:
             return True, f"Ya estabas en **{vc.name}**."
