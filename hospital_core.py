@@ -17,7 +17,7 @@ _URL = (
     f"{_COMMIT}/Bot_Hospital.py"
 )
 _GUILD_ID = 1381360019467014184
-_MAX_SLASH = 98  # margen bajo el tope 100 de Discord
+_MAX_SLASH = 98
 
 _MODULOS = (
     "comandos_nuevos",
@@ -33,17 +33,16 @@ _MODULOS = (
     "docencia",
     "firmas",
     "capacitacion_cert_ui",
+    "capacitacion_postular",
     "mejoras_ui",
     "reuniones_voice",
     "expedientes",
 )
 
-# Siempre fuera del árbol (liberan slots; expediente viejo → abrir_expediente)
 _QUITAR = (
     "ordenar_roles",
     "mi_expediente",
     "expediente",
-    # poco usados / reemplazables
     "historial_advertencias",
     "mi_sanciones",
     "solicitud_info",
@@ -85,7 +84,6 @@ _QUITAR = (
     "panel_tienda",
 )
 
-# Si aún falta espacio, se cortan en este orden (citatorios NO están aquí)
 _BAJA = (
     "sancion_interna",
     "advertencia",
@@ -168,6 +166,13 @@ def _cargar(module_globals: dict):
         "            bot._verif_view_ok = True\n"
         "    except Exception as _e:\n"
         "        print(\"[on_ready] VerificarView:\", _e)\n"
+        "    try:\n"
+        "        import capacitacion_postular as _capp\n"
+        "        if not getattr(bot, \"_cap_postular_view_ok\", False):\n"
+        "            bot.add_view(_capp.PostularCapView())\n"
+        "            bot._cap_postular_view_ok = True\n"
+        "    except Exception as _e:\n"
+        "        print(\"[on_ready] PostularCapView:\", _e)\n"
         "    print(f\"Conectado como {bot.user} (ID: {bot.user.id})\")\n"
         "    try:\n"
         "        bot_control.set_mode(\"online\", \"Bot reiniciado y operativo.\", None)\n"
@@ -295,13 +300,11 @@ def _cargar(module_globals: dict):
             except Exception:
                 break
         names = _listar()
-        # Si por algún motivo se perdió abrir_expediente, re-registrar módulo
         if "abrir_expediente" not in names:
             try:
                 import expedientes as _exp
                 _exp.registrar(bot)
                 names = _listar()
-                print("[hospital_core] re-registro expedientes", flush=True)
             except Exception:
                 traceback.print_exc()
         return names
@@ -309,7 +312,6 @@ def _cargar(module_globals: dict):
     try:
         final = _recortar()
         print(f"[hospital_core] Comandos: {len(final)}", flush=True)
-        print(f"[hospital_core] abrir_expediente={'SI' if 'abrir_expediente' in final else 'NO'}", flush=True)
     except Exception:
         traceback.print_exc()
 
@@ -335,11 +337,6 @@ def _cargar(module_globals: dict):
                     synced = await bot.tree.sync(guild=obj)
                     result = sorted(c.name for c in synced)
                     print(f"[hospital_core] guild {gid}: {len(result)}", flush=True)
-                    print(
-                        f"[hospital_core] sync abrir_expediente="
-                        f"{'SI' if 'abrir_expediente' in result else 'NO'}",
-                        flush=True,
-                    )
                 except Exception as e:
                     print(f"[hospital_core] sync {gid}: {e}", flush=True)
         except Exception:
@@ -362,12 +359,8 @@ def _cargar(module_globals: dict):
         msg = await ctx.reply("🔄 Sync…")
         try:
             names = await _sync_todo("!forzar_sync")
-            ok = [c for c in ("abrir_expediente", "balance", "citatorio_general", "registrar_firma") if c in names]
-            faltan = [c for c in ("abrir_expediente",) if c not in names]
-            txt = f"✅ {len(names)} comandos · presentes: `{', '.join(ok) or '—'}`"
-            if faltan:
-                txt += f"\n⚠️ No sincronizados: `{', '.join(faltan)}`"
-            await msg.edit(content=txt)
+            ok = [c for c in ("abrir_expediente", "balance", "capacitacion") if c in names]
+            await msg.edit(content=f"✅ {len(names)} comandos · `{', '.join(ok) or '—'}`")
         except Exception as e:
             await msg.edit(content=f"❌ {e}")
 
