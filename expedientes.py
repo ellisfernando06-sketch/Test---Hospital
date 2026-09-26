@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*
 """
-expedientes.py — Un solo comando /abrir_expediente (reemplaza mi_expediente).
-Siempre responde a la interaccion para evitar "Unknown interaction".
+expedientes.py — /abrir_expediente (varios usuarios a la vez).
 """
 from __future__ import annotations
 
@@ -9,7 +8,7 @@ import json
 import os
 import traceback
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import List, Optional
 
 import discord
 from discord import app_commands
@@ -128,17 +127,34 @@ def embed_exp(usuario: discord.Member, exp: dict) -> discord.Embed:
     return emb
 
 
-async def _safe_reply(inter: discord.Interaction, content: str = None, *, embed=None, ephemeral=True, view=None):
-    """Responde si aún no; si ya respondió, usa followup. Evita Unknown interaction."""
+async def _safe_reply(inter: discord.Interaction, content: str = None, *, embed=None, embeds=None, ephemeral=True, view=None):
     try:
+        kwargs = dict(content=content, ephemeral=ephemeral, view=view)
+        if embeds:
+            kwargs["embeds"] = embeds[:10]
+        elif embed:
+            kwargs["embed"] = embed
         if inter.response.is_done():
-            await inter.followup.send(content=content, embed=embed, ephemeral=ephemeral, view=view)
+            await inter.followup.send(**kwargs)
         else:
-            await inter.response.send_message(content=content, embed=embed, ephemeral=ephemeral, view=view)
+            await inter.response.send_message(**kwargs)
     except discord.NotFound:
         print("[expedientes] interaccion expirada")
     except Exception as e:
         print(f"[expedientes] safe_reply: {e}")
+
+
+def _uniq_members(*members: Optional[discord.Member]) -> List[discord.Member]:
+    seen = set()
+    out: List[discord.Member] = []
+    for m in members:
+        if m is None or not isinstance(m, discord.Member):
+            continue
+        if m.id in seen:
+            continue
+        seen.add(m.id)
+        out.append(m)
+    return out
 
 
 class ConfirmarAccionView(discord.ui.View):
@@ -286,15 +302,19 @@ def _reg(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="abrir_expediente",
-        description="Expediente: abrir / sanción / ver (menú tipo). Reemplaza mi_expediente",
+        description="Expediente: abrir / sanción / ver (varios usuarios a la vez)",
     )
     @app_commands.describe(
         accion="Qué hacer",
         tipo="Tipo de expediente",
-        usuario="Persona (en Ver puede quedar vacío = tú)",
+        usuario="Persona 1",
+        usuario2="Persona 2 (opcional)",
+        usuario3="Persona 3 (opcional)",
+        usuario4="Persona 4 (opcional)",
+        usuario5="Persona 5 (opcional)",
         limite_sanciones="Al abrir: límite (default 5)",
         accion_al_limite="Al abrir: despido o mute 24h",
-        motivo="Al agregar sanción: motivo",
+        motivo="Al agregar sanción: motivo (igual para todos)",
         notas="Al abrir: notas opcionales",
     )
     @app_commands.choices(accion=ACCION_CMD, tipo=TIPO_CHOICES, accion_al_limite=ACCION_LIMITE)
@@ -303,6 +323,10 @@ def _reg(bot: commands.Bot) -> None:
         accion: app_commands.Choice[str],
         tipo: app_commands.Choice[str],
         usuario: Optional[discord.Member] = None,
+        usuario2: Optional[discord.Member] = None,
+        usuario3: Optional[discord.Member] = None,
+        usuario4: Optional[discord.Member] = None,
+        usuario5: Optional[discord.Member] = None,
         limite_sanciones: app_commands.Range[int, 1, 20] = 5,
         accion_al_limite: Optional[app_commands.Choice[str]] = None,
         motivo: str = "",
@@ -318,27 +342,41 @@ def _reg(bot: commands.Bot) -> None:
                 return await _safe_reply(inter, "❌ Tipo de expediente inválido.")
 
             act = accion.value
-            target = usuario or inter.user
+            targets = _uniq_members(usuario, usuario2, usuario3, usuario4, usuario5)
 
             # --- VER ---
             if act == "ver":
-                if target.id != inter.user.id:
-                    if not permisos.member_tiene_alguna_key(
-                        inter.user, *info["keys"], "DIRECTOR", "OWNER", "CO_OWNER"
-                    ):
-                        return await _safe_reply(
-                            inter,
-                            f"❌ Sin permiso. Se requiere: {', '.join(info['keys'])}",
-                        )
-                exp = get_exp(target.id, t)
-                if not exp:
+                if not targets:
+                    targets = [inter.user]
+                # Ver varios: permiso si alguno no es uno mismo
+                for target in targets:
+                    if target.id != inter.user.id:
+                        if not permisos.member_tiene_alguna_key(
+                            inter.user, *info["keys"], "DIRECTOR", "OWNER", "CO_OWNER"
+                        ):
+                            return await _safe_reply(
+                                inter,
+                                f"❌ Sin permiso. Se requiere: {', '.join(info['keys'])}",
+                            )
+                        break
+                embeds = []
+                faltan = []
+                for target in targets:
+                    exp = get_exp(target.id, t)
+                    if not exp:
+                        faltan.append(target.mention)
+                    else:
+                        embeds.append(embed_exp(target, exp))
+                if not embeds:
                     return await _safe_reply(
                         inter,
-                        f"No hay expediente **{info['nombre']}** para {target.mention}.",
+                        f"No hay expediente **{info['nombre']}** para: {', '.join(faltan) or 'nadie'}.",
                     )
-                return await _safe_reply(inter, embed=embed_exp(target, exp))
+                msg = None
+                if faltan:
+                    msg = f"Sin expediente: {', '.join(faltan)}"
+                return await _safe_reply(inter, content=msg, embeds=embeds)
 
-            # Abrir / sanción: requiere key del tipo (o DIRECTOR genérico / OWNER)
             keys_ok = info["keys"] + ("DIRECTOR",)
             if not permisos.member_tiene_alguna_key(inter.user, *keys_ok):
                 return await _safe_reply(
@@ -346,46 +384,71 @@ def _reg(bot: commands.Bot) -> None:
                     f"❌ Sin permiso para este tipo.\nSe requiere una de: {', '.join(info['keys'])}",
                 )
 
-            if not usuario:
+            if not targets:
                 return await _safe_reply(
                     inter,
-                    "❌ Indica el **usuario** para abrir o agregar sanción.",
+                    "❌ Indica al menos un **usuario** (puedes usar usuario, usuario2, usuario3… hasta 5).",
                 )
 
-            # --- ABRIR ---
+            # --- ABRIR (varios) ---
             if act == "abrir":
                 acc = (accion_al_limite.value if accion_al_limite else None) or info["accion_default"]
                 if t == "disciplinario" and accion_al_limite is None:
                     acc = "mute_24h"
-                exp = abrir_exp(usuario.id, t, limite_sanciones, inter.user.id, acc, notas)
-                emb = embed_exp(usuario, exp)
-                emb.description = (
-                    f"Abierto por {inter.user.mention}.\n"
-                    f"Límite **{limite_sanciones}** → `{acc}` (con confirmación).\n"
-                    f"Para sancionar: `/abrir_expediente` → **Agregar sanción**."
+                embeds = []
+                menciones = []
+                for u in targets:
+                    exp = abrir_exp(u.id, t, limite_sanciones, inter.user.id, acc, notas)
+                    emb = embed_exp(u, exp)
+                    emb.description = (
+                        f"Abierto por {inter.user.mention}.\n"
+                        f"Límite **{limite_sanciones}** → `{acc}` (con confirmación)."
+                    )
+                    embeds.append(emb)
+                    menciones.append(u.mention)
+                return await _safe_reply(
+                    inter,
+                    content=f"✅ Expediente **{info['nombre']}** abierto a: {', '.join(menciones)}",
+                    embeds=embeds,
+                    ephemeral=False,
                 )
-                return await _safe_reply(inter, embed=emb, ephemeral=False)
 
-            # --- SANCIÓN ---
+            # --- SANCIÓN (varios, mismo motivo) ---
             if act == "sancion":
                 if not (motivo or "").strip():
                     return await _safe_reply(inter, "❌ Escribe el **motivo** de la sanción.")
-                try:
-                    exp = add_sancion(usuario.id, t, motivo.strip(), inter.user.id)
-                except ValueError as e:
+                embeds = []
+                errores = []
+                pendientes = []
+                for u in targets:
+                    try:
+                        exp = add_sancion(u.id, t, motivo.strip(), inter.user.id)
+                        embeds.append(embed_exp(u, exp))
+                        if exp.get("accion_pendiente") and not exp.get("accion_ejecutada"):
+                            pendientes.append((u, exp))
+                    except ValueError as e:
+                        errores.append(f"{u.mention}: {e}")
+
+                if not embeds and errores:
                     return await _safe_reply(
                         inter,
-                        f"❌ {e}\nAbre primero con acción **Abrir expediente**.",
+                        "❌ No se pudo sancionar:\n" + "\n".join(errores)
+                        + "\nAbre primero con **Abrir expediente**.",
                     )
 
-                emb = embed_exp(usuario, exp)
-                await _safe_reply(inter, embed=emb, ephemeral=False)
+                extra = ("\n" + "\n".join(errores)) if errores else ""
+                await _safe_reply(
+                    inter,
+                    content=f"✅ Sanción registrada.{extra}" if extra else None,
+                    embeds=embeds or None,
+                    ephemeral=False,
+                )
 
-                if exp.get("accion_pendiente") and not exp.get("accion_ejecutada"):
-                    emb2, view = await _avisar_limite(usuario, exp, inter.user)
+                for u, exp in pendientes:
+                    emb2, view = await _avisar_limite(u, exp, inter.user)
                     try:
                         await inter.followup.send(
-                            content=f"⚠️ **Límite {len(exp['sanciones'])}/{exp['limite']}**. Confirma:",
+                            content=f"⚠️ **Límite** {u.mention} ({len(exp['sanciones'])}/{exp['limite']}). Confirma:",
                             embed=emb2,
                             view=view,
                         )
