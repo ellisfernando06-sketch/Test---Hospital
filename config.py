@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*
 """
 config.py — EL ÚNICO ARCHIVO QUE DEBES EDITAR (IDs de canales y nombres).
 """
@@ -150,6 +150,7 @@ CANALES = {
     "panel_guardia": None, "log_quirofano": None,
 }
 
+# Separadores = categorías visibles en la lista de roles del servidor
 SEPARADORES_ROLES = [
     ("sep_cupula", "『 🛠️ GERENCIA / DESARROLLO 』", "#E74C3C"),
     ("sep_servidor", "『 🖥️ STAFF DEL SERVIDOR 』", "#7F8C8D"),
@@ -163,7 +164,57 @@ SEPARADORES_ROLES = [
     ("sep_admin", "『 📋 ADMINISTRACIÓN HOSPITAL 』", "#16A085"),
     ("sep_docencia", "『 📚 INVESTIGACIÓN Y DOCENCIA 』", "#8E44AD"),
     ("sep_staff", "『 🏥 PERSONAL / STAFF 』", "#95A5A6"),
+    # Categorías de otorgados / RP (roles dentro de cada una)
+    ("sep_graduados", "『 🎓 GRADUADOS / CERTIFICACIONES 』", "#8E44AD"),
+    ("sep_identificacion", "『 🪪 IDENTIFICACIÓN Y LICENCIAS 』", "#1ABC9C"),
+    ("sep_equipo_rp", "『 🩺 EQUIPO Y MATERIAL RP 』", "#E67E22"),
+    ("sep_uniformes", "『 👔 UNIFORMES Y APARIENCIA 』", "#34495E"),
 ]
+
+# Roles fijos DENTRO de cada categoría de otorgados (se crean/ordenan con /configurar_roles)
+# Formato: clave_interna -> (nombre_visible, color_hex, sep_key)
+ROLES_OTORGADOS = {
+    # ── 『 🎓 GRADUADOS / CERTIFICACIONES 』 ──
+    "graduado": ("🎓 Graduado", "#8E44AD", "sep_graduados"),
+    "cert_rcp": ("🎓 Cert. RCP Básico", "#9B59B6", "sep_graduados"),
+    "cert_primeros_auxilios": ("🎓 Cert. Primeros auxilios", "#9B59B6", "sep_graduados"),
+    "cert_bioseguridad": ("🎓 Cert. Bioseguridad", "#9B59B6", "sep_graduados"),
+    "cert_laboratorista": ("🎓 Cert. Laboratorista", "#9B59B6", "sep_graduados"),
+    "cert_atencion_paciente": ("🎓 Cert. Atención al paciente", "#9B59B6", "sep_graduados"),
+    "certificado_general": ("🎓 Certificado hospitalario", "#8E44AD", "sep_graduados"),
+    # ── 『 🪪 IDENTIFICACIÓN Y LICENCIAS 』 ──
+    "credencial": ("🪪 Credencial hospitalaria", "#1ABC9C", "sep_identificacion"),
+    "licencia_medica": ("📋 Licencia médica", "#2980B9", "sep_identificacion"),
+    "licencia_enfermeria": ("📋 Licencia de enfermería", "#3498DB", "sep_identificacion"),
+    "pase_areas": ("🪪 Pase de áreas restringidas", "#16A085", "sep_identificacion"),
+    # ── 『 🩺 EQUIPO Y MATERIAL RP 』 ──
+    "eq_clinico": ("🩺 Equipo clínico", "#E74C3C", "sep_equipo_rp"),
+    "eq_farmacia": ("💊 Material de farmacia", "#27AE60", "sep_equipo_rp"),
+    "eq_tecnologia": ("💻 Equipo tecnológico", "#3498DB", "sep_equipo_rp"),
+    # ── 『 👔 UNIFORMES Y APARIENCIA 』 ──
+    "uniforme_medico": ("👔 Uniforme médico", "#34495E", "sep_uniformes"),
+    "uniforme_enfermeria": ("👔 Uniforme enfermería", "#34495E", "sep_uniformes"),
+    "accesorio_rp": ("💍 Accesorio RP", "#E91E63", "sep_uniformes"),
+}
+
+# Alias texto de certificación / ítem tienda → clave de ROLES_OTORGADOS
+MAP_CERT_A_ROL = {
+    "rcp": "cert_rcp",
+    "rcp básico": "cert_rcp",
+    "rcp basico": "cert_rcp",
+    "primeros auxilios": "cert_primeros_auxilios",
+    "bioseguridad": "cert_bioseguridad",
+    "laboratorista": "cert_laboratorista",
+    "atención al paciente": "cert_atencion_paciente",
+    "atencion al paciente": "cert_atencion_paciente",
+}
+
+MAP_TIENDA_CAT_A_ROL = {
+    "instrumentos_medicos": "eq_clinico",
+    "farmacia": "eq_farmacia",
+    "tecnologia": "eq_tecnologia",
+    "uniformes": "uniforme_medico",
+}
 
 GRAVEDAD_PACIENTE = ["Estable", "Observación", "Grave", "Crítico"]
 CATEGORIAS_INVENTARIO = [
