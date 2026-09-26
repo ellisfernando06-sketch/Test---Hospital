@@ -37,6 +37,7 @@ _MODULOS = (
     "mejoras_ui",
     "reuniones_voice",
     "expedientes",
+    "roles_otorgados",
 )
 
 _QUITAR = (
@@ -116,6 +117,7 @@ _CRITICOS = {
     "convocar_directores", "convocar_reunion_departamento",
     "citatorio_general", "citatorio_disciplina", "citatorio_admin",
     "abrir_expediente",
+    "mis_otorgados",
     "paciente", "inventario", "turno", "codigo", "ficha", "postulacion",
 }
 
@@ -186,7 +188,6 @@ def _cargar(module_globals: dict):
         "            await asyncio.sleep(2)\n"
         "            names = await fn(\"on_ready\")\n"
         "            print(f\"[on_ready] Sync: {len(names or [])} comandos\")\n"
-        "            print(f\"[on_ready] abrir_expediente={'SI' if names and 'abrir_expediente' in names else 'NO'}\")\n"
         "        except Exception as _e:\n"
         "            print(\"[on_ready] Sync error:\", _e)\n"
     )
@@ -359,7 +360,7 @@ def _cargar(module_globals: dict):
         msg = await ctx.reply("🔄 Sync…")
         try:
             names = await _sync_todo("!forzar_sync")
-            ok = [c for c in ("abrir_expediente", "balance", "capacitacion") if c in names]
+            ok = [c for c in ("abrir_expediente", "mis_otorgados", "certificar") if c in names]
             await msg.edit(content=f"✅ {len(names)} comandos · `{', '.join(ok) or '—'}`")
         except Exception as e:
             await msg.edit(content=f"❌ {e}")
