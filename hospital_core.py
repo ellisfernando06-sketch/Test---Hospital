@@ -38,7 +38,8 @@ _MODULOS = (
     "expedientes",
 )
 
-_QUITAR = ("ordenar_roles",)
+# Quitar viejos para liberar slots del límite 100
+_QUITAR = ("ordenar_roles", "mi_expediente", "expediente")
 
 _BAJA = (
     "ver_canal_logs_tickets", "configurar_logs_tickets", "panel_solicitudes_logs",
@@ -49,18 +50,19 @@ _BAJA = (
     "citatorio_admin", "citatorio_disciplina", "citatorio_general",
     "carta_solicitud", "reporte_procedimiento", "solicitud_degrado", "solicitud_descargo",
     "quejas_pendientes", "queja_resolver", "marcar_asistencia",
+    "agregar_sancion_expediente", "ver_expediente_tipo",
 )
 
 _CRITICOS = {
     "certificar", "registrar_firma", "ver_mi_firma",
     "limpiar", "limpiar_todo", "sincronizar_comandos",
     "panel_solicitudes", "configurar_roles", "otorgar_key", "bootstrap_owner",
-    "tienda", "sancionar", "expediente", "capacitacion",
+    "tienda", "sancionar", "capacitacion",
     "balance", "balance_general", "historial_financiero",
     "anuncio", "asignar_tarea", "ooc_ban", "sancion_aplicar",
     "solicitar_insumo", "cap_historial",
     "convocar_directores", "convocar_reunion_departamento",
-    "abrir_expediente", "agregar_sancion_expediente", "ver_expediente_tipo",
+    "abrir_expediente",
 }
 
 
@@ -143,6 +145,30 @@ def _cargar(module_globals: dict):
             r"@bot\.tree\.command\(name=\"ordenar_roles\"[^\n]*\n"
             r"(?:@[^\n]+\n)*"
             r"async def ordenar_roles_cmd\([\s\S]*?\n(?=\S)",
+            "\n",
+            source,
+            count=1,
+        )
+    except Exception:
+        pass
+
+    # Quitar del núcleo remoto mi_expediente y expediente (reemplazados)
+    try:
+        source = re.sub(
+            r"@bot\.tree\.command\(name=\"mi_expediente\"[^\n]*\n"
+            r"(?:@[^\n]+\n)*"
+            r"async def mi_expediente\([\s\S]*?\n(?=\n@|\n# |\nif |\nasync def |\ndef )",
+            "\n",
+            source,
+            count=1,
+        )
+    except Exception:
+        pass
+    try:
+        source = re.sub(
+            r"@bot\.tree\.command\(name=\"expediente\"[^\n]*\n"
+            r"(?:@[^\n]+\n)*"
+            r"async def expediente\([\s\S]*?\n(?=\n@|\n# |\nif |\nasync def |\ndef )",
             "\n",
             source,
             count=1,
@@ -272,7 +298,7 @@ def _cargar(module_globals: dict):
         msg = await ctx.reply("🔄 Sync…")
         try:
             names = await _sync_todo("!forzar_sync")
-            ok = [c for c in ("balance", "ooc_ban", "sancion_aplicar", "registrar_firma") if c in names]
+            ok = [c for c in ("balance", "abrir_expediente", "ooc_ban", "registrar_firma") if c in names]
             await msg.edit(content=f"✅ {len(names)} comandos · `{', '.join(ok) or '—'}`")
         except Exception as e:
             await msg.edit(content=f"❌ {e}")
