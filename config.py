@@ -10,7 +10,6 @@ NOMBRE_HOSPITAL = "Hospital General"
 MONEDA = "$"
 LOGO_URL = None
 
-# Key interna OWNER = rol visible "Gerente Developer" (máxima autoridad del bot).
 KEYS_NOMBRES = {
     "OWNER":                ("🛠️ Gerente Developer", "#E74C3C"),
     "CO_OWNER":             ("🤝 Co-Owner", "#C0392B"),
@@ -34,7 +33,6 @@ KEYS_NOMBRES = {
     "STAFF_SERVIDOR":       ("🖥️ Staff del Servidor", "#7F8C8D"),
 }
 
-# Alias legible (misma key interna)
 GERENTE_DEVELOPER_KEY = "OWNER"
 
 JERARQUIA_KEYS = [
@@ -150,7 +148,6 @@ CANALES = {
     "panel_guardia": None, "log_quirofano": None,
 }
 
-# Separadores = categorías visibles en la lista de roles del servidor
 SEPARADORES_ROLES = [
     ("sep_cupula", "『 🛠️ GERENCIA / DESARROLLO 』", "#E74C3C"),
     ("sep_servidor", "『 🖥️ STAFF DEL SERVIDOR 』", "#7F8C8D"),
@@ -164,49 +161,109 @@ SEPARADORES_ROLES = [
     ("sep_admin", "『 📋 ADMINISTRACIÓN HOSPITAL 』", "#16A085"),
     ("sep_docencia", "『 📚 INVESTIGACIÓN Y DOCENCIA 』", "#8E44AD"),
     ("sep_staff", "『 🏥 PERSONAL / STAFF 』", "#95A5A6"),
-    # Categorías de otorgados / RP (roles dentro de cada una)
     ("sep_graduados", "『 🎓 GRADUADOS / CERTIFICACIONES 』", "#8E44AD"),
     ("sep_identificacion", "『 🪪 IDENTIFICACIÓN Y LICENCIAS 』", "#1ABC9C"),
     ("sep_equipo_rp", "『 🩺 EQUIPO Y MATERIAL RP 』", "#E67E22"),
     ("sep_uniformes", "『 👔 UNIFORMES Y APARIENCIA 』", "#34495E"),
 ]
 
-# Roles fijos DENTRO de cada categoría de otorgados (se crean/ordenan con /configurar_roles)
-# Formato: clave_interna -> (nombre_visible, color_hex, sep_key)
 ROLES_OTORGADOS = {
-    # ── 『 🎓 GRADUADOS / CERTIFICACIONES 』 ──
     "graduado": ("🎓 Graduado", "#8E44AD", "sep_graduados"),
+    "certificado_general": ("🎓 Certificado hospitalario", "#8E44AD", "sep_graduados"),
     "cert_rcp": ("🎓 Cert. RCP Básico", "#9B59B6", "sep_graduados"),
     "cert_primeros_auxilios": ("🎓 Cert. Primeros auxilios", "#9B59B6", "sep_graduados"),
     "cert_bioseguridad": ("🎓 Cert. Bioseguridad", "#9B59B6", "sep_graduados"),
-    "cert_laboratorista": ("🎓 Cert. Laboratorista", "#9B59B6", "sep_graduados"),
     "cert_atencion_paciente": ("🎓 Cert. Atención al paciente", "#9B59B6", "sep_graduados"),
-    "certificado_general": ("🎓 Certificado hospitalario", "#8E44AD", "sep_graduados"),
-    # ── 『 🪪 IDENTIFICACIÓN Y LICENCIAS 』 ──
+    "cert_etica": ("🎓 Cert. Ética hospitalaria", "#9B59B6", "sep_graduados"),
+    "cert_evacuacion": ("🎓 Cert. Evacuación y códigos", "#9B59B6", "sep_graduados"),
+    "cert_laboratorista": ("🎓 Cert. Laboratorista", "#9B59B6", "sep_graduados"),
+    "cert_sva": ("🎓 Cert. Soporte vital avanzado", "#9B59B6", "sep_graduados"),
+    "cert_urgencias": ("🎓 Cert. Urgencias médicas", "#9B59B6", "sep_graduados"),
+    "cert_proc_clinicos": ("🎓 Cert. Procedimientos clínicos", "#9B59B6", "sep_graduados"),
+    "cert_cirugia": ("🎓 Cert. Cirugía menor RP", "#9B59B6", "sep_graduados"),
+    "cert_cuidados_enf": ("🎓 Cert. Cuidados de enfermería", "#9B59B6", "sep_graduados"),
+    "cert_medicacion": ("🎓 Cert. Administración de medicamentos", "#9B59B6", "sep_graduados"),
+    "cert_curaciones": ("🎓 Cert. Curaciones y heridas", "#9B59B6", "sep_graduados"),
+    "cert_signos": ("🎓 Cert. Monitorización de signos", "#9B59B6", "sep_graduados"),
+    "cert_induccion": ("🎓 Cert. Inducción de personal", "#9B59B6", "sep_graduados"),
+    "cert_expedientes": ("🎓 Cert. Gestión de expedientes", "#9B59B6", "sep_graduados"),
+    "cert_entrevistas": ("🎓 Cert. Entrevistas y selección", "#9B59B6", "sep_graduados"),
+    "cert_caja": ("🎓 Cert. Caja y cobranza", "#9B59B6", "sep_graduados"),
+    "cert_contabilidad": ("🎓 Cert. Contabilidad básica", "#9B59B6", "sep_graduados"),
+    "cert_presupuesto": ("🎓 Cert. Presupuestos", "#9B59B6", "sep_graduados"),
+    "cert_inventario": ("🎓 Cert. Control de inventario", "#9B59B6", "sep_graduados"),
+    "cert_almacen": ("🎓 Cert. Almacén hospitalario", "#9B59B6", "sep_graduados"),
+    "cert_cadena_frio": ("🎓 Cert. Cadena de frío", "#9B59B6", "sep_graduados"),
+    "cert_vigilancia": ("🎓 Cert. Vigilancia hospitalaria", "#9B59B6", "sep_graduados"),
+    "cert_accesos": ("🎓 Cert. Control de accesos", "#9B59B6", "sep_graduados"),
+    "cert_amenazas": ("🎓 Cert. Protocolo de amenazas", "#9B59B6", "sep_graduados"),
+    "cert_recepcion": ("🎓 Cert. Recepción y orientación", "#9B59B6", "sep_graduados"),
+    "cert_doc_admin": ("🎓 Cert. Documentación administrativa", "#9B59B6", "sep_graduados"),
+    "cert_citas": ("🎓 Cert. Agenda y citas", "#9B59B6", "sep_graduados"),
+    "cert_formador": ("🎓 Cert. Formador de formadores", "#9B59B6", "sep_graduados"),
+    "cert_evaluacion": ("🎓 Cert. Evaluación de competencias", "#9B59B6", "sep_graduados"),
+    "cert_investigacion": ("🎓 Cert. Investigación básica", "#9B59B6", "sep_graduados"),
+    "cert_disciplina": ("🎓 Cert. Normativa disciplinaria", "#9B59B6", "sep_graduados"),
+    "cert_liderazgo": ("🎓 Cert. Liderazgo hospitalario", "#9B59B6", "sep_graduados"),
+    "crear_identificacion": ("🪪 Crear identificación", "#E67E22", "sep_identificacion"),
     "credencial": ("🪪 Credencial hospitalaria", "#1ABC9C", "sep_identificacion"),
     "licencia_medica": ("📋 Licencia médica", "#2980B9", "sep_identificacion"),
     "licencia_enfermeria": ("📋 Licencia de enfermería", "#3498DB", "sep_identificacion"),
     "pase_areas": ("🪪 Pase de áreas restringidas", "#16A085", "sep_identificacion"),
-    # ── 『 🩺 EQUIPO Y MATERIAL RP 』 ──
     "eq_clinico": ("🩺 Equipo clínico", "#E74C3C", "sep_equipo_rp"),
     "eq_farmacia": ("💊 Material de farmacia", "#27AE60", "sep_equipo_rp"),
     "eq_tecnologia": ("💻 Equipo tecnológico", "#3498DB", "sep_equipo_rp"),
-    # ── 『 👔 UNIFORMES Y APARIENCIA 』 ──
     "uniforme_medico": ("👔 Uniforme médico", "#34495E", "sep_uniformes"),
     "uniforme_enfermeria": ("👔 Uniforme enfermería", "#34495E", "sep_uniformes"),
     "accesorio_rp": ("💍 Accesorio RP", "#E91E63", "sep_uniformes"),
 }
 
-# Alias texto de certificación / ítem tienda → clave de ROLES_OTORGADOS
 MAP_CERT_A_ROL = {
     "rcp": "cert_rcp",
-    "rcp básico": "cert_rcp",
-    "rcp basico": "cert_rcp",
     "primeros auxilios": "cert_primeros_auxilios",
     "bioseguridad": "cert_bioseguridad",
-    "laboratorista": "cert_laboratorista",
     "atención al paciente": "cert_atencion_paciente",
     "atencion al paciente": "cert_atencion_paciente",
+    "ética": "cert_etica",
+    "etica": "cert_etica",
+    "evacuación": "cert_evacuacion",
+    "evacuacion": "cert_evacuacion",
+    "laboratorista": "cert_laboratorista",
+    "soporte vital": "cert_sva",
+    "sva": "cert_sva",
+    "urgencias": "cert_urgencias",
+    "procedimientos clínicos": "cert_proc_clinicos",
+    "cirugía": "cert_cirugia",
+    "cirugia": "cert_cirugia",
+    "cuidados de enfermería": "cert_cuidados_enf",
+    "medicamentos": "cert_medicacion",
+    "curaciones": "cert_curaciones",
+    "signos": "cert_signos",
+    "inducción": "cert_induccion",
+    "induccion": "cert_induccion",
+    "expedientes": "cert_expedientes",
+    "entrevistas": "cert_entrevistas",
+    "caja": "cert_caja",
+    "contabilidad": "cert_contabilidad",
+    "presupuesto": "cert_presupuesto",
+    "inventario": "cert_inventario",
+    "almacén": "cert_almacen",
+    "almacen": "cert_almacen",
+    "cadena de frío": "cert_cadena_frio",
+    "vigilancia": "cert_vigilancia",
+    "accesos": "cert_accesos",
+    "amenazas": "cert_amenazas",
+    "recepción": "cert_recepcion",
+    "recepcion": "cert_recepcion",
+    "documentación administrativa": "cert_doc_admin",
+    "agenda": "cert_citas",
+    "formador": "cert_formador",
+    "evaluación": "cert_evaluacion",
+    "evaluacion": "cert_evaluacion",
+    "investigación": "cert_investigacion",
+    "investigacion": "cert_investigacion",
+    "disciplinaria": "cert_disciplina",
+    "liderazgo": "cert_liderazgo",
 }
 
 MAP_TIENDA_CAT_A_ROL = {
