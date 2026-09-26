@@ -1,13 +1,13 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*
 """
-capacitaciones.py — Programación y certificaciones.
+capacitaciones.py — Programación, postulaciones y certificaciones.
 """
 from __future__ import annotations
 
 import json
 import os
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Optional
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 _PATH = os.path.join(_DATA_DIR, "capacitaciones.json")
@@ -46,9 +46,57 @@ def programar(titulo: str, fecha_hora: str, departamento_slug: str, descripcion:
         "descripcion": descripcion,
         "por": por,
         "fecha": datetime.now(timezone.utc).isoformat(),
+        "postulados": [],
     })
     _save(data)
     return cid
+
+
+def obtener(cap_id: int) -> Optional[dict]:
+    data = _load()
+    for c in data["programadas"]:
+        if int(c.get("id", 0)) == int(cap_id):
+            c.setdefault("postulados", [])
+            return c
+    return None
+
+
+def postular(cap_id: int, uid: int) -> tuple:
+    """
+    Postula a un usuario. Devuelve (ok: bool, mensaje: str).
+    """
+    data = _load()
+    for c in data["programadas"]:
+        if int(c.get("id", 0)) != int(cap_id):
+            continue
+        c.setdefault("postulados", [])
+        if uid in c["postulados"]:
+            return False, "Ya estás postulado a esta capacitación."
+        c["postulados"].append(uid)
+        _save(data)
+        return True, f"Postulación registrada. Total: **{len(c['postulados'])}**."
+    return False, "Capacitación no encontrada o ya no está programada."
+
+
+def despostular(cap_id: int, uid: int) -> tuple:
+    data = _load()
+    for c in data["programadas"]:
+        if int(c.get("id", 0)) != int(cap_id):
+            continue
+        c.setdefault("postulados", [])
+        if uid not in c["postulados"]:
+            return False, "No estabas postulado."
+        c["postulados"] = [x for x in c["postulados"] if x != uid]
+        _save(data)
+        return True, "Postulación cancelada."
+    return False, "Capacitación no encontrada."
+
+
+def postulados_de(cap_id: int) -> List[int]:
+    c = obtener(cap_id)
+    if not c:
+        return []
+    return list(c.get("postulados") or [])
 
 
 def certificar(uid: int, titulo: str, por: int) -> None:
@@ -69,4 +117,6 @@ def completadas_de(uid: int) -> List[dict]:
 
 def listar_programadas() -> List[dict]:
     data = _load()
+    for c in data["programadas"]:
+        c.setdefault("postulados", [])
     return data["programadas"]
