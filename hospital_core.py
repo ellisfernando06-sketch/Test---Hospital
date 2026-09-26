@@ -17,7 +17,7 @@ _URL = (
     f"{_COMMIT}/Bot_Hospital.py"
 )
 _GUILD_ID = 1381360019467014184
-_MAX_SLASH = 100
+_MAX_SLASH = 98  # margen bajo el tope 100 de Discord
 
 _MODULOS = (
     "comandos_nuevos",
@@ -38,19 +38,73 @@ _MODULOS = (
     "expedientes",
 )
 
-# Quitar viejos para liberar slots del límite 100
-_QUITAR = ("ordenar_roles", "mi_expediente", "expediente")
+# Siempre fuera del árbol (liberan slots; expediente viejo → abrir_expediente)
+_QUITAR = (
+    "ordenar_roles",
+    "mi_expediente",
+    "expediente",
+    # poco usados / reemplazables
+    "historial_advertencias",
+    "mi_sanciones",
+    "solicitud_info",
+    "panel_reglas",
+    "reglas",
+    "catalogo_tienda",
+    "bienvenida",
+    "ver_canal_logs_tickets",
+    "configurar_logs_tickets",
+    "panel_solicitudes_logs",
+    "configurar_canal_logs",
+    "libro_contable",
+    "registrar_gasto",
+    "registrar_ingreso",
+    "ooc_advertencia",
+    "ooc_kick",
+    "ooc_timeout",
+    "carta_solicitud",
+    "reporte_procedimiento",
+    "solicitud_degrado",
+    "solicitud_descargo",
+    "quejas_pendientes",
+    "queja_resolver",
+    "marcar_asistencia",
+    "ver_roblox",
+    "votacion",
+    "organigrama",
+    "estado_hospital",
+    "formulario",
+    "documento_medico",
+    "reporte_departamento",
+    "solicitud_investigacion",
+    "solicitud_permiso",
+    "mis_certificados",
+    "mostrar_certificado",
+    "ver_certificados",
+    "crear_certificado",
+    "mi_inventario",
+    "panel_tienda",
+)
 
+# Si aún falta espacio, se cortan en este orden (citatorios NO están aquí)
 _BAJA = (
-    "ver_canal_logs_tickets", "configurar_logs_tickets", "panel_solicitudes_logs",
-    "configurar_canal_logs", "catalogo_tienda", "panel_reglas", "reglas",
-    "solicitud_info", "mi_sanciones", "historial_advertencias",
-    "libro_contable", "registrar_gasto", "registrar_ingreso",
-    "ooc_advertencia", "ooc_kick", "ooc_timeout",
-    "citatorio_admin", "citatorio_disciplina", "citatorio_general",
-    "carta_solicitud", "reporte_procedimiento", "solicitud_degrado", "solicitud_descargo",
-    "quejas_pendientes", "queja_resolver", "marcar_asistencia",
-    "agregar_sancion_expediente", "ver_expediente_tipo",
+    "sancion_interna",
+    "advertencia",
+    "licencia",
+    "transferir_departamento",
+    "descenso",
+    "ascenso",
+    "suspender",
+    "reincorporar",
+    "pagar_salario",
+    "depositar",
+    "retirar",
+    "transferir",
+    "solicitud_general",
+    "queja",
+    "anuncio",
+    "asignar_tarea",
+    "panel_acciones",
+    "panel_estado",
 )
 
 _CRITICOS = {
@@ -59,10 +113,12 @@ _CRITICOS = {
     "panel_solicitudes", "configurar_roles", "otorgar_key", "bootstrap_owner",
     "tienda", "sancionar", "capacitacion",
     "balance", "balance_general", "historial_financiero",
-    "anuncio", "asignar_tarea", "ooc_ban", "sancion_aplicar",
+    "ooc_ban", "sancion_aplicar",
     "solicitar_insumo", "cap_historial",
     "convocar_directores", "convocar_reunion_departamento",
+    "citatorio_general", "citatorio_disciplina", "citatorio_admin",
     "abrir_expediente",
+    "paciente", "inventario", "turno", "codigo", "ficha", "postulacion",
 }
 
 
@@ -125,6 +181,7 @@ def _cargar(module_globals: dict):
         "            await asyncio.sleep(2)\n"
         "            names = await fn(\"on_ready\")\n"
         "            print(f\"[on_ready] Sync: {len(names or [])} comandos\")\n"
+        "            print(f\"[on_ready] abrir_expediente={'SI' if names and 'abrir_expediente' in names else 'NO'}\")\n"
         "        except Exception as _e:\n"
         "            print(\"[on_ready] Sync error:\", _e)\n"
     )
@@ -152,29 +209,18 @@ def _cargar(module_globals: dict):
     except Exception:
         pass
 
-    # Quitar del núcleo remoto mi_expediente y expediente (reemplazados)
-    try:
-        source = re.sub(
-            r"@bot\.tree\.command\(name=\"mi_expediente\"[^\n]*\n"
-            r"(?:@[^\n]+\n)*"
-            r"async def mi_expediente\([\s\S]*?\n(?=\n@|\n# |\nif |\nasync def |\ndef )",
-            "\n",
-            source,
-            count=1,
-        )
-    except Exception:
-        pass
-    try:
-        source = re.sub(
-            r"@bot\.tree\.command\(name=\"expediente\"[^\n]*\n"
-            r"(?:@[^\n]+\n)*"
-            r"async def expediente\([\s\S]*?\n(?=\n@|\n# |\nif |\nasync def |\ndef )",
-            "\n",
-            source,
-            count=1,
-        )
-    except Exception:
-        pass
+    for _cmd in ("mi_expediente", "expediente"):
+        try:
+            source = re.sub(
+                rf"@bot\.tree\.command\(name=\"{_cmd}\"[^\n]*\n"
+                r"(?:@[^\n]+\n)*"
+                rf"async def {_cmd}\([\s\S]*?\n(?=\n@|\n# |\nif |\nasync def |\ndef )",
+                "\n",
+                source,
+                count=1,
+            )
+        except Exception:
+            pass
 
     source = source.replace(
         'description="[Solo primer uso] Te asigna la key OWNER para poder configurar el bot"',
@@ -228,8 +274,9 @@ def _cargar(module_globals: dict):
                 bot.tree.remove_command(n)
             except Exception:
                 pass
-        if len(_listar()) <= _MAX_SLASH:
-            return _listar()
+        names = _listar()
+        if len(names) <= _MAX_SLASH:
+            return names
         for n in _BAJA:
             if len(_listar()) <= _MAX_SLASH:
                 break
@@ -247,10 +294,22 @@ def _cargar(module_globals: dict):
                 bot.tree.remove_command(rest[-1])
             except Exception:
                 break
-        return _listar()
+        names = _listar()
+        # Si por algún motivo se perdió abrir_expediente, re-registrar módulo
+        if "abrir_expediente" not in names:
+            try:
+                import expedientes as _exp
+                _exp.registrar(bot)
+                names = _listar()
+                print("[hospital_core] re-registro expedientes", flush=True)
+            except Exception:
+                traceback.print_exc()
+        return names
 
     try:
-        print(f"[hospital_core] Comandos: {len(_recortar())}", flush=True)
+        final = _recortar()
+        print(f"[hospital_core] Comandos: {len(final)}", flush=True)
+        print(f"[hospital_core] abrir_expediente={'SI' if 'abrir_expediente' in final else 'NO'}", flush=True)
     except Exception:
         traceback.print_exc()
 
@@ -276,6 +335,11 @@ def _cargar(module_globals: dict):
                     synced = await bot.tree.sync(guild=obj)
                     result = sorted(c.name for c in synced)
                     print(f"[hospital_core] guild {gid}: {len(result)}", flush=True)
+                    print(
+                        f"[hospital_core] sync abrir_expediente="
+                        f"{'SI' if 'abrir_expediente' in result else 'NO'}",
+                        flush=True,
+                    )
                 except Exception as e:
                     print(f"[hospital_core] sync {gid}: {e}", flush=True)
         except Exception:
@@ -298,8 +362,12 @@ def _cargar(module_globals: dict):
         msg = await ctx.reply("🔄 Sync…")
         try:
             names = await _sync_todo("!forzar_sync")
-            ok = [c for c in ("balance", "abrir_expediente", "ooc_ban", "registrar_firma") if c in names]
-            await msg.edit(content=f"✅ {len(names)} comandos · `{', '.join(ok) or '—'}`")
+            ok = [c for c in ("abrir_expediente", "balance", "citatorio_general", "registrar_firma") if c in names]
+            faltan = [c for c in ("abrir_expediente",) if c not in names]
+            txt = f"✅ {len(names)} comandos · presentes: `{', '.join(ok) or '—'}`"
+            if faltan:
+                txt += f"\n⚠️ No sincronizados: `{', '.join(faltan)}`"
+            await msg.edit(content=txt)
         except Exception as e:
             await msg.edit(content=f"❌ {e}")
 
