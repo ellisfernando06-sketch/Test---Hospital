@@ -270,13 +270,15 @@ def _registrar_interno(bot: commands.Bot) -> None:
             ephemeral=True,
         )
 
+    # Cada citatorio SOLO su key + OWNER/CO_OWNER (superadmin).
+    # Ningún director usa el comando de otro director.
     specs = [
         ("citatorio_general", "Director General", "DIRECTOR_GENERAL", "citatorio_general",
          ("DIRECTOR_GENERAL", "OWNER", "CO_OWNER")),
         ("citatorio_disciplina", "Director de Disciplina", "DIRECTOR_DISCIPLINA", "citatorio_disciplina",
-         ("DIRECTOR_DISCIPLINA", "DIRECTOR_GENERAL", "OWNER", "CO_OWNER")),
+         ("DIRECTOR_DISCIPLINA", "OWNER", "CO_OWNER")),
         ("citatorio_admin", "Director Administrativo", "DIRECTOR_ADMINISTRATIVO", "citatorio_admin",
-         ("DIRECTOR_ADMINISTRATIVO", "DIRECTOR_GENERAL", "OWNER", "CO_OWNER")),
+         ("DIRECTOR_ADMINISTRATIVO", "OWNER", "CO_OWNER")),
     ]
 
     for nombre, direccion, key, ckey, keys_ok in specs:
@@ -397,7 +399,7 @@ def _registrar_interno(bot: commands.Bot) -> None:
                 return await inter.response.send_message("❌ Depto inválido.", ephemeral=True)
             dir_key = depto["director_key"]
             ok = (
-                permisos.member_tiene_alguna_key(inter.user, dir_key, "OWNER", "CO_OWNER", "DIRECTOR")
+                permisos.member_tiene_alguna_key(inter.user, dir_key, "OWNER", "CO_OWNER")
                 or (permisos.member_tiene_alguna_key(inter.user, "JEFE_DEPARTAMENTO", "SUPERVISOR")
                     and permisos.departamento_del_member(inter.user) == slug)
             )
