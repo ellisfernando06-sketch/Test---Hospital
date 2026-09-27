@@ -39,6 +39,7 @@ _MODULOS = (
     "expedientes",
     "roles_otorgados",
     "licencia_medica",
+    "anuncios_largos",  # anuncio / anuncio_direccion / agregar_reglamento sin límite
 )
 
 _QUITAR = (
@@ -100,7 +101,7 @@ _BAJA = (
     "transferir",
     "solicitud_general",
     "queja",
-    "anuncio",
+    # anuncio se reemplaza en anuncios_largos; no bajarlo prioritario
     "asignar_tarea",
     "panel_acciones",
     "panel_estado",
@@ -120,6 +121,7 @@ _CRITICOS = {
     "mis_otorgados",
     "licencia",
     "paciente", "inventario", "turno", "codigo", "ficha", "postulacion",
+    "anuncio", "anuncio_direccion", "agregar_reglamento",
 }
 
 
@@ -365,7 +367,7 @@ def _cargar(module_globals: dict):
         msg = await ctx.reply("🔄 Sync…")
         try:
             names = await _sync_todo("!forzar_sync")
-            ok = [c for c in ("licencia", "certificar", "abrir_expediente") if c in names]
+            ok = [c for c in ("licencia", "certificar", "abrir_expediente", "anuncio", "agregar_reglamento") if c in names]
             await msg.edit(content=f"✅ {len(names)} comandos · `{', '.join(ok) or '—'}`")
         except Exception as e:
             await msg.edit(content=f"❌ {e}")
