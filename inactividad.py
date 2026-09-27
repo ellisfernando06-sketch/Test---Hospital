@@ -6,7 +6,7 @@ inactividad.py
 - Si un miembro está inactivo X días SIN rol "Inactividad Justificada"
   y sin solicitud pendiente, el bot quita roles de cargo/hospital.
 - /solicitar_inactividad: el miembro pide justificación; se envía por MD
-  a Gerente Developer (OWNER) y Co-Owner para aprobar/negar.
+  a Gerente Developer (OWNER), Co-Owner y Director de RRHH para aprobar/negar.
 - Aprobado → se asigna rol "Inactividad Justificada" y NO se quitan roles.
 """
 from __future__ import annotations
@@ -33,9 +33,7 @@ _ACT_PATH = os.path.join(_DATA_DIR, "actividad.json")
 _JUST_PATH = os.path.join(_DATA_DIR, "inactividad_justificada.json")
 _PEND_PATH = os.path.join(_DATA_DIR, "inactividad_pendientes.json")
 
-# Días sin actividad para considerar inactivo (configurable)
 DIAS_INACTIVIDAD = int(getattr(config, "DIAS_INACTIVIDAD", 7) or 7)
-# Intervalo del chequeo automático (horas)
 HORAS_CHEQUEO = int(getattr(config, "HORAS_CHEQUEO_INACTIVIDAD", 12) or 12)
 
 NOMBRE_ROL_JUSTIFICADA = getattr(
@@ -92,7 +90,7 @@ def ultima_actividad(uid: int) -> Optional[datetime]:
 def dias_inactivo(uid: int) -> float:
     last = ultima_actividad(uid)
     if not last:
-        return float(DIAS_INACTIVIDAD + 1)  # sin registro = tratado como inactivo
+        return float(DIAS_INACTIVIDAD + 1)
     return (_now() - last).total_seconds() / 86400.0
 
 
@@ -104,7 +102,7 @@ def tiene_justificacion(uid: int, guild: Optional[discord.Guild] = None) -> bool
         if hasta and hasta > _now():
             return True
         if not hasta:
-            return True  # sin fecha fin = vigente
+            return True
     if guild:
         rol = detectar_rol_justificada(guild)
         if rol:
@@ -151,27 +149,26 @@ async def asegurar_rol_justificada(guild: discord.Guild) -> Optional[discord.Rol
     rol = detectar_rol_justificada(guild)
     if rol:
         return rol
-    # Intentar crear
     try:
-        color = discord.Color.from_str(COLOR_ROL_JUSTIFICADA) if COLOR_ROL_JUSTIFICADA.startswith("#") else discord.Color.greyple()
+        color = (
+            discord.Color.from_str(COLOR_ROL_JUSTIFICADA)
+            if str(COLOR_ROL_JUSTIFICADA).startswith("#")
+            else discord.Color.greyple()
+        )
     except Exception:
         color = discord.Color.greyple()
     try:
-        rol = await guild.create_role(
+        return await guild.create_role(
             name=NOMBRE_ROL_JUSTIFICADA,
             color=color,
             reason="Rol de inactividad justificada (auto)",
             mentionable=False,
         )
-        return rol
-    except discord.Forbidden:
-        return None
     except Exception:
         return None
 
 
 def roles_hospital_de(member: discord.Member, guild: discord.Guild) -> List[discord.Role]:
-    """Roles de cargo/keys y escalafones (no quita comunidad ni @everyone)."""
     out: List[discord.Role] = []
     seen: Set[int] = set()
     for key in getattr(config, "KEYS_NOMBRES", {}):
@@ -194,7 +191,6 @@ def roles_hospital_de(member: discord.Member, guild: discord.Guild) -> List[disc
             if rol and rol in member.roles:
                 out.append(rol)
                 seen.add(rol.id)
-    # También roles de ROLES_OTORGADOS (certificados, etc.) si se desea quitar
     for _slug, tup in getattr(config, "ROLES_OTORGADOS", {}).items():
         nombre = tup[0] if isinstance(tup, (list, tuple)) else None
         if not nombre:
@@ -209,10 +205,8 @@ def roles_hospital_de(member: discord.Member, guild: discord.Guild) -> List[disc
 
 
 async def aplicar_inactividad(member: discord.Member, motivo: str = "Inactividad sin justificación") -> int:
-    """Quita roles de hospital. Devuelve cantidad quitados."""
     guild = member.guild
     roles = roles_hospital_de(member, guild)
-    # No quitar el rol de justificada si lo tuviera (caso raro)
     rol_j = detectar_rol_justificada(guild)
     if rol_j and rol_j in roles:
         roles = [r for r in roles if r.id != rol_j.id]
@@ -220,8 +214,6 @@ async def aplicar_inactividad(member: discord.Member, motivo: str = "Inactividad
         return 0
     try:
         await member.remove_roles(*roles, reason=motivo)
-    except discord.Forbidden:
-        return -1
     except Exception:
         return -1
     try:
@@ -231,9 +223,6 @@ async def aplicar_inactividad(member: discord.Member, motivo: str = "Inactividad
     return len(roles)
 
 
-# ---------------------------------------------------------------------------
-# Vista de aprobación por MD (Owner / Co-Owner)
-# ---------------------------------------------------------------------------
 class AprobacionInactividadView(ui.View):
     def __init__(self, solicitud_id: str, uid: int, motivo: str, dias: int):
         super().__init__(timeout=None)
@@ -244,20 +233,17 @@ class AprobacionInactividadView(ui.View):
 
     async def _es_autorizado(self, inter: discord.Interaction) -> bool:
         if not isinstance(inter.user, discord.Member):
-            # En MD el user no es Member; validar por keys guardadas / ID en pendiente
-            # Permitimos si es el destinatario del MD (OWNER/CO_OWNER que recibió el mensaje)
             return True
         return permisos.member_tiene_alguna_key(
-            inter.user, "OWNER", "CO_OWNER", "DIRECTOR_GENERAL"
+            inter.user, "OWNER", "CO_OWNER", "DIRECTOR_GENERAL", "DIRECTOR_RRHH"
         )
 
     @ui.button(label="✅ Aprobar inactividad", style=discord.ButtonStyle.success, custom_id="inact_aprobar")
     async def aprobar(self, inter: discord.Interaction, button: ui.Button):
         pend = _load(_PEND_PATH)
-        info = pend.get(self.solicitud_id)
-        if not info:
-            # Recuperar de custom si se reinició
-            info = {"uid": self.uid, "motivo": self.motivo, "dias": self.dias}
+        info = pend.get(self.solicitud_id) or {
+            "uid": self.uid, "motivo": self.motivo, "dias": self.dias
+        }
         uid = int(info.get("uid", self.uid))
         motivo = info.get("motivo", self.motivo)
         dias = int(info.get("dias", self.dias) or 14)
@@ -288,14 +274,14 @@ class AprobacionInactividadView(ui.View):
         if rol:
             try:
                 await member.add_roles(rol, reason=f"Inactividad justificada por {inter.user}")
+                await inter.followup.send(
+                    f"✅ Inactividad de {member.mention} **aprobada**. "
+                    f"Rol **{rol.name}** asignado por {dias} días.",
+                    ephemeral=True,
+                )
             except discord.Forbidden:
                 await inter.followup.send(
                     f"✅ Justificación guardada, pero no pude asignar el rol {rol.mention} (jerarquía).",
-                    ephemeral=True,
-                )
-            else:
-                await inter.followup.send(
-                    f"✅ Inactividad de {member.mention} **aprobada**. Rol **{rol.name}** asignado por {dias} días.",
                     ephemeral=True,
                 )
         else:
@@ -333,7 +319,11 @@ class AprobacionInactividadView(ui.View):
         uid = int(info.get("uid", self.uid))
         guild_id = int(info.get("guild_id", 0))
         await inter.response.defer(ephemeral=True)
-        guild = inter.client.get_guild(guild_id) if guild_id else (inter.client.guilds[0] if inter.client.guilds else None)
+        guild = (
+            inter.client.get_guild(guild_id)
+            if guild_id
+            else (inter.client.guilds[0] if inter.client.guilds else None)
+        )
         member = guild.get_member(uid) if guild else None
         await inter.followup.send("❌ Solicitud de inactividad **negada**.", ephemeral=True)
         if member:
@@ -364,10 +354,10 @@ async def _enviar_md_aprobadores(
     embed: discord.Embed,
     view: ui.View,
 ) -> int:
-    """Envía MD a miembros con key OWNER o CO_OWNER. Devuelve cuántos MD se enviaron."""
+    """Envía MD a OWNER, CO_OWNER y DIRECTOR_RRHH. También publica en canal RRHH si existe."""
     enviados = 0
     ids_enviados: Set[int] = set()
-    for key in ("OWNER", "CO_OWNER"):
+    for key in ("OWNER", "CO_OWNER", "DIRECTOR_RRHH"):
         rid = roles_store.obtener_id_key(key)
         if not rid:
             continue
@@ -385,7 +375,28 @@ async def _enviar_md_aprobadores(
                 continue
             except Exception:
                 continue
-    # Fallback: dueño del servidor
+
+    # Canal de aprobaciones RRHH (y menciones al rol)
+    canal = None
+    for ck in ("aprobaciones_rrhh", "aprobaciones", "log_personal"):
+        cid = config.CANALES.get(ck)
+        if cid:
+            canal = guild.get_channel(cid)
+            if canal:
+                break
+    if canal:
+        mention = ""
+        rid_rrhh = roles_store.obtener_id_key("DIRECTOR_RRHH")
+        if rid_rrhh:
+            rol_rrhh = guild.get_role(rid_rrhh)
+            if rol_rrhh:
+                mention = rol_rrhh.mention
+        try:
+            await canal.send(content=mention or None, embed=embed, view=view)
+            enviados += 1
+        except Exception:
+            pass
+
     if enviados == 0 and guild.owner_id:
         owner = guild.get_member(guild.owner_id)
         if owner and not owner.bot:
@@ -397,14 +408,7 @@ async def _enviar_md_aprobadores(
     return enviados
 
 
-# ---------------------------------------------------------------------------
-# Chequeo periódico
-# ---------------------------------------------------------------------------
 async def revisar_inactivos(bot: discord.Client, guild: discord.Guild, dry_run: bool = False) -> dict:
-    """
-    Revisa miembros con roles de hospital.
-    Si llevan DIAS_INACTIVIDAD sin actividad y sin justificación → quita roles.
-    """
     resumen = {"revisados": 0, "inactivos": 0, "quitados": 0, "justificados": 0, "errores": 0}
     umbral = DIAS_INACTIVIDAD
 
@@ -413,7 +417,7 @@ async def revisar_inactivos(bot: discord.Client, guild: discord.Guild, dry_run: 
             continue
         roles_h = roles_hospital_de(member, guild)
         if not roles_h:
-            continue  # solo personal con cargo
+            continue
         resumen["revisados"] += 1
 
         if tiene_justificacion(member.id, guild):
@@ -441,15 +445,15 @@ async def revisar_inactivos(bot: discord.Client, guild: discord.Guild, dry_run: 
                     embed=crear_embed(
                         "aviso",
                         "⚠️ Roles retirados por inactividad",
-                        f"Llevabas más de **{umbral} días** sin actividad y **sin solicitud de inactividad justificada**.\n"
+                        f"Llevabas más de **{umbral} días** sin actividad y "
+                        f"**sin solicitud de inactividad justificada**.\n"
                         f"Se te retiraron **{n}** roles de cargo.\n\n"
-                        f"Si fue un error, contacta a Gerente Developer / Co-Owner o usa `/solicitar_inactividad` "
-                        f"antes de volver a estar ausente.",
+                        f"Si fue un error, contacta a Gerente Developer / Co-Owner / RRHH "
+                        f"o usa `/solicitar_inactividad` antes de volver a estar ausente.",
                     )
                 )
             except discord.Forbidden:
                 pass
-            # Log
             canal_id = config.CANALES.get("log_personal") or config.CANALES.get("log_roles")
             if canal_id:
                 canal = guild.get_channel(canal_id)
@@ -459,7 +463,8 @@ async def revisar_inactivos(bot: discord.Client, guild: discord.Guild, dry_run: 
                             embed=crear_embed(
                                 "aviso",
                                 "⏸️ Inactividad — roles retirados",
-                                f"**Usuario:** {member.mention}\n**Días inactivo:** {dias:.0f}\n**Roles quitados:** {n}",
+                                f"**Usuario:** {member.mention}\n"
+                                f"**Días inactivo:** {dias:.0f}\n**Roles quitados:** {n}",
                             )
                         )
                     except Exception:
@@ -468,7 +473,6 @@ async def revisar_inactivos(bot: discord.Client, guild: discord.Guild, dry_run: 
 
 
 def registrar(bot: commands.Bot) -> None:
-    # Vista persistente (tras reinicio los botones siguen, pero necesitan datos en pendiente)
     bot.add_view(AprobacionInactividadView("persist", 0, "", 14))
 
     @bot.listen("on_message")
@@ -484,7 +488,7 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="solicitar_inactividad",
-        description="Solicita inactividad justificada (Owner/Co-Owner aprueban por MD)",
+        description="Solicita inactividad justificada (Owner, Co-Owner y RRHH aprueban)",
     )
     @app_commands.describe(
         motivo="Razón de la inactividad",
@@ -526,7 +530,8 @@ def registrar(bot: commands.Bot) -> None:
             f"**Días solicitados:** {dias}\n\n"
             f"Si **apruebas**, se asignará el rol **{NOMBRE_ROL_JUSTIFICADA}** y "
             f"**no** se le quitarán los roles de cargo durante ese período.\n"
-            f"Si **niegas**, el sistema de inactividad podrá retirar roles si sigue ausente.",
+            f"Si **niegas**, el sistema de inactividad podrá retirar roles si sigue ausente.\n\n"
+            f"_Destinatarios: Gerente Developer, Co-Owner y Director de RRHH._",
             autor=interaction.user,
         )
         view = AprobacionInactividadView(sid, interaction.user.id, motivo, int(dias))
@@ -534,25 +539,16 @@ def registrar(bot: commands.Bot) -> None:
 
         if n > 0:
             await interaction.followup.send(
-                f"✅ Solicitud enviada por **MD** a Gerente Developer / Co-Owner ({n} destinatario(s)). "
-                f"Te avisaremos cuando respondan.",
+                f"✅ Solicitud enviada a **Gerente Developer / Co-Owner / RRHH** "
+                f"({n} notificación(es): MD y/o canal). Te avisaremos cuando respondan.",
                 ephemeral=True,
             )
         else:
-            # Fallback: canal de aprobaciones
-            canal_id = config.CANALES.get("aprobaciones") or config.CANALES.get("log_personal")
-            canal = interaction.guild.get_channel(canal_id) if canal_id else None
-            if canal:
-                await canal.send(embed=embed, view=view)
-                await interaction.followup.send(
-                    f"⚠️ No pude enviar MD a Owner/Co-Owner. Solicitud publicada en {canal.mention}.",
-                    ephemeral=True,
-                )
-            else:
-                await interaction.followup.send(
-                    "❌ No hay Owner/Co-Owner con MD abiertos ni canal de aprobaciones configurado.",
-                    ephemeral=True,
-                )
+            await interaction.followup.send(
+                "❌ No pude contactar a Owner, Co-Owner ni RRHH "
+                "(MD cerrados y sin canal `aprobaciones_rrhh` / `aprobaciones`).",
+                ephemeral=True,
+            )
 
     @bot.tree.command(
         name="revisar_inactividad",
@@ -603,7 +599,6 @@ def registrar(bot: commands.Bot) -> None:
             ephemeral=True,
         )
 
-    # Tarea periódica
     @tasks.loop(hours=max(1, HORAS_CHEQUEO))
     async def _loop_inactividad():
         await bot.wait_until_ready()
@@ -621,4 +616,4 @@ def registrar(bot: commands.Bot) -> None:
     if not _loop_inactividad.is_running():
         _loop_inactividad.start()
 
-    print(f"[inactividad] OK — umbral {DIAS_INACTIVIDAD}d, chequeo cada {HORAS_CHEQUEO}h")
+    print(f"[inactividad] OK — umbral {DIAS_INACTIVIDAD}d, chequeo cada {HORAS_CHEQUEO}h (Owner/Co-Owner/RRHH)")
