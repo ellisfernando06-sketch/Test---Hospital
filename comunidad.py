@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 import discord
 from discord import ui, app_commands
@@ -16,6 +16,7 @@ import permisos
 
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 _PATH = os.path.join(_DATA_DIR, "comunidad_aceptados.json")
+_REGLAMENTO_PATH = os.path.join(_DATA_DIR, "reglamento.json")
 
 NOMBRES_ROL_COMUNIDAD = (
     "comunidad", "miembro de la comunidad", "miembro", "ciudadano",
@@ -55,6 +56,27 @@ Bienvenido/a a **{hospital}**. Al aceptar estas reglas obtienes acceso de **comu
 ---
 Al pulsar **Acepto las reglas** confirmas haberlas leído y se te asignará el rol de comunidad (si está disponible).
 """.strip()
+
+_MAX_DESC = 3900
+
+
+def _split_text(text: str, max_len: int = _MAX_DESC) -> List[str]:
+    text = (text or "").strip()
+    if not text:
+        return [""]
+    if len(text) <= max_len:
+        return [text]
+    chunks: List[str] = []
+    while text:
+        if len(text) <= max_len:
+            chunks.append(text)
+            break
+        cut = text.rfind("\n", 0, max_len)
+        if cut < max_len // 3:
+            cut = max_len
+        chunks.append(text[:cut].rstrip())
+        text = text[cut:].lstrip("\n")
+    return chunks
 
 
 def _load() -> dict:
@@ -104,6 +126,16 @@ def detectar_rol_comunidad(guild: discord.Guild) -> Optional[discord.Role]:
 
 
 def texto_reglas() -> str:
+    # Prioridad: reglamento guardado con /agregar_reglamento > config.REGLAS_TEXTO > default
+    if os.path.isfile(_REGLAMENTO_PATH):
+        try:
+            with open(_REGLAMENTO_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            t = (data.get("texto") or "").strip()
+            if t:
+                return t
+        except Exception:
+            pass
     custom = getattr(config, "REGLAS_TEXTO", None)
     hospital = getattr(config, "NOMBRE_HOSPITAL", "Hospital") or "Hospital"
     base = custom if custom else REGLAS_DEFAULT
@@ -179,11 +211,21 @@ class AceptarReglasView(ui.View):
 
 async def enviar_reglas_dm(member: discord.Member):
     texto = texto_reglas()
-    emb = discord.Embed(title="📜 Reglamento de la comunidad", description=texto[:4000], color=0x5865F2)
-    emb.set_footer(text=getattr(config, "NOMBRE_HOSPITAL", "Hospital"))
+    partes = _split_text(texto)
     view = AceptarReglasView(member.guild.id)
+    hospital = getattr(config, "NOMBRE_HOSPITAL", "Hospital")
     try:
-        await member.send(embed=emb, view=view)
+        for i, parte in enumerate(partes):
+            title = "📜 Reglamento de la comunidad"
+            if len(partes) > 1:
+                title = f"📜 Reglamento de la comunidad ({i + 1}/{len(partes)})"
+            emb = discord.Embed(title=title, description=parte, color=0x5865F2)
+            emb.set_footer(text=hospital)
+            # Solo el primer mensaje lleva el botón Aceptar
+            if i == 0:
+                await member.send(embed=emb, view=view)
+            else:
+                await member.send(embed=emb)
         return True, None
     except discord.Forbidden:
         return False, "Tienes los MD cerrados. Ábrelos e inténtalo de nuevo."
