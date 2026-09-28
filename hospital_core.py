@@ -1,13 +1,12 @@
-# -*- coding: utf-8 -*
+# -*- coding: utf-8 -*-
 """hospital_core.py — arranque estable con reintentos y módulos aislados."""
 from __future__ import annotations
 
 import asyncio
-import importlib
-import sys
+import re
+import time
 import traceback
 import urllib.request
-from types import ModuleType
 
 import discord
 from discord.ext import commands
@@ -18,6 +17,7 @@ _URL = (
     f"{_COMMIT}/Bot_Hospital.py"
 )
 _GUILD_ID = 1381360019467014184
+_MAX_SLASH = 98
 
 _MODULOS = (
     "comandos_nuevos",
@@ -46,38 +46,102 @@ _MODULOS = (
     "despidos",
     "inactividad",
     "bienvenida",
-    "bot_control",
 )
 
 _QUITAR = (
-    "ordenar_roles", "mi_expediente", "expediente", "historial_advertencias",
-    "mi_sanciones", "solicitud_info", "catalogo_tienda",
-    "ver_canal_logs_tickets", "configurar_logs_tickets", "panel_solicitudes_logs",
-    "configurar_canal_logs", "libro_contable", "registrar_gasto", "registrar_ingreso",
-    "ooc_advertencia", "ooc_kick", "ooc_timeout", "carta_solicitud",
-    "reporte_procedimiento", "solicitud_degrado", "solicitud_descargo",
-    "quejas_pendientes", "queja_resolver", "marcar_asistencia", "ver_roblox",
-    "votacion", "organigrama", "estado_hospital", "formulario", "documento_medico",
-    "reporte_departamento", "solicitud_investigacion", "solicitud_permiso",
-    "mis_certificados", "mostrar_certificado", "ver_certificados", "crear_certificado",
-    "mi_inventario", "panel_tienda",
+    "ordenar_roles",
+    "mi_expediente",
+    "expediente",
+    "historial_advertencias",
+    "mi_sanciones",
+    "solicitud_info",
+    "catalogo_tienda",
+    "ver_canal_logs_tickets",
+    "configurar_logs_tickets",
+    "panel_solicitudes_logs",
+    "configurar_canal_logs",
+    "libro_contable",
+    "registrar_gasto",
+    "registrar_ingreso",
+    "ooc_advertencia",
+    "ooc_kick",
+    "ooc_timeout",
+    "carta_solicitud",
+    "reporte_procedimiento",
+    "solicitud_degrado",
+    "solicitud_descargo",
+    "quejas_pendientes",
+    "queja_resolver",
+    "marcar_asistencia",
+    "ver_roblox",
+    "votacion",
+    "organigrama",
+    "estado_hospital",
+    "formulario",
+    "documento_medico",
+    "reporte_departamento",
+    "solicitud_investigacion",
+    "solicitud_permiso",
+    "mis_certificados",
+    "mostrar_certificado",
+    "ver_certificados",
+    "crear_certificado",
+    "mi_inventario",
+    "panel_tienda",
 )
 
 _BAJA = (
-    "sancion_interna", "advertencia", "transferir_departamento", "descenso",
-    "ascenso", "suspender", "reincorporar", "pagar_salario", "depositar",
-    "retirar", "transferir", "solicitud_general", "queja", "asignar_tarea",
-    "panel_acciones", "panel_estado",
+    "sancion_interna",
+    "advertencia",
+    "transferir_departamento",
+    "descenso",
+    "ascenso",
+    "suspender",
+    "reincorporar",
+    "pagar_salario",
+    "depositar",
+    "retirar",
+    "transferir",
+    "solicitud_general",
+    "queja",
+    "asignar_tarea",
+    "panel_acciones",
+    "panel_estado",
 )
 
+_CRITICOS = {
+    "certificar", "registrar_firma", "ver_mi_firma",
+    "limpiar", "limpiar_todo", "sincronizar_comandos",
+    "panel_solicitudes", "configurar_roles", "otorgar_key", "bootstrap_owner",
+    "tienda", "sancionar", "capacitacion",
+    "balance", "balance_general", "historial_financiero",
+    "ooc_ban", "sancion_aplicar",
+    "solicitar_insumo", "cap_historial",
+    "convocar_directores", "convocar_reunion_departamento",
+    "citatorio_general", "citatorio_disciplina", "citatorio_admin",
+    "abrir_expediente",
+    "mis_otorgados",
+    "licencia",
+    "paciente", "inventario", "turno", "codigo", "ficha", "postulacion",
+    "despedir", "solicitar_inactividad", "anuncio", "reglas", "panel_reglas",
+}
 
-def _fetch() -> str:
-    req = urllib.request.Request(_URL, headers={"User-Agent": "HospitalBot/1.0"})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        return r.read().decode("utf-8", errors="replace")
+
+def _fetch(url: str = _URL, intentos: int = 8) -> str:
+    ultimo = None
+    for i in range(intentos):
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "HospitalBot/1.0"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                return r.read().decode("utf-8", errors="replace")
+        except Exception as e:
+            ultimo = e
+            time.sleep(1.2 * (i + 1))
+    raise RuntimeError(f"No se pudo descargar el núcleo: {ultimo}")
 
 
 def _cargar_modulos(bot: commands.Bot) -> None:
+    import importlib
     for nombre in _MODULOS:
         try:
             mod = importlib.import_module(nombre)
@@ -91,7 +155,7 @@ def _cargar_modulos(bot: commands.Bot) -> None:
             traceback.print_exc()
 
 
-def _limpiar_tree(bot: commands.Bot) -> None:
+def _recortar(bot: commands.Bot) -> None:
     try:
         for c in list(bot.tree.get_commands()):
             if c.name in _QUITAR or c.name in _BAJA:
@@ -101,26 +165,6 @@ def _limpiar_tree(bot: commands.Bot) -> None:
                     pass
     except Exception:
         pass
-
-
-async def _sync(bot: commands.Bot) -> list:
-    _limpiar_tree(bot)
-    names = []
-    try:
-        g = discord.Object(id=_GUILD_ID)
-        bot.tree.copy_global_to(guild=g)
-        synced = await bot.tree.sync(guild=g)
-        names = [c.name for c in synced]
-        print(f"[hospital_core] sync guild {len(names)}", flush=True)
-    except Exception as e:
-        print("[hospital_core] sync guild error:", e, flush=True)
-        try:
-            synced = await bot.tree.sync()
-            names = [c.name for c in synced]
-            print(f"[hospital_core] sync global {len(names)}", flush=True)
-        except Exception as e2:
-            print("[hospital_core] sync global error:", e2, flush=True)
-    return names
 
 
 def _cargar(g: dict):
@@ -138,12 +182,9 @@ def _cargar(g: dict):
     if bot is None:
         raise RuntimeError("No se encontró bot en el núcleo remoto")
 
-    # Inyectar símbolos útiles al módulo hospital_core
     g["bot"] = bot
     for k, v in ns.items():
-        if k.startswith("_"):
-            continue
-        if k not in g:
+        if not str(k).startswith("_") and k not in g:
             g[k] = v
 
     original_setup = getattr(bot, "setup_hook", None)
@@ -154,31 +195,69 @@ def _cargar(g: dict):
             if asyncio.iscoroutine(r):
                 await r
         _cargar_modulos(bot)
-        await _sync(bot)
+        await _sync_todo("setup")
 
     bot.setup_hook = setup_hook  # type: ignore
 
+    async def _sync_todo(reason: str = "") -> list:
+        result = []
+        print(f"[hospital_core] SYNC ({reason})", flush=True)
+        try:
+            _recortar(bot)
+        except Exception:
+            pass
+        try:
+            try:
+                app_id = bot.application_id or (await bot.application_info()).id
+                await bot.http.bulk_upsert_global_commands(int(app_id), [])
+            except Exception as e:
+                print("[hospital_core] globales:", e, flush=True)
+            targets = list(bot.guilds) if bot.guilds else [discord.Object(id=_GUILD_ID)]
+            for gobj in targets:
+                gid = int(getattr(gobj, "id", _GUILD_ID))
+                try:
+                    obj = discord.Object(id=gid)
+                    bot.tree.copy_global_to(guild=obj)
+                    synced = await bot.tree.sync(guild=obj)
+                    result = sorted(c.name for c in synced)
+                    print(f"[hospital_core] guild {gid}: {len(result)}", flush=True)
+                except Exception as e:
+                    print(f"[hospital_core] sync {gid}: {e}", flush=True)
+        except Exception:
+            traceback.print_exc()
+        return result
+
+    bot._hospital_sync_todo = _sync_todo
+
+    try:
+        bot.remove_command("forzar_sync")
+    except Exception:
+        pass
+
     @bot.command(name="forzar_sync")
-    async def forzar_sync(ctx):
-        if not ctx.author.guild_permissions.administrator:
+    async def _forzar_sync(ctx: commands.Context):
+        if not ctx.guild or not isinstance(ctx.author, discord.Member):
             return
+        if not (ctx.author.guild_permissions.administrator or ctx.author.id == ctx.guild.owner_id):
+            return await ctx.reply("❌ Solo admin.")
         msg = await ctx.reply("🔄 Sync…")
         try:
-            names = await _sync(bot)
-            await msg.edit(content=f"✅ {len(names)} comandos")
+            names = await _sync_todo("!forzar_sync")
+            ok = [c for c in ("licencia", "despedir", "solicitar_inactividad", "revisar_inactividad") if c in names]
+            await msg.edit(content=f"✅ {len(names)} comandos · `{', '.join(ok) or '—'}`")
         except Exception as e:
             await msg.edit(content=f"❌ {e}")
 
     @bot.listen("on_ready")
-    async def _backup_sync():
+    async def _backup():
         if getattr(bot, "_hc_backup_done", False):
             return
         bot._hc_backup_done = True
-        await asyncio.sleep(5)
+        await asyncio.sleep(6)
         try:
-            await _sync(bot)
+            await _sync_todo("backup")
         except Exception as e:
-            print("[hospital_core] backup sync:", e, flush=True)
+            print("[hospital_core] backup:", e, flush=True)
 
     print("[hospital_core] LISTO", flush=True)
     return bot
