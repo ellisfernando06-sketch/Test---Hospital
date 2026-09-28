@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
-"""bot_control.py — Panel de control del bot (tech limpio)."""
+"""
+bot_control.py — Estado del bot (online / mantenimiento / offline) y
+comandos exclusivos de OWNER. CO_OWNER pide aprobación al OWNER.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -72,73 +75,49 @@ def status_embed() -> discord.Embed:
         "Reinicio listo. Bot operativo.",
         "Apagado por la administración.",
         "Mantenimiento del sistema.",
+        "Apagado por decisión de la administración / OWNER.",
     )
 
     if mode == "online":
-        color = 0x00E676
-        title = "Sistema en línea"
+        color = 0x2ECC71
+        title = "🟢 Sistema operativo — Bot activo"
         desc = (
-            f"**{hospital}**\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"● **Estado** — `ONLINE`\n"
-            f"● **Bot** — operativo\n"
-            f"● **Comandos** — disponibles\n"
-            f"● **Datos** — sincronizados\n\n"
-            f"Todo el personal autorizado puede usar el sistema con normalidad."
+            f"**{hospital}**\n\n"
+            f"El bot de gestión está **operativo**.\n"
+            f"Comandos, verificaciones, solicitudes y registros disponibles.\n\n"
+            f"🟢 Bot Discord: **Activo**\n"
+            f"🟢 Comandos: **Disponibles**\n"
+            f"🟢 Registros: **Sincronizados**"
         )
         if custom_msg and custom_msg not in defaults:
-            desc += f"\n\n**Nota**\n{custom_msg}"
-
+            desc += f"\n\n**Nota:** {custom_msg}"
     elif mode == "mantenimiento":
-        color = 0xFFAB00
-        title = "Mantenimiento en curso"
+        color = 0xF39C12
+        title = "🟡 Mantenimiento técnico"
         desc = (
-            f"**{hospital}**\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"● **Estado** — `MANTENIMIENTO`\n"
-            f"● **Bot** — en pausa parcial\n"
-            f"● **Comandos** — limitados\n"
-            f"● **Datos** — protegidos\n\n"
-            f"Algunas funciones pueden no responder hasta que termine el trabajo."
+            f"**{hospital}**\n\n"
+            f"El bot está en **mantenimiento**. Algunas funciones pueden limitarse.\n\n"
+            f"Se anunciará la reactivación en este canal."
         )
         if custom_msg and custom_msg not in defaults:
-            desc += f"\n\n**Motivo**\n{custom_msg}"
-
+            desc += f"\n\n**Motivo:** {custom_msg}"
     else:
-        color = 0xFF5252
-        title = "Sistema fuera de servicio"
+        color = 0xE74C3C
+        title = "🔴 Bot fuera de servicio"
         desc = (
-            f"**{hospital}**\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"● **Estado** — `OFFLINE`\n"
-            f"● **Bot** — apagado\n"
-            f"● **Comandos** — no disponibles\n"
-            f"● **Datos** — conservados\n\n"
-            f"**Motivo**\n{custom_msg or 'Apagado por la administración.'}\n\n"
-            f"La reactivación se anunciará en este canal."
+            f"**{hospital}**\n\n"
+            f"El bot está **apagado**. Los comandos no están disponibles.\n\n"
+            f"**Motivo:** {custom_msg or 'Apagado por la administración.'}"
         )
 
-    emb = discord.Embed(
-        title=title,
-        description=desc,
-        color=color,
-        timestamp=discord.utils.utcnow(),
-    )
-    if getattr(config, "LOGO_URL", None):
-        try:
-            emb.set_thumbnail(url=config.LOGO_URL)
-        except Exception:
-            pass
-
+    embed = discord.Embed(title=title, description=desc, color=color, timestamp=discord.utils.utcnow())
+    embed.set_footer(text=f"{hospital}  •  Administración del Sistema")
     if _status.get("changed_at"):
         fecha = str(_status["changed_at"])[:19].replace("T", " ") + " UTC"
-        emb.add_field(name="Último cambio", value=f"`{fecha}`", inline=True)
+        embed.add_field(name="📅 Último cambio", value=fecha, inline=True)
     if _status.get("changed_by"):
-        emb.add_field(name="Operador", value=f"<@{_status['changed_by']}> ", inline=True)
-    emb.add_field(name="Modo", value=f"`{(mode or 'online').upper()}`", inline=True)
-
-    emb.set_footer(text=f"{hospital}  ·  panel de control")
-    return emb
+        embed.add_field(name="👤 Autorizado por", value=f"<@{_status['changed_by']}> ", inline=True)
+    return embed
 
 
 async def publicar_estado(bot: discord.Client, guild: Optional[discord.Guild] = None) -> None:
@@ -170,38 +149,26 @@ class AprobacionBotView(ui.View):
         except Exception:
             return permisos.member_tiene_alguna_key(interaction.user, "OWNER")
 
-    @ui.button(label="Aprobar", style=discord.ButtonStyle.success)
+    @ui.button(label="✅ Aprobar", style=discord.ButtonStyle.success)
     async def aprobar(self, interaction: discord.Interaction, button: ui.Button):
         if not await self._es_owner(interaction):
-            await interaction.response.send_message(
-                embed=crear_embed("error", "Acceso denegado", "Solo el **Gerente Developer** puede aprobar."),
-                ephemeral=True,
-            )
+            await interaction.response.send_message("❌ Solo el **OWNER** puede aprobar.", ephemeral=True)
             return
         for child in self.children:
             child.disabled = True
         await interaction.response.edit_message(view=self)
-        await interaction.followup.send(
-            embed=crear_embed("exito", "Aprobado", f"Acción **`{self.accion}`** autorizada."),
-            ephemeral=True,
-        )
+        await interaction.followup.send(f"✅ Acción **{self.accion}** aprobada. Ejecutando…", ephemeral=True)
         await _ejecutar_accion(self.bot, self.accion, interaction.user.id, self.extra, interaction)
 
-    @ui.button(label="Negar", style=discord.ButtonStyle.danger)
+    @ui.button(label="❌ Negar", style=discord.ButtonStyle.danger)
     async def negar(self, interaction: discord.Interaction, button: ui.Button):
         if not await self._es_owner(interaction):
-            await interaction.response.send_message(
-                embed=crear_embed("error", "Acceso denegado", "Solo el **Gerente Developer** puede negar."),
-                ephemeral=True,
-            )
+            await interaction.response.send_message("❌ Solo el **OWNER** puede negar.", ephemeral=True)
             return
         for child in self.children:
             child.disabled = True
         await interaction.response.edit_message(view=self)
-        await interaction.followup.send(
-            embed=crear_embed("error", "Negado", f"Acción **`{self.accion}`** rechazada."),
-            ephemeral=True,
-        )
+        await interaction.followup.send(f"❌ Acción **{self.accion}** denegada.", ephemeral=True)
 
 
 async def _ejecutar_accion(
@@ -209,43 +176,43 @@ async def _ejecutar_accion(
     interaction: Optional[discord.Interaction] = None,
 ) -> None:
     if accion == "apagar":
-        set_mode("offline", extra or "Apagado por la administración.", por)
+        set_mode("offline", extra or "Apagado por decisión de la administración.", por)
         await publicar_estado(bot)
-        msg = crear_embed("error", "Apagando", "El bot se cierra en unos segundos.")
+        msg = "🔴 Bot marcado como **offline**. Cerrando conexión…"
         if interaction:
             if interaction.response.is_done():
-                await interaction.followup.send(embed=msg)
+                await interaction.followup.send(msg)
             else:
-                await interaction.response.send_message(embed=msg)
+                await interaction.response.send_message(msg)
         await asyncio.sleep(1.5)
         await bot.close()
     elif accion == "encender":
-        set_mode("online", extra or "Bot encendido.", por)
+        set_mode("online", extra or "Sistemas restaurados y bot plenamente operativo.", por)
         await publicar_estado(bot)
-        msg = crear_embed("exito", "Sistema activo", "El bot está **encendido** otra vez.")
+        msg = "🟢 Bot en modo **online**."
         if interaction:
             if interaction.response.is_done():
-                await interaction.followup.send(embed=msg)
+                await interaction.followup.send(msg)
             else:
-                await interaction.response.send_message(embed=msg)
+                await interaction.response.send_message(msg)
     elif accion == "mantenimiento":
-        set_mode("mantenimiento", extra or "Mantenimiento del sistema.", por)
+        set_mode("mantenimiento", extra or "Mantenimiento técnico programado.", por)
         await publicar_estado(bot)
-        msg = crear_embed("aviso", "Mantenimiento", "Algunas funciones pueden fallar un rato.")
+        msg = "🟡 Bot en modo **mantenimiento**."
         if interaction:
             if interaction.response.is_done():
-                await interaction.followup.send(embed=msg)
+                await interaction.followup.send(msg)
             else:
-                await interaction.response.send_message(embed=msg)
+                await interaction.response.send_message(msg)
     elif accion == "reiniciar":
-        set_mode("online", extra or "Reinicio listo.", por)
+        set_mode("online", extra or "Reinicio completado. Bot operativo.", por)
         await publicar_estado(bot)
-        msg = crear_embed("aviso", "Reiniciando", "El bot debería volver solo en unos momentos.")
+        msg = "🔄 Reinicio solicitado. Cerrando…"
         if interaction:
             if interaction.response.is_done():
-                await interaction.followup.send(embed=msg)
+                await interaction.followup.send(msg)
             else:
-                await interaction.response.send_message(embed=msg)
+                await interaction.response.send_message(msg)
         await asyncio.sleep(1.5)
         await bot.close()
 
@@ -255,10 +222,7 @@ async def manejar_control_bot(
 ) -> None:
     user = interaction.user
     if not isinstance(user, discord.Member):
-        await interaction.response.send_message(
-            embed=crear_embed("error", "Solo en el servidor", "Usa este comando dentro del servidor."),
-            ephemeral=True,
-        )
+        await interaction.response.send_message("❌ Solo en servidor.", ephemeral=True)
         return
     try:
         es_owner = permisos.member_tiene_key(user, "OWNER")
@@ -269,8 +233,7 @@ async def manejar_control_bot(
 
     if not es_owner and not es_co:
         await interaction.response.send_message(
-            embed=crear_embed("error", "Acceso denegado", "Solo **Gerente Developer** o **Co-Owner**."),
-            ephemeral=True,
+            "❌ Solo **OWNER** o **CO_OWNER** pueden usar este comando.", ephemeral=True
         )
         return
 
@@ -281,9 +244,8 @@ async def manejar_control_bot(
 
     embed = crear_embed(
         "aviso",
-        f"Pedido de control — {accion}",
-        f"**Quién pide:** {user.mention}\n**Acción:** `{accion}`\n**Detalle:** {mensaje or '—'}\n\n"
-        f"El **Gerente Developer** debe aprobar o negar.",
+        f"🔐 Solicitud de {accion.upper()} del bot",
+        f"**Solicitante:** {user.mention} (CO-OWNER)\n**Acción:** `{accion}`\n**Mensaje:** {mensaje or '—'}",
         autor=user,
     )
     view = AprobacionBotView(accion, user.id, bot, mensaje)
@@ -316,12 +278,12 @@ async def manejar_control_bot(
                         continue
     if enviado:
         await interaction.response.send_message(
-            embed=crear_embed("info", "Pedido enviado", f"Se avisó al Gerente sobre **`{accion}`**."),
+            "📨 Solicitud enviada al **OWNER**. Debe aprobarla para ejecutar la acción.",
             ephemeral=True,
         )
     else:
         await interaction.response.send_message(
-            embed=crear_embed("error", "No se pudo avisar", "No hay Gerente Developer disponible."),
+            "❌ No se pudo contactar a ningún OWNER.",
             ephemeral=True,
         )
 
