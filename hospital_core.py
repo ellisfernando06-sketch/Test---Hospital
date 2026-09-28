@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*
 """hospital_core.py — arranque estable con reintentos y módulos aislados."""
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ _MODULOS = (
     "firmas",
     "capacitacion_cert_ui",
     "cert_flujo_interno",
+    "cert_dg_fix",
     "capacitacion_postular",
     "mejoras_ui",
     "reuniones_voice",
