@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-bot_control.py — Estado del bot y control OWNER / CO_OWNER.
-Presentación premium; lógica de control intacta.
+bot_control.py — Core status & OWNER control (visual GOD-TIER).
+API compatible con el núcleo. Solo cambia presentación.
 """
 from __future__ import annotations
 
@@ -60,28 +60,30 @@ def set_mode(mode: str, message: str, by: Optional[int] = None) -> None:
 
 
 def status_embed() -> discord.Embed:
-    """Comunicado oficial de estado — acabado premium."""
     mode = get_mode()
     custom_msg = (_status.get("message") or "").strip()
     hospital = getattr(config, "NOMBRE_HOSPITAL", None) or "Hospital General"
+    line = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     if mode == "online":
-        color = 0x1F8A5B
-        title = "🏥  Plataforma operativa"
+        color = 0x00F5D4
+        title = "『 CORE 』  SYSTEM ONLINE"
         desc = (
-            f"**{_sep('Comunicado de operaciones')}**\n"
-            f"**{hospital}**\n\n"
-            f"Se informa al personal y a la comunidad que los sistemas de gestión "
-            f"se encuentran en **servicio pleno**.\n\n"
-            f"Comandos, verificación de identidad, solicitudes, régimen disciplinario "
-            f"y registro documental operan conforme a protocolo.\n\n"
-            f"**Disponibilidad de servicios**\n"
+            f"{line}\n"
+            f"**{hospital.upper()}** · NÚCLEO OPERATIVO\n"
+            f"{line}\n\n"
+            f"Todos los subsistemas reportan **integridad nominal**.\n"
+            f"La matriz de comandos, identidad, solicitudes y régimen "
+            f"disciplinario opera en **tiempo real**.\n\n"
+            f"```ansi\n"
+            f"┌─────────────────────────────────┐\n"
+            f"│  CORE ENGINE ..........  ONLINE │\n"
+            f"│  COMMAND GRID .........  READY  │\n"
+            f"│  DATA VAULT ...........  SYNC   │\n"
+            f"│  SECURITY LAYER .......  ACTIVE │\n"
+            f"└─────────────────────────────────┘\n"
             f"```\n"
-            f"  Núcleo Discord ............... ACTIVO\n"
-            f"  Comandos y paneles ........... DISPONIBLES\n"
-            f"  Expedientes y registros ...... SINCRONIZADOS\n"
-            f"```\n"
-            f"Las incidencias deberán reportarse exclusivamente por los canales oficiales."
+            f"*Incidencias → canales oficiales de reporte.*"
         )
         defaults = (
             "Bot operativo.",
@@ -91,46 +93,49 @@ def status_embed() -> discord.Embed:
             "Bot reiniciado y operativo.",
         )
         if custom_msg and custom_msg not in defaults:
-            desc += f"\n\n**Nota de la administración**\n> *{custom_msg}*"
+            desc += f"\n\n**▸ NOTA DE ADMINISTRACIÓN**\n> *{custom_msg}*"
 
     elif mode == "mantenimiento":
-        color = 0xD68910
-        title = "🔧  Mantenimiento técnico"
+        color = 0xFFB020
+        title = "『 CORE 』  MAINTENANCE MODE"
         desc = (
-            f"**{_sep('Comunicado oficial')}**\n"
-            f"**{hospital}**\n\n"
-            f"La plataforma ingresa a **mantenimiento técnico programado**. "
-            f"El equipo realizará actualizaciones, correcciones y optimizaciones "
-            f"para preservar la estabilidad del servicio.\n\n"
-            f"**Alcance del trabajo**\n"
-            f"• Estabilidad y rendimiento de comandos\n"
-            f"• Verificación de roles y permisos\n"
-            f"• Depuración de registros\n"
-            f"• Preparación de mejoras planificadas\n\n"
-            f"**Aviso al personal**\n"
-            f"Algunas funciones pueden quedar temporalmente limitadas. "
-            f"La reanudación del servicio completo se publicará en este canal."
+            f"{line}\n"
+            f"**{hospital.upper()}** · VENTANA TÉCNICA\n"
+            f"{line}\n\n"
+            f"El núcleo entra en **mantenimiento controlado**.\n"
+            f"Se ejecutan actualizaciones, depuración y refuerzo de estabilidad.\n\n"
+            f"```ansi\n"
+            f"┌─────────────────────────────────┐\n"
+            f"│  CORE ENGINE ..........  HOLD   │\n"
+            f"│  COMMAND GRID .........  LIMITED│\n"
+            f"│  DATA VAULT ...........  SAFE   │\n"
+            f"│  PATCH PIPELINE .......  RUNNING│\n"
+            f"└─────────────────────────────────┘\n"
+            f"```\n"
+            f"*La reactivación plena se anunciará en este canal.*"
         )
         if custom_msg:
-            desc += f"\n\n**Motivo indicado**\n> *{custom_msg}*"
+            desc += f"\n\n**▸ MOTIVO**\n> *{custom_msg}*"
 
     else:
-        color = 0xA93226
-        title = "⛔  Fuera de servicio"
+        color = 0xFF4D6D
+        title = "『 CORE 』  SYSTEM OFFLINE"
         desc = (
-            f"**{_sep('Comunicado oficial')}**\n"
-            f"**{hospital}**\n\n"
-            f"La plataforma de gestión permanece **fuera de servicio** hasta nuevo aviso.\n\n"
-            f"**Estado del sistema**\n"
+            f"{line}\n"
+            f"**{hospital.upper()}** · NÚCLEO DETENIDO\n"
+            f"{line}\n\n"
+            f"La plataforma permanece **fuera de servicio** hasta nueva orden.\n\n"
+            f"```ansi\n"
+            f"┌─────────────────────────────────┐\n"
+            f"│  CORE ENGINE ..........  OFF    │\n"
+            f"│  COMMAND GRID .........  LOCKED │\n"
+            f"│  DATA VAULT ...........  FROZEN │\n"
+            f"│  RECOVERY .............  STANDBY│\n"
+            f"└─────────────────────────────────┘\n"
             f"```\n"
-            f"  Núcleo Discord ............... APAGADO\n"
-            f"  Comandos y paneles ........... NO DISPONIBLES\n"
-            f"  Expedientes .................. CONSERVADOS\n"
-            f"```\n"
-            f"**Motivo**\n"
+            f"**▸ MOTIVO**\n"
             f"> *{custom_msg or 'Apagado por decisión de la administración.'}*\n\n"
-            f"No será posible procesar comandos ni solicitudes mientras el sistema "
-            f"permanezca offline. La reactivación se anunciará por este medio."
+            f"*Comandos y solicitudes no estarán disponibles hasta el reinicio.*"
         )
 
     emb = discord.Embed(
@@ -145,27 +150,19 @@ def status_embed() -> discord.Embed:
         except Exception:
             pass
 
-    emb.set_footer(text=f"🏥  {hospital}  ·  Centro de operaciones")
+    emb.set_footer(text=f"⬡  {hospital.upper()}  │  CORE STATUS  │  HOSPITAL OS")
 
     if _status.get("changed_at"):
         fecha = str(_status["changed_at"])[:19].replace("T", " ") + " UTC"
-        emb.add_field(name="📅  Última actualización", value=f"`{fecha}`", inline=True)
+        emb.add_field(name="▸ Timestamp", value=f"`{fecha}`", inline=True)
     if _status.get("changed_by"):
-        emb.add_field(
-            name="👤  Autorizado por",
-            value=f"<@{_status['changed_by']}>",
-            inline=True,
-        )
+        emb.add_field(name="▸ Operator", value=f"<@{_status['changed_by']}> ", inline=True)
     emb.add_field(
-        name="📡  Modo actual",
+        name="▸ Mode",
         value=f"**`{(mode or 'online').upper()}`**",
         inline=True,
     )
     return emb
-
-
-def _sep(titulo: str) -> str:
-    return titulo
 
 
 async def publicar_estado(
@@ -205,8 +202,8 @@ class AprobacionBotView(ui.View):
             await interaction.response.send_message(
                 embed=crear_embed(
                     "error",
-                    "Acceso restringido",
-                    "Solo el **Gerente Developer** puede autorizar operaciones de sistemas.",
+                    "Privilegios insuficientes",
+                    "Solo el **Gerente Developer** puede autorizar operaciones de núcleo.",
                 ),
                 ephemeral=True,
             )
@@ -217,8 +214,8 @@ class AprobacionBotView(ui.View):
         await interaction.followup.send(
             embed=crear_embed(
                 "exito",
-                "Operación autorizada",
-                f"Se aprobó **`{self.accion}`**. Ejecutando protocolo institucional…",
+                "Autorización concedida",
+                f"Operación **`{self.accion}`** aprobada. Ejecutando secuencia…",
             ),
             ephemeral=True,
         )
@@ -230,7 +227,7 @@ class AprobacionBotView(ui.View):
             await interaction.response.send_message(
                 embed=crear_embed(
                     "error",
-                    "Acceso restringido",
+                    "Privilegios insuficientes",
                     "Solo el **Gerente Developer** puede denegar esta solicitud.",
                 ),
                 ephemeral=True,
@@ -242,8 +239,8 @@ class AprobacionBotView(ui.View):
         await interaction.followup.send(
             embed=crear_embed(
                 "error",
-                "Operación denegada",
-                f"La acción **`{self.accion}`** fue rechazada por la administración.",
+                "Autorización denegada",
+                f"Operación **`{self.accion}`** rechazada por la administración.",
             ),
             ephemeral=True,
         )
@@ -257,16 +254,12 @@ async def _ejecutar_accion(
     interaction: Optional[discord.Interaction] = None,
 ) -> None:
     if accion == "apagar":
-        set_mode(
-            "offline",
-            extra or "Apagado por decisión de la administración.",
-            por,
-        )
+        set_mode("offline", extra or "Apagado por decisión de la administración.", por)
         await publicar_estado(bot)
         msg = crear_embed(
             "error",
-            "Cierre de sistemas",
-            "La plataforma fue marcada **fuera de servicio**. Finalizando conexión…",
+            "Core shutdown",
+            "Núcleo marcado **OFFLINE**. Cerrando enlace…",
         )
         if interaction:
             if interaction.response.is_done():
@@ -277,16 +270,12 @@ async def _ejecutar_accion(
         await bot.close()
 
     elif accion == "encender":
-        set_mode(
-            "online",
-            extra or "Sistemas restaurados. Plataforma operativa.",
-            por,
-        )
+        set_mode("online", extra or "Sistemas restaurados. Plataforma operativa.", por)
         await publicar_estado(bot)
         msg = crear_embed(
             "exito",
-            "Sistemas restablecidos",
-            "La plataforma se encuentra nuevamente **en servicio pleno**.",
+            "Core restored",
+            "Núcleo nuevamente en **servicio pleno**.",
         )
         if interaction:
             if interaction.response.is_done():
@@ -295,16 +284,12 @@ async def _ejecutar_accion(
                 await interaction.response.send_message(embed=msg)
 
     elif accion == "mantenimiento":
-        set_mode(
-            "mantenimiento",
-            extra or "Mantenimiento técnico programado.",
-            por,
-        )
+        set_mode("mantenimiento", extra or "Mantenimiento técnico programado.", por)
         await publicar_estado(bot)
         msg = crear_embed(
             "aviso",
-            "Modo mantenimiento",
-            "La plataforma opera bajo **mantenimiento técnico**. Algunas funciones pueden limitarse.",
+            "Maintenance engaged",
+            "Núcleo en **modo mantenimiento**. Capacidad limitada.",
         )
         if interaction:
             if interaction.response.is_done():
@@ -313,16 +298,12 @@ async def _ejecutar_accion(
                 await interaction.response.send_message(embed=msg)
 
     elif accion == "reiniciar":
-        set_mode(
-            "online",
-            extra or "Reinicio completado. Bot operativo.",
-            por,
-        )
+        set_mode("online", extra or "Reinicio completado. Bot operativo.", por)
         await publicar_estado(bot)
         msg = crear_embed(
             "aviso",
-            "Reinicio de sistemas",
-            "Se inició el protocolo de reinicio. El servicio se reanudará automáticamente si el proceso está supervisado.",
+            "Core reboot",
+            "Secuencia de reinicio iniciada. Recuperación automática si el proceso está supervisado.",
         )
         if interaction:
             if interaction.response.is_done():
@@ -342,11 +323,7 @@ async def manejar_control_bot(
     user = interaction.user
     if not isinstance(user, discord.Member):
         await interaction.response.send_message(
-            embed=crear_embed(
-                "error",
-                "Contexto inválido",
-                "Este procedimiento solo puede ejecutarse dentro del servidor.",
-            ),
+            embed=crear_embed("error", "Contexto inválido", "Ejecute este módulo dentro del servidor."),
             ephemeral=True,
         )
         return
@@ -362,8 +339,8 @@ async def manejar_control_bot(
         await interaction.response.send_message(
             embed=crear_embed(
                 "error",
-                "Acceso restringido",
-                "Solo **Gerente Developer** o **Co-Owner** pueden gestionar el estado de la plataforma.",
+                "Privilegios insuficientes",
+                "Solo **Gerente Developer** o **Co-Owner** pueden operar el núcleo.",
             ),
             ephemeral=True,
         )
@@ -376,12 +353,12 @@ async def manejar_control_bot(
 
     embed = crear_embed(
         "aviso",
-        f"Solicitud de {accion} del sistema",
-        f"**Solicitante:** {user.mention}\n"
-        f"**Cargo:** Co-Owner\n"
-        f"**Operación:** `{accion}`\n"
+        f"Solicitud de núcleo · {accion}",
+        f"**Operador:** {user.mention}\n"
+        f"**Nivel:** Co-Owner\n"
+        f"**Acción:** `{accion}`\n"
         f"**Detalle:** {mensaje or '—'}\n\n"
-        f"Requiere autorización expresa del **Gerente Developer**.",
+        f"Requiere firma del **Gerente Developer**.",
         autor=user,
     )
     view = AprobacionBotView(accion, user.id, bot, mensaje)
@@ -419,8 +396,8 @@ async def manejar_control_bot(
         await interaction.response.send_message(
             embed=crear_embed(
                 "info",
-                "Solicitud registrada",
-                "Se notificó al **Gerente Developer**. La operación permanecerá pendiente hasta su resolución.",
+                "Solicitud en cola",
+                "Notificación enviada al **Gerente Developer**. Pendiente de resolución.",
             ),
             ephemeral=True,
         )
@@ -428,9 +405,8 @@ async def manejar_control_bot(
         await interaction.response.send_message(
             embed=crear_embed(
                 "error",
-                "Sin destinatario disponible",
-                "No fue posible contactar al Gerente Developer.\n"
-                "Configure el canal `aprobaciones` o verifique que exista un OWNER activo.",
+                "Sin operador destino",
+                "No se localizó Gerente Developer.\nConfigure `aprobaciones` o asigne un OWNER.",
             ),
             ephemeral=True,
         )

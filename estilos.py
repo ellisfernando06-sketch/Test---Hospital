@@ -1,138 +1,162 @@
 # -*- coding: utf-8 -*-
 """
-estilos.py — Identidad visual premium del hospital.
-
-Diseño sofisticado, clínico y coherente por área funcional.
-Solo presentación: no altera lógica de negocio.
+estilos.py — Identidad visual GOD-TIER del hospital.
+Acabado tecnológico, elegante y ultra premium.
+Solo presentación visual (firma API compatible).
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Optional, Sequence, Tuple
 
 import discord
 
 import config
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Paleta institucional premium (armónica, sobria, con carácter)
+# PALETA GOD-TIER — tech medical (profundos, luminosos, precisos)
 # ═══════════════════════════════════════════════════════════════════════════
 COLORES: Dict[str, int] = {
-    # Semántica operativa
-    "exito": 0x1F8A5B,        # Verde quirófano profundo
-    "error": 0xA93226,        # Rojo clínico
-    "aviso": 0xD68910,        # Ámbar institucional
-    "info": 0x1F618D,         # Azul expediente
-    "neutral": 0x5D6D7E,      # Acero
-    # Áreas clínicas / administrativas
-    "medico": 0x117A65,       # Teal médico
-    "finanzas": 0xB7950B,     # Oro contable
-    "sancion": 0x6C3483,      # Violeta régimen
-    "investigacion": 0x5B2C6F,# Amatista docencia
-    "rrhh": 0x2E86AB,         # Azul personal
-    "logistica": 0xCA6F1E,    # Cobre logístico
-    "seguridad": 0x2C3E50,    # Pizarra
-    "admin": 0x1B2631,        # Carbón dirección
-    "anuncio": 0x1A5276,      # Azul comunicado
-    "ticket": 0x2874A6,       # Azul mesa de ayuda
-    "citatorio": 0xA04000,    # Terracota formal
-    "certificacion": 0x0E6655,# Verde diploma
-    "inactividad": 0x707B7C,  # Gris control
-    "licencia": 0x2471A3,     # Azul licencia
-    "estado": 0x0E6655,       # Sistemas
-    "roblox": 0x1F618D,
-    "whitelist": 0x1F8A5B,
-    "aprobado": 0x1F8A5B,
-    "rechazado": 0xA93226,
-    "pendiente": 0xD68910,
+    "exito": 0x00C9A7,        # Aqua success
+    "error": 0xFF4D6D,        # Neon clinical red
+    "aviso": 0xFFB020,        # Gold alert
+    "info": 0x3D8BFF,         # Electric blue
+    "neutral": 0x8B9CB3,      # Steel mist
+    "medico": 0x00E5C0,       # Cyan medical
+    "finanzas": 0xFFD166,     # Soft gold
+    "sancion": 0xB388FF,      # Violet justice
+    "investigacion": 0x9B5DE5,# Purple research
+    "rrhh": 0x4CC9F0,         # Sky personnel
+    "logistica": 0xF77F00,    # Amber logistics
+    "seguridad": 0x4361EE,    # Deep security blue
+    "admin": 0x7209B7,        # Royal admin
+    "anuncio": 0x4EA8DE,      # Broadcast blue
+    "ticket": 0x48CAE4,       # Support cyan
+    "citatorio": 0xF72585,    # Magenta formal
+    "certificacion": 0x06D6A0,# Emerald cert
+    "inactividad": 0x6C757D,  # Soft graphite
+    "licencia": 0x4895EF,     # License blue
+    "estado": 0x00F5D4,       # System teal
+    "roblox": 0x3D8BFF,
+    "whitelist": 0x00C9A7,
+    "aprobado": 0x00C9A7,
+    "rechazado": 0xFF4D6D,
+    "pendiente": 0xFFB020,
 }
 
 EMOJI_TIPO: Dict[str, str] = {
-    "exito": "✅",
-    "error": "❌",
-    "aviso": "⚠️",
-    "info": "ℹ️",
-    "medico": "🩺",
-    "finanzas": "💰",
-    "sancion": "⚖️",
-    "investigacion": "📚",
-    "rrhh": "👥",
-    "logistica": "📦",
-    "seguridad": "🛡️",
-    "admin": "🏛️",
-    "anuncio": "📢",
-    "ticket": "🎫",
-    "citatorio": "📨",
-    "certificacion": "🎓",
-    "inactividad": "⏸️",
-    "licencia": "📋",
-    "estado": "🏥",
-    "neutral": "📄",
-    "roblox": "🔗",
-    "whitelist": "✅",
-    "aprobado": "✅",
-    "rechazado": "❌",
-    "pendiente": "⏳",
+    "exito": "◈",
+    "error": "◇",
+    "aviso": "◎",
+    "info": "◉",
+    "medico": "⚕",
+    "finanzas": "◈",
+    "sancion": "⚖",
+    "investigacion": "◈",
+    "rrhh": "◎",
+    "logistica": "▣",
+    "seguridad": "⬡",
+    "admin": "⬢",
+    "anuncio": "◈",
+    "ticket": "◇",
+    "citatorio": "◎",
+    "certificacion": "✦",
+    "inactividad": "⊘",
+    "licencia": "◈",
+    "estado": "⬡",
+    "neutral": "◇",
+    "roblox": "◉",
+    "whitelist": "✦",
+    "aprobado": "◈",
+    "rechazado": "◇",
+    "pendiente": "◎",
 }
 
-_AREA_LABEL: Dict[str, str] = {
-    "exito": "Registro de operaciones",
-    "error": "Control de incidencias",
-    "aviso": "Alertas institucionales",
-    "info": "Información general",
-    "neutral": "Gestión hospitalaria",
-    "medico": "Área clínica",
-    "finanzas": "Dirección financiera",
-    "sancion": "Régimen disciplinario",
-    "investigacion": "Investigación y docencia",
-    "rrhh": "Recursos humanos",
-    "logistica": "Logística e insumos",
-    "seguridad": "Seguridad hospitalaria",
-    "admin": "Dirección general",
-    "anuncio": "Comunicados oficiales",
-    "ticket": "Mesa de ayuda",
-    "citatorio": "Convocatorias formales",
-    "certificacion": "Formación y acreditación",
-    "inactividad": "Control de personal",
-    "licencia": "Licencias médicas",
-    "estado": "Centro de operaciones",
-    "roblox": "Verificación de identidad",
-    "whitelist": "Admisión de personal",
-    "aprobado": "Resoluciones",
-    "rechazado": "Resoluciones",
-    "pendiente": "Trámites en curso",
+# Prefijos visuales de título (marca tech)
+_PREFIX: Dict[str, str] = {
+    "exito": "『 OK 』",
+    "error": "『 ERR 』",
+    "aviso": "『 ALERT 』",
+    "info": "『 INFO 』",
+    "medico": "『 CLIN 』",
+    "finanzas": "『 FIN 』",
+    "sancion": "『 REG 』",
+    "investigacion": "『 DOC 』",
+    "rrhh": "『 HR 』",
+    "logistica": "『 LOG 』",
+    "seguridad": "『 SEC 』",
+    "admin": "『 SYS 』",
+    "anuncio": "『 COM 』",
+    "ticket": "『 TKT 』",
+    "citatorio": "『 CIT 』",
+    "certificacion": "『 CERT 』",
+    "inactividad": "『 IDLE 』",
+    "licencia": "『 MED 』",
+    "estado": "『 CORE 』",
+    "neutral": "『 HOSP 』",
+    "roblox": "『 ID 』",
+    "whitelist": "『 ADM 』",
+    "aprobado": "『 OK 』",
+    "rechazado": "『 DENY 』",
+    "pendiente": "『 WAIT 』",
 }
 
-_MARCAS = (
-    "✅", "❌", "⚠️", "ℹ️", "🩺", "💰", "⚖️", "📢", "🎓", "⏸️",
-    "🏥", "🎫", "📨", "📋", "🔗", "⏳", "📚", "👥", "📦", "🛡️",
-    "🏛️", "📄",
-)
+_AREA: Dict[str, str] = {
+    "exito": "OPERATIONS",
+    "error": "INCIDENT CONTROL",
+    "aviso": "SYSTEM ALERT",
+    "info": "INTELLIGENCE",
+    "neutral": "HOSPITAL OS",
+    "medico": "CLINICAL UNIT",
+    "finanzas": "FINANCE CORE",
+    "sancion": "DISCIPLINE MATRIX",
+    "investigacion": "RESEARCH & TRAINING",
+    "rrhh": "HUMAN RESOURCES",
+    "logistica": "SUPPLY CHAIN",
+    "seguridad": "SECURITY GRID",
+    "admin": "COMMAND BRIDGE",
+    "anuncio": "BROADCAST",
+    "ticket": "SUPPORT DESK",
+    "citatorio": "FORMAL SUMMONS",
+    "certificacion": "ACCREDITATION",
+    "inactividad": "PERSONNEL MONITOR",
+    "licencia": "MEDICAL LEAVE",
+    "estado": "CORE STATUS",
+    "roblox": "IDENTITY LINK",
+    "whitelist": "ADMISSION GATE",
+    "aprobado": "RESOLUTION",
+    "rechazado": "RESOLUTION",
+    "pendiente": "QUEUE",
+}
 
 
 def _hospital() -> str:
     return getattr(config, "NOMBRE_HOSPITAL", None) or "Hospital General"
 
 
+def _line() -> str:
+    return "━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+
 def _footer(tipo: str = "neutral", extra: str = "") -> str:
-    parts = [f"🏥  {_hospital()}"]
-    label = _AREA_LABEL.get(tipo)
-    if label:
-        parts.append(label)
+    area = _AREA.get(tipo, "HOSPITAL OS")
+    base = f"⬡  {_hospital().upper()}  │  {area}"
     if extra and extra.strip():
-        parts.append(extra.strip())
-    return "  ·  ".join(parts)
+        base += f"  │  {extra.strip()}"
+    return base
 
 
-def _titulo(titulo: str, emoji: str) -> str:
-    if any(m in titulo for m in _MARCAS):
+def _title(titulo: str, tipo: str) -> str:
+    # Si ya trae marca 『 』, no duplicar
+    if "『" in titulo or "』" in titulo:
         return titulo
-    return f"{emoji}  {titulo}"
+    prefix = _PREFIX.get(tipo, "『 HOSP 』")
+    return f"{prefix}  {titulo}"
 
 
-def _safe(valor: Any, default: str = "—") -> str:
-    if valor is None:
+def _safe(v: Any, default: str = "—") -> str:
+    if v is None:
         return default
-    s = str(valor).strip()
+    s = str(v).strip()
     return s if s else default
 
 
@@ -145,16 +169,17 @@ def crear_embed(
     thumbnail_url: Optional[str] = None,
     image_url: Optional[str] = None,
 ) -> discord.Embed:
-    """
-    Fábrica principal de embeds (compatible con todo el bot).
-    """
     key = (tipo or "neutral").lower().strip()
     color = COLORES.get(key, COLORES["neutral"])
-    emoji = EMOJI_TIPO.get(key, "📄")
+
+    # Descripción con marco tech si hay contenido
+    desc = (descripcion or "").strip()
+    if desc and not desc.startswith("━") and not desc.startswith("`"):
+        desc = f"{_line()}\n{desc}\n{_line()}"
 
     emb = discord.Embed(
-        title=_titulo(titulo, emoji),
-        description=(descripcion.strip() if descripcion else None),
+        title=_title(titulo, key),
+        description=desc or None,
         color=color,
         timestamp=discord.utils.utcnow(),
     )
@@ -163,7 +188,7 @@ def crear_embed(
         try:
             nombre = getattr(autor, "display_name", None) or str(autor)
             icon = getattr(getattr(autor, "display_avatar", None), "url", None)
-            emb.set_author(name=str(nombre), icon_url=icon)
+            emb.set_author(name=f"▸ {nombre}", icon_url=icon)
         except Exception:
             pass
 
@@ -198,9 +223,8 @@ def embed_campos(
     emb: discord.Embed,
     campos: Sequence[Tuple[str, Any, bool]],
 ) -> discord.Embed:
-    """campos = [(nombre, valor, inline), ...]"""
-    for nombre, valor, inline in campos:
-        embed_campo(emb, nombre, valor, inline)
+    for n, v, i in campos:
+        embed_campo(emb, n, v, i)
     return emb
 
 
@@ -211,9 +235,9 @@ def embed_exito_rapido(
 ) -> discord.Embed:
     return crear_embed(
         "exito",
-        titulo or "Procedimiento completado",
+        titulo or "Procedimiento sincronizado",
         descripcion
-        or "La operación se registró correctamente en el sistema hospitalario.",
+        or "La operación fue registrada en el núcleo hospitalario con integridad verificada.",
         autor=autor,
     )
 
@@ -221,12 +245,12 @@ def embed_exito_rapido(
 def embed_error_rapido(titulo: str, descripcion: str) -> discord.Embed:
     return crear_embed(
         "error",
-        titulo or "No fue posible completar la solicitud",
+        titulo or "Secuencia interrumpida",
         descripcion
         or (
-            "El sistema interrumpió la operación por una validación pendiente.\n\n"
-            "*Revise los datos e intente nuevamente. Si el inconveniente persiste, "
-            "eleve el caso a la dirección correspondiente.*"
+            "El núcleo detuvo la operación por una validación de seguridad.\n\n"
+            "*Revise los parámetros e intente de nuevo. Si el fallo persiste, "
+            "eleve el incidente a Dirección de Sistemas.*"
         ),
     )
 
@@ -249,25 +273,26 @@ def embed_info(
 
 def embed_permiso_denegado(requerido: str = "") -> discord.Embed:
     cuerpo = (
-        "No dispone de la **autorización jerárquica** necesaria para este procedimiento."
+        "**Acceso denegado por matriz de privilegios.**\n\n"
+        "Su perfil no posee la clave de autorización exigida para este módulo."
     )
     if requerido:
-        cuerpo += f"\n\n**Competencia requerida:** `{requerido}`"
+        cuerpo += f"\n\n**Clave requerida**\n```\n{requerido}\n```"
     cuerpo += (
-        "\n\nSi considera que se trata de un error de asignación de roles, "
-        "consulte con su superior inmediato o con la Dirección General."
+        "\n*Si cree que se trata de un error de asignación, contacte a "
+        "Dirección General o al Gerente Developer.*"
     )
-    return crear_embed("error", "Acceso restringido", cuerpo)
+    return crear_embed("error", "Privilegios insuficientes", cuerpo)
 
 
 def embed_validacion(mensaje: str) -> discord.Embed:
     return crear_embed(
         "aviso",
-        "Validación de formulario",
+        "Validación de entrada",
         mensaje
         or (
-            "Uno o más campos no cumplen los requisitos del protocolo.\n"
-            "Corrija la información e intente el envío nuevamente."
+            "Uno o más campos no superaron el protocolo de validación.\n"
+            "Corrija los datos y reintente el envío."
         ),
     )
 
@@ -280,7 +305,6 @@ def embed_confirmacion(
     autor: Optional[discord.abc.User] = None,
     tipo: str = "exito",
 ) -> discord.Embed:
-    """Confirmación rica con campos opcionales."""
     emb = crear_embed(tipo, titulo, descripcion, autor=autor)
     if campos:
         embed_campos(emb, campos)
@@ -303,23 +327,23 @@ def embed_whitelist_roblox(
     )
 
     if aprobado:
-        titulo = "Admisión confirmada"
+        titulo = "Identidad vinculada"
         desc = (
-            f"La verificación de identidad del postulante ha sido **aprobada**.\n\n"
-            f"La cuenta de Roblox quedó vinculada al **expediente digital** de personal.\n"
-            f"Bienvenido/a al cuerpo del **{_hospital()}**."
+            f"**Gate de admisión · RESOLUCIÓN POSITIVA**\n\n"
+            f"La identidad externa fue **verificada y enlazada** al expediente digital.\n"
+            f"Bienvenido/a al núcleo de **{_hospital()}**."
         )
         tipo = "whitelist"
-        estado = "✅  Aprobado"
+        estado = "``` PASS ```"
     else:
-        titulo = "Admisión no concedida"
+        titulo = "Identidad rechazada"
         desc = (
-            f"La verificación de identidad **no fue aprobada**.\n\n"
-            f"El postulante podrá corregir los datos y presentar una nueva solicitud "
-            f"conforme al protocolo de ingreso."
+            f"**Gate de admisión · RESOLUCIÓN NEGATIVA**\n\n"
+            f"La verificación **no superó** el protocolo de ingreso.\n"
+            f"Puede corregir datos y reintentar según normativa."
         )
         tipo = "rechazado"
-        estado = "❌  No aprobado"
+        estado = "``` FAIL ```"
 
     emb = crear_embed(tipo, titulo, desc, autor=discord_user)
     if profile_url:
@@ -330,9 +354,9 @@ def embed_whitelist_roblox(
     embed_campos(
         emb,
         [
-            ("🎮  Usuario Roblox", f"`{username}`", True),
-            ("📛  Nombre visible", f"**{display}**", True),
-            ("🆔  ID de cuenta", f"`{user_id}`", True),
+            ("▸ Usuario", f"`{username}`", True),
+            ("▸ Display", f"**{display}**", True),
+            ("▸ UID", f"`{user_id}`", True),
         ],
     )
 
@@ -344,18 +368,18 @@ def embed_whitelist_roblox(
             created_fmt = dt.strftime("%d/%m/%Y")
         except Exception:
             created_fmt = str(created)[:10]
-        embed_campo(emb, "📅  Alta de cuenta", created_fmt)
+        embed_campo(emb, "▸ Alta", created_fmt)
 
-    embed_campo(emb, "📊  Resolución", f"**{estado}**")
+    embed_campo(emb, "▸ Resolución", estado)
     if staff:
-        embed_campo(emb, "👤  Evaluado por", staff.mention)
+        embed_campo(emb, "▸ Evaluador", staff.mention)
 
     if profile_url:
         emb.add_field(
-            name="🔗  Expediente externo",
-            value=f"[Consultar perfil en Roblox]({profile_url})",
+            name="▸ Enlace externo",
+            value=f"[Abrir perfil Roblox]({profile_url})",
             inline=False,
         )
 
-    emb.set_footer(text=_footer("whitelist", "Unidad de admisión"))
+    emb.set_footer(text=_footer("whitelist", "ADMISSION GATE"))
     return emb
