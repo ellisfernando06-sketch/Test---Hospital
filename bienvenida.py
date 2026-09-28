@@ -57,12 +57,6 @@ def embed_bienvenida(member: discord.Member) -> discord.Embed:
     except Exception:
         pass
 
-    if getattr(config, "LOGO_URL", None):
-        try:
-            emb.set_image(url=config.LOGO_URL)
-        except Exception:
-            pass
-
     emb.add_field(name="👤 Usuario", value=f"{member.mention}", inline=True)
     emb.add_field(name="🆔 ID", value=f"`{member.id}`", inline=True)
     emb.add_field(name="📊 Miembros", value=f"`{total}`", inline=True)
@@ -104,7 +98,6 @@ def _canal_bienvenida(guild: discord.Guild) -> Optional[discord.TextChannel]:
         ch = guild.get_channel(int(cid))
         if isinstance(ch, discord.TextChannel):
             return ch
-    # Búsqueda por nombre habitual
     for nombre in ("bienvenida", "welcome", "entrada", "ingresos"):
         for ch in guild.text_channels:
             if nombre in (ch.name or "").lower():
@@ -112,27 +105,28 @@ def _canal_bienvenida(guild: discord.Guild) -> Optional[discord.TextChannel]:
     return None
 
 
-def registrar(bot: commands.Bot) -> None:
-    @bot.event
-    async def on_member_join(member: discord.Member):
-        if member.bot:
-            return
-        guild = member.guild
-        if not guild:
-            return
+async def _on_member_join(member: discord.Member) -> None:
+    if member.bot:
+        return
+    guild = member.guild
+    if not guild:
+        return
 
-        emb = embed_bienvenida(member)
-        canal = _canal_bienvenida(guild)
-        if canal:
-            try:
-                await canal.send(content=member.mention, embed=emb)
-            except Exception:
-                pass
-
-        # MD opcional (si el usuario tiene DMs abiertos)
+    emb = embed_bienvenida(member)
+    canal = _canal_bienvenida(guild)
+    if canal:
         try:
-            await member.send(embed=embed_bienvenida_dm(member))
+            await canal.send(content=member.mention, embed=emb)
         except Exception:
             pass
 
+    try:
+        await member.send(embed=embed_bienvenida_dm(member))
+    except Exception:
+        pass
+
+
+def registrar(bot: commands.Bot) -> None:
+    # Listener (no pisa otros on_member_join)
+    bot.add_listener(_on_member_join, "on_member_join")
     print("[bienvenida] OK — ingreso tecnológico al servidor")
