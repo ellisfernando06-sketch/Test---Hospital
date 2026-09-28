@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""bot_control.py — Panel de control del bot (tech premium, español claro)."""
+"""bot_control.py — Panel de control del bot (tech limpio)."""
 from __future__ import annotations
 
 import asyncio
@@ -57,7 +57,6 @@ def set_mode(mode: str, message: str, by: Optional[int] = None) -> None:
 
 
 def status_embed() -> discord.Embed:
-    """Panel de control — visual tech premium."""
     mode = get_mode()
     custom_msg = (_status.get("message") or "").strip()
     hospital = getattr(config, "NOMBRE_HOSPITAL", None) or "Hospital General"
@@ -76,68 +75,47 @@ def status_embed() -> discord.Embed:
     )
 
     if mode == "online":
-        color = 0x00C853
-        title = "🖥️  Panel de control  ·  Sistema activo"
-        estado = "🟢  **ENCENDIDO**"
+        color = 0x00E676
+        title = "Sistema en línea"
         desc = (
-            f"> **{hospital}**\n"
-            f"> Módulo de control del bot\n\n"
-            f"**Estado general**\n{estado}\n\n"
-            f"El bot de gestión está en línea. "
-            f"El personal autorizado puede usar comandos y módulos con normalidad.\n\n"
-            f"**Estado de módulos**\n"
-            f"┌──────────────────────────────┐\n"
-            f"│  Bot Discord  ·····  `ACTIVO`        │\n"
-            f"│  Comandos  ·········  `LISTOS`        │\n"
-            f"│  Registros  ········  `AL DÍA`        │\n"
-            f"│  Solicitudes  ·····  `EN MARCHA`     │\n"
-            f"│  Verificación  ····  `OPERATIVA`     │\n"
-            f"└──────────────────────────────┘\n\n"
-            f"Si hay un fallo, reporta en **soporte** o a la dirección de tu área."
+            f"**{hospital}**\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"● **Estado** — `ONLINE`\n"
+            f"● **Bot** — operativo\n"
+            f"● **Comandos** — disponibles\n"
+            f"● **Datos** — sincronizados\n\n"
+            f"Todo el personal autorizado puede usar el sistema con normalidad."
         )
         if custom_msg and custom_msg not in defaults:
-            desc += f"\n\n**📝 Nota del sistema**\n> {custom_msg}"
+            desc += f"\n\n**Nota**\n{custom_msg}"
 
     elif mode == "mantenimiento":
-        color = 0xFF9100
-        title = "🔧  Panel de control  ·  Mantenimiento"
-        estado = "🟡  **MANTENIMIENTO**"
+        color = 0xFFAB00
+        title = "Mantenimiento en curso"
         desc = (
-            f"> **{hospital}**\n"
-            f"> Módulo de control del bot\n\n"
-            f"**Estado general**\n{estado}\n\n"
-            f"El sistema está en ventana de mantenimiento. "
-            f"Algunas funciones pueden no responder hasta que termine.\n\n"
-            f"**Estado de módulos**\n"
-            f"┌──────────────────────────────┐\n"
-            f"│  Bot Discord  ·····  `EN PAUSA`      │\n"
-            f"│  Comandos  ·········  `LIMITADOS`     │\n"
-            f"│  Registros  ········  `PROTEGIDOS`    │\n"
-            f"│  Actualizaciones ··  `EN CURSO`      │\n"
-            f"└──────────────────────────────┘\n\n"
-            f"Cuando el servicio vuelva a la normalidad se avisará en este canal."
+            f"**{hospital}**\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"● **Estado** — `MANTENIMIENTO`\n"
+            f"● **Bot** — en pausa parcial\n"
+            f"● **Comandos** — limitados\n"
+            f"● **Datos** — protegidos\n\n"
+            f"Algunas funciones pueden no responder hasta que termine el trabajo."
         )
         if custom_msg and custom_msg not in defaults:
-            desc += f"\n\n**📝 Motivo**\n> {custom_msg}"
+            desc += f"\n\n**Motivo**\n{custom_msg}"
 
     else:
-        color = 0xFF1744
-        title = "⛔  Panel de control  ·  Sistema apagado"
-        estado = "🔴  **APAGADO**"
+        color = 0xFF5252
+        title = "Sistema fuera de servicio"
         desc = (
-            f"> **{hospital}**\n"
-            f"> Módulo de control del bot\n\n"
-            f"**Estado general**\n{estado}\n\n"
-            f"El bot no está en servicio. Los comandos no están disponibles.\n\n"
-            f"**Estado de módulos**\n"
-            f"┌──────────────────────────────┐\n"
-            f"│  Bot Discord  ·····  `OFF`           │\n"
-            f"│  Comandos  ·········  `BLOQUEADOS`   │\n"
-            f"│  Registros  ········  `GUARDADOS`    │\n"
-            f"│  Recuperación  ····  `EN ESPERA`     │\n"
-            f"└──────────────────────────────┘\n\n"
-            f"**Motivo**\n> {custom_msg or 'Apagado por la administración.'}\n\n"
-            f"La reactivación se publicará en este mismo canal."
+            f"**{hospital}**\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"● **Estado** — `OFFLINE`\n"
+            f"● **Bot** — apagado\n"
+            f"● **Comandos** — no disponibles\n"
+            f"● **Datos** — conservados\n\n"
+            f"**Motivo**\n{custom_msg or 'Apagado por la administración.'}\n\n"
+            f"La reactivación se anunciará en este canal."
         )
 
     emb = discord.Embed(
@@ -154,16 +132,12 @@ def status_embed() -> discord.Embed:
 
     if _status.get("changed_at"):
         fecha = str(_status["changed_at"])[:19].replace("T", " ") + " UTC"
-        emb.add_field(name="⏱  Último cambio", value=f"`{fecha}`", inline=True)
+        emb.add_field(name="Último cambio", value=f"`{fecha}`", inline=True)
     if _status.get("changed_by"):
-        emb.add_field(name="👤  Operador", value=f"<@{_status['changed_by']}> ", inline=True)
-    emb.add_field(
-        name="📡  Modo actual",
-        value=f"**`{(mode or 'online').upper()}`**",
-        inline=True,
-    )
+        emb.add_field(name="Operador", value=f"<@{_status['changed_by']}> ", inline=True)
+    emb.add_field(name="Modo", value=f"`{(mode or 'online').upper()}`", inline=True)
 
-    emb.set_footer(text=f"🖥️  {hospital}  ·  Sistema de gestión  ·  Panel de control")
+    emb.set_footer(text=f"{hospital}  ·  panel de control")
     return emb
 
 
@@ -237,7 +211,7 @@ async def _ejecutar_accion(
     if accion == "apagar":
         set_mode("offline", extra or "Apagado por la administración.", por)
         await publicar_estado(bot)
-        msg = crear_embed("error", "Apagando sistema", "El bot se cierra en unos segundos. Datos guardados.")
+        msg = crear_embed("error", "Apagando", "El bot se cierra en unos segundos.")
         if interaction:
             if interaction.response.is_done():
                 await interaction.followup.send(embed=msg)
@@ -246,9 +220,9 @@ async def _ejecutar_accion(
         await asyncio.sleep(1.5)
         await bot.close()
     elif accion == "encender":
-        set_mode("online", extra or "Bot encendido. Todo el personal puede usarlo.", por)
+        set_mode("online", extra or "Bot encendido.", por)
         await publicar_estado(bot)
-        msg = crear_embed("exito", "Sistema activo", "El bot volvió a estar **encendido**.")
+        msg = crear_embed("exito", "Sistema activo", "El bot está **encendido** otra vez.")
         if interaction:
             if interaction.response.is_done():
                 await interaction.followup.send(embed=msg)
@@ -257,16 +231,16 @@ async def _ejecutar_accion(
     elif accion == "mantenimiento":
         set_mode("mantenimiento", extra or "Mantenimiento del sistema.", por)
         await publicar_estado(bot)
-        msg = crear_embed("aviso", "Mantenimiento", "Algunas funciones pueden fallar hasta que termine.")
+        msg = crear_embed("aviso", "Mantenimiento", "Algunas funciones pueden fallar un rato.")
         if interaction:
             if interaction.response.is_done():
                 await interaction.followup.send(embed=msg)
             else:
                 await interaction.response.send_message(embed=msg)
     elif accion == "reiniciar":
-        set_mode("online", extra or "Reinicio listo. Bot operativo.", por)
+        set_mode("online", extra or "Reinicio listo.", por)
         await publicar_estado(bot)
-        msg = crear_embed("aviso", "Reiniciando", "Si el bot está en Railway, debería volver solo en unos momentos.")
+        msg = crear_embed("aviso", "Reiniciando", "El bot debería volver solo en unos momentos.")
         if interaction:
             if interaction.response.is_done():
                 await interaction.followup.send(embed=msg)
@@ -308,8 +282,7 @@ async def manejar_control_bot(
     embed = crear_embed(
         "aviso",
         f"Pedido de control — {accion}",
-        f"**Quién pide:** {user.mention}\n**Cargo:** Co-Owner\n"
-        f"**Acción:** `{accion}`\n**Detalle:** {mensaje or 'Sin detalle'}\n\n"
+        f"**Quién pide:** {user.mention}\n**Acción:** `{accion}`\n**Detalle:** {mensaje or '—'}\n\n"
         f"El **Gerente Developer** debe aprobar o negar.",
         autor=user,
     )
