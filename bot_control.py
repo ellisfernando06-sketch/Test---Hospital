@@ -65,8 +65,8 @@ def status_embed() -> discord.Embed:
     hospital = getattr(config, "NOMBRE_HOSPITAL", None) or "Hospital General"
 
     if mode == "online":
-        color = 0x1E8449
-        title = "Sistemas en servicio — Operativo"
+        color = 0x27AE60
+        title = "🏥  Sistemas en servicio — Operativo"
         desc = (
             f"**Comunicado de operaciones · {hospital}**\n\n"
             f"Se informa al personal y a la comunidad que la plataforma de gestión "
@@ -74,9 +74,9 @@ def status_embed() -> discord.Embed:
             f"Los módulos de comandos, verificación, solicitudes, régimen disciplinario "
             f"y registro documental operan con normalidad.\n\n"
             f"**Panel de disponibilidad**\n"
-            f"● Núcleo Discord — **Activo**\n"
-            f"● Comandos y paneles — **Disponibles**\n"
-            f"● Registros y expedientes — **Sincronizados**\n\n"
+            f"🟢 Núcleo Discord — **Activo**\n"
+            f"🟢 Comandos y paneles — **Disponibles**\n"
+            f"🟢 Registros y expedientes — **Sincronizados**\n\n"
             f"Ante cualquier incidencia, utilice los canales oficiales de reporte."
         )
         defaults = (
@@ -88,8 +88,8 @@ def status_embed() -> discord.Embed:
         if custom_msg and custom_msg not in defaults:
             desc += f"\n\n**Nota de administración**\n> {custom_msg}"
     elif mode == "mantenimiento":
-        color = 0xB7950B
-        title = "Mantenimiento técnico programado"
+        color = 0xE67E22
+        title = "🔧  Mantenimiento técnico programado"
         desc = (
             f"**Comunicado oficial · {hospital}**\n\n"
             f"La plataforma de gestión ingresa a **mantenimiento técnico**. "
@@ -106,15 +106,15 @@ def status_embed() -> discord.Embed:
         if custom_msg:
             desc += f"\n\n**Motivo indicado**\n> {custom_msg}"
     else:
-        color = 0x922B21
-        title = "Plataforma fuera de servicio"
+        color = 0xC0392B
+        title = "⛔  Plataforma fuera de servicio"
         desc = (
             f"**Comunicado oficial · {hospital}**\n\n"
             f"La plataforma permanece **fuera de servicio** hasta nuevo aviso.\n\n"
             f"**Estado**\n"
-            f"● Núcleo Discord — **Apagado**\n"
-            f"● Comandos y paneles — **No disponibles**\n"
-            f"● Expedientes — **Conservados**\n\n"
+            f"🔴 Núcleo Discord — **Apagado**\n"
+            f"🔴 Comandos y paneles — **No disponibles**\n"
+            f"🟡 Expedientes — **Conservados**\n\n"
             f"**Motivo**\n"
             f"> {custom_msg or 'Apagado por decisión de la administración.'}\n\n"
             f"La reactivación se anunciará por este medio."
@@ -126,13 +126,13 @@ def status_embed() -> discord.Embed:
             embed.set_thumbnail(url=config.LOGO_URL)
         except Exception:
             pass
-    embed.set_footer(text=f"{hospital}  ·  Centro de operaciones")
+    embed.set_footer(text=f"🏥 {hospital}  ·  Centro de operaciones")
     if _status.get("changed_at"):
         fecha = str(_status["changed_at"])[:19].replace("T", " ") + " UTC"
-        embed.add_field(name="Última actualización", value=fecha, inline=True)
+        embed.add_field(name="📅 Última actualización", value=fecha, inline=True)
     if _status.get("changed_by"):
-        embed.add_field(name="Autorizado por", value=f"<@{_status['changed_by']}>", inline=True)
-    embed.add_field(name="Modo actual", value=f"`{(mode or 'online').upper()}`", inline=True)
+        embed.add_field(name="👤 Autorizado por", value=f"<@{_status['changed_by']}> ", inline=True)
+    embed.add_field(name="📡 Modo actual", value=f"`{(mode or 'online').upper()}`", inline=True)
     return embed
 
 
