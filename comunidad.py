@@ -1,5 +1,5 @@
-# -*- coding: utf-8 -*
-"""comunidad.py — Reglas por DM, confirmación y rol de comunidad."""
+# -*- coding: utf-8 -*-
+"""comunidad.py — Reglas por DM, confirmación y rol de comunidad (estilo sistema)."""
 from __future__ import annotations
 
 import json
@@ -25,39 +25,45 @@ NOMBRES_ROL_COMUNIDAD = (
 )
 
 REGLAS_DEFAULT = """
-# 📜 Reglamento del Hospital
+# Reglamento del hospital
 
-Bienvenido/a a **{hospital}**. Al aceptar estas reglas obtienes acceso de **comunidad**.
+Bienvenido/a a **{hospital}**.
+Al aceptar estas reglas el sistema te asigna el rol de **comunidad**.
 
 ## 1. Respeto
-- Trata a pacientes, personal y staff con respeto.
-- Prohibido acoso, discriminación o toxicidad.
+- Trata bien a pacientes, personal y staff.
+- No acoso, discriminación ni toxicidad.
 
 ## 2. Roleplay
-- Mantén el personaje y el contexto hospitalario.
-- No metas OOC en canales de RP sin marcar.
+- Mantén el personaje y el contexto del hospital.
+- En canales de RP no metas OOC sin marcar.
 - Metagaming y powergaming están prohibidos.
 
 ## 3. Canales
-- Usa cada canal para su propósito (tickets, RP, off-topic).
+- Cada canal tiene un uso (tickets, RP, off-topic).
 - No spam ni flood.
 
 ## 4. Staff y tickets
-- Las decisiones de staff/dirección se respetan.
-- Apelaciones solo por los canales o paneles oficiales.
+- Se respetan las decisiones de staff y dirección.
+- Apelaciones solo por canales o paneles oficiales.
 
 ## 5. Economía e ítems
-- El dinero e ítems de la tienda son de RP.
-- No se transfieren beneficios reales fuera del servidor.
+- Dinero e ítems de la tienda son de RP.
+- No se cambian por beneficios reales fuera del servidor.
 
 ## 6. Sanciones
-- Incumplir puede implicar warn, mute, kick o ban según gravedad.
+- Incumplir puede traer warn, mute, kick o ban según la gravedad.
 
 ---
-Al pulsar **Acepto las reglas** confirmas haberlas leído y se te asignará el rol de comunidad (si está disponible).
+Al pulsar **Acepto las reglas** confirmas que las leíste.
+El sistema intentará darte el rol de comunidad.
 """.strip()
 
 _MAX_DESC = 3900
+
+
+def _hospital() -> str:
+    return getattr(config, "NOMBRE_HOSPITAL", None) or "Hospital General"
 
 
 def _split_text(text: str, max_len: int = _MAX_DESC) -> List[str]:
@@ -96,139 +102,148 @@ def _save(data: dict) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def ya_acepto(uid: int) -> bool:
-    return str(uid) in _load()
-
-
-def marcar_aceptado(uid: int) -> None:
-    data = _load()
-    data[str(uid)] = datetime.now(timezone.utc).isoformat()
-    _save(data)
-
-
-def detectar_rol_comunidad(guild: discord.Guild) -> Optional[discord.Role]:
-    rid = getattr(config, "ROL_COMUNIDAD_ID", None)
-    if rid:
-        r = guild.get_role(int(rid))
-        if r:
-            return r
-    roles = list(guild.roles)
-    lower_map = {(r.name or "").strip().lower(): r for r in roles}
-    for nombre in NOMBRES_ROL_COMUNIDAD:
-        if nombre in lower_map:
-            return lower_map[nombre]
-    for r in roles:
-        n = (r.name or "").lower()
-        for nombre in NOMBRES_ROL_COMUNIDAD:
-            if nombre in n and r != guild.default_role:
-                return r
-    return None
-
-
-def texto_reglas() -> str:
-    # Prioridad: reglamento guardado con /agregar_reglamento > config.REGLAS_TEXTO > default
+def _load_reglamento_text() -> str:
+    hospital = _hospital()
     if os.path.isfile(_REGLAMENTO_PATH):
         try:
             with open(_REGLAMENTO_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            t = (data.get("texto") or "").strip()
-            if t:
-                return t
+            texto = (data.get("texto") or data.get("contenido") or "").strip()
+            if texto:
+                return texto.replace("{hospital}", hospital)
         except Exception:
             pass
-    custom = getattr(config, "REGLAS_TEXTO", None)
-    hospital = getattr(config, "NOMBRE_HOSPITAL", "Hospital") or "Hospital"
-    base = custom if custom else REGLAS_DEFAULT
-    try:
-        return base.format(hospital=hospital)
-    except Exception:
-        return base.replace("{hospital}", hospital)
+    return REGLAS_DEFAULT.format(hospital=hospital)
+
+
+def detectar_rol_comunidad(guild: discord.Guild) -> Optional[discord.Role]:
+    for rol in guild.roles:
+        n = (rol.name or "").lower().strip()
+        if n in NOMBRES_ROL_COMUNIDAD or any(x in n for x in ("comunidad", "miembro", "verificado")):
+            if rol.is_default() or rol.managed:
+                continue
+            return rol
+    return None
+
+
+def embed_reglas_chunk(texto: str, pagina: int, total: int) -> discord.Embed:
+    hospital = _hospital()
+    titulo = "📜  Reglamento del sistema"
+    if total > 1:
+        titulo += f"  ·  {pagina}/{total}"
+    emb = discord.Embed(
+        title=titulo,
+        description=(
+            f"```\n"
+            f" HOSPITAL  ·  {hospital.upper()}\n"
+            f" MÓDULO    ·  REGLAS DE COMUNIDAD\n"
+            f"```\n\n"
+            f"{texto}"
+        ),
+        color=0x2E86DE,
+        timestamp=discord.utils.utcnow(),
+    )
+    emb.set_footer(text=f"🖥️  {hospital}  ·  Sistema de gestión  │  Acepta abajo para continuar")
+    return emb
 
 
 class AceptarReglasView(ui.View):
-    def __init__(self, guild_id: int):
-        super().__init__(timeout=600)
-        self.guild_id = guild_id
+    def __init__(self):
+        super().__init__(timeout=None)
 
-    @ui.button(label="Acepto las reglas", style=discord.ButtonStyle.success, emoji="✅")
-    async def aceptar(self, inter: discord.Interaction, btn: ui.Button):
-        if ya_acepto(inter.user.id):
-            await inter.response.send_message("Ya habías aceptado las reglas.", ephemeral=True)
-            return
-        guild = inter.client.get_guild(self.guild_id)
-        if not guild:
-            await inter.response.send_message("No pude encontrar el servidor.", ephemeral=True)
-            return
-        member = guild.get_member(inter.user.id)
-        if not member:
-            try:
-                member = await guild.fetch_member(inter.user.id)
-            except Exception:
-                member = None
-        if not member:
-            await inter.response.send_message("Debes estar en el servidor para recibir el rol.", ephemeral=True)
-            return
+    @ui.button(label="Acepto las reglas", style=discord.ButtonStyle.success, custom_id="comunidad:acepto")
+    async def acepto(self, interaction: discord.Interaction, button: ui.Button):
+        if not isinstance(interaction.user, discord.Member):
+            # DM: buscar miembro en guilds del bot
+            member = None
+            for g in interaction.client.guilds:
+                m = g.get_member(interaction.user.id)
+                if m:
+                    member = m
+                    break
+            if not member:
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        title="❌  No se encontró el servidor",
+                        description="Entra al servidor del hospital y vuelve a aceptar.",
+                        color=0xFF4757,
+                    ),
+                    ephemeral=True,
+                )
+                return
+        else:
+            member = interaction.user
+
+        guild = member.guild
         rol = detectar_rol_comunidad(guild)
-        asignado = False
-        if rol:
+        data = _load()
+        data[str(member.id)] = {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "guild_id": guild.id,
+        }
+        _save(data)
+
+        if rol and rol not in member.roles:
             try:
                 await member.add_roles(rol, reason="Aceptó reglamento de comunidad")
-                asignado = True
             except discord.Forbidden:
-                marcar_aceptado(inter.user.id)
-                await inter.response.send_message(
-                    f"Aceptaste las reglas, pero no puedo asignar {rol.mention} (jerarquía del bot).",
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        title="⚠️  Rol no asignado",
+                        description=(
+                            f"Aceptaste las reglas, pero el bot no pudo darte {rol.mention}.\n"
+                            f"Pide a un admin que suba el rol del bot o te asigne el rol a mano."
+                        ),
+                        color=0xFFA502,
+                    ),
                     ephemeral=True,
                 )
                 return
             except Exception as e:
-                await inter.response.send_message(f"Error al asignar rol: {e}", ephemeral=True)
+                await interaction.response.send_message(
+                    embed=discord.Embed(
+                        title="❌  Error",
+                        description=f"No se pudo asignar el rol: `{e}`",
+                        color=0xFF4757,
+                    ),
+                    ephemeral=True,
+                )
                 return
-        marcar_aceptado(inter.user.id)
-        if asignado:
-            msg = f"✅ Reglas aceptadas. Rol **{rol.name}** asignado. ¡Bienvenido/a!"
-        else:
-            msg = (
-                "✅ Reglas aceptadas.\n"
-                "⚠️ No encontré rol de comunidad (Comunidad, Miembro, Ciudadano, Verificado…).\n"
-                "Crea el rol o define ROL_COMUNIDAD_ID en config."
-            )
-        await inter.response.send_message(msg, ephemeral=True)
-        for c in self.children:
-            c.disabled = True
-        try:
-            await inter.message.edit(view=self)
-        except Exception:
-            pass
 
-    @ui.button(label="Rechazar", style=discord.ButtonStyle.secondary, emoji="❌")
-    async def rechazar(self, inter: discord.Interaction, btn: ui.Button):
-        await inter.response.send_message(
-            "No aceptaste las reglas. Sin rol de comunidad el acceso será limitado.",
-            ephemeral=True,
+        emb = discord.Embed(
+            title="✅  Acceso de comunidad activado",
+            description=(
+                f"```\n"
+                f" HOSPITAL  ·  {_hospital().upper()}\n"
+                f" MÓDULO    ·  COMUNIDAD\n"
+                f"```\n\n"
+                f"**Estado:** reglas aceptadas\n\n"
+                f"Ya formas parte de la comunidad del hospital.\n"
+                + (f"Rol asignado: {rol.mention}\n" if rol else "")
+                + f"\nPuedes explorar los canales públicos.\n"
+                f"Si quieres unirte al personal, mira **postulaciones**."
+            ),
+            color=0x00D2A0,
+            timestamp=discord.utils.utcnow(),
         )
+        emb.set_footer(text=f"🖥️  {_hospital()}  ·  Sistema de gestión")
+        await interaction.response.send_message(embed=emb, ephemeral=True)
 
 
-async def enviar_reglas_dm(member: discord.Member):
-    texto = texto_reglas()
-    partes = _split_text(texto)
-    view = AceptarReglasView(member.guild.id)
-    hospital = getattr(config, "NOMBRE_HOSPITAL", "Hospital")
+async def enviar_reglas_dm(user: discord.abc.User) -> tuple:
+    texto = _load_reglamento_text()
+    chunks = _split_text(texto)
+    view = AceptarReglasView()
     try:
-        for i, parte in enumerate(partes):
-            title = "📜 Reglamento de la comunidad"
-            if len(partes) > 1:
-                title = f"📜 Reglamento de la comunidad ({i + 1}/{len(partes)})"
-            emb = discord.Embed(title=title, description=parte, color=0x5865F2)
-            emb.set_footer(text=hospital)
-            # Solo el primer mensaje lleva el botón Aceptar
-            if i == 0:
-                await member.send(embed=emb, view=view)
+        for i, chunk in enumerate(chunks, start=1):
+            emb = embed_reglas_chunk(chunk, i, len(chunks))
+            if i == len(chunks):
+                await user.send(embed=emb, view=view)
             else:
-                await member.send(embed=emb)
+                await user.send(embed=emb)
         return True, None
     except discord.Forbidden:
-        return False, "Tienes los MD cerrados. Ábrelos e inténtalo de nuevo."
+        return False, "No pude enviarte MD. Abre mensajes directos del servidor e inténtalo otra vez."
     except Exception as e:
         return False, str(e)
 
@@ -237,69 +252,136 @@ class PanelReglasView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @ui.button(label="Recibir reglas por MD", style=discord.ButtonStyle.primary, emoji="📜", custom_id="reglas_dm")
-    async def reglas_dm(self, inter: discord.Interaction, btn: ui.Button):
-        if not isinstance(inter.user, discord.Member):
-            await inter.response.send_message("Solo en el servidor.", ephemeral=True)
-            return
-        if ya_acepto(inter.user.id):
-            await inter.response.send_message("Ya aceptaste las reglas. Usa `/reglas` para reenviar el texto.", ephemeral=True)
-            return
+    @ui.button(label="Recibir reglas en MD", style=discord.ButtonStyle.primary, custom_id="comunidad:panel_md")
+    async def enviar_md(self, inter: discord.Interaction, button: ui.Button):
         await inter.response.defer(ephemeral=True)
         ok, err = await enviar_reglas_dm(inter.user)
         if ok:
             await inter.followup.send(
-                "📬 Reglas en tus **MD**. Pulsa **Acepto las reglas** allí para el rol de comunidad.",
+                embed=discord.Embed(
+                    title="📬  Reglamento enviado",
+                    description=(
+                        "**Estado:** enviado a tus mensajes directos\n\n"
+                        "Abre el MD del bot y pulsa **Acepto las reglas** para activar el acceso de comunidad."
+                    ),
+                    color=0x2E86DE,
+                ),
                 ephemeral=True,
             )
         else:
-            await inter.followup.send(f"❌ No pude enviarte MD: {err}", ephemeral=True)
+            await inter.followup.send(
+                embed=discord.Embed(
+                    title="❌  No se pudo enviar",
+                    description=f"**Estado:** error\n\n{err}",
+                    color=0xFF4757,
+                ),
+                ephemeral=True,
+            )
 
 
 def embed_reglas_panel() -> discord.Embed:
+    hospital = _hospital()
     return discord.Embed(
-        title="📜 Reglamento de la comunidad",
+        title="🖥️  Panel de acceso — Reglamento",
         description=(
-            "Pulsa el botón para recibir las **reglas en tu MD**.\n"
-            "Al **aceptarlas** se te asignará el rol de **comunidad**.\n\nTambién: `/reglas`."
+            f"```\n"
+            f" HOSPITAL  ·  {hospital.upper()}\n"
+            f" MÓDULO    ·  REGLAS DE COMUNIDAD\n"
+            f"```\n\n"
+            f"**Estado del acceso**\n"
+            f"Para usar los canales de comunidad debes **leer y aceptar** el reglamento.\n\n"
+            f"**Pasos**\n"
+            f"1️⃣ Pulsa **Recibir reglas en MD**\n"
+            f"2️⃣ Abre el mensaje directo del bot\n"
+            f"3️⃣ Pulsa **Acepto las reglas**\n\n"
+            f"También puedes usar el comando **`/reglas`**.\n\n"
+            f"*El sistema asignará el rol de comunidad automáticamente si está configurado.*"
         ),
-        color=0x5865F2,
-    )
+        color=0x2E86DE,
+        timestamp=discord.utils.utcnow(),
+    ).set_footer(text=f"🖥️  {hospital}  ·  Sistema de gestión  │  Panel de reglas")
 
 
 def registrar(bot: commands.Bot) -> None:
     @bot.tree.command(name="reglas", description="Recibe el reglamento por mensaje directo")
     async def reglas_cmd(inter: discord.Interaction):
         if not isinstance(inter.user, discord.Member):
-            await inter.response.send_message("Solo en el servidor.", ephemeral=True)
+            await inter.response.send_message(
+                embed=discord.Embed(
+                    title="❌  Solo en el servidor",
+                    description="Usa este comando dentro del servidor del hospital.",
+                    color=0xFF4757,
+                ),
+                ephemeral=True,
+            )
             return
         await inter.response.defer(ephemeral=True)
         ok, err = await enviar_reglas_dm(inter.user)
         if ok:
-            await inter.followup.send("📬 Reglas enviadas a tus MD. Acéptalas allí.", ephemeral=True)
+            await inter.followup.send(
+                embed=discord.Embed(
+                    title="📬  Reglamento enviado",
+                    description="Revisa tus **MD** y acepta las reglas para activar el acceso.",
+                    color=0x2E86DE,
+                ),
+                ephemeral=True,
+            )
         else:
-            await inter.followup.send(f"❌ {err}", ephemeral=True)
+            await inter.followup.send(
+                embed=discord.Embed(
+                    title="❌  Error",
+                    description=str(err),
+                    color=0xFF4757,
+                ),
+                ephemeral=True,
+            )
 
-    @bot.tree.command(name="panel_reglas", description="Publica el panel de reglas")
-    @app_commands.describe(canal="Canal del panel")
+    @bot.tree.command(name="panel_reglas", description="Publica el panel de reglas del sistema")
+    @app_commands.describe(canal="Canal donde publicar el panel")
     async def panel_reglas(inter: discord.Interaction, canal: Optional[discord.TextChannel] = None):
         if not isinstance(inter.user, discord.Member) or not permisos.member_tiene_alguna_key(
             inter.user, "OWNER", "CO_OWNER", "DIRECTOR", "DIRECTOR_ADMINISTRATIVO"
         ):
-            await inter.response.send_message("❌ Sin permiso.", ephemeral=True)
+            await inter.response.send_message(
+                embed=discord.Embed(
+                    title="❌  Sin permiso",
+                    description="Solo dirección o administración pueden publicar este panel.",
+                    color=0xFF4757,
+                ),
+                ephemeral=True,
+            )
             return
         dest = canal or inter.channel
         if not isinstance(dest, discord.TextChannel):
-            await inter.response.send_message("❌ Canal inválido.", ephemeral=True)
+            await inter.response.send_message(
+                embed=discord.Embed(
+                    title="❌  Canal inválido",
+                    description="Elige un canal de texto.",
+                    color=0xFF4757,
+                ),
+                ephemeral=True,
+            )
             return
         emb = embed_reglas_panel()
         rol = detectar_rol_comunidad(inter.guild) if inter.guild else None
         if rol:
-            emb.add_field(name="Rol detectado", value=rol.mention, inline=False)
+            emb.add_field(name="Rol de comunidad", value=rol.mention, inline=False)
         else:
-            emb.add_field(name="⚠️ Rol", value="Crea un rol **Comunidad** o **Miembro**.", inline=False)
+            emb.add_field(
+                name="⚠️ Rol",
+                value="Crea un rol llamado **Comunidad** o **Miembro** para el acceso automático.",
+                inline=False,
+            )
         await dest.send(embed=emb, view=PanelReglasView())
-        await inter.response.send_message(f"✅ Panel reglas en {dest.mention}", ephemeral=True)
+        await inter.response.send_message(
+            embed=discord.Embed(
+                title="✅  Panel publicado",
+                description=f"Panel de reglas en {dest.mention}",
+                color=0x00D2A0,
+            ),
+            ephemeral=True,
+        )
 
     bot.add_view(PanelReglasView())
-    print("[comunidad] OK")
+    bot.add_view(AceptarReglasView())
+    print("[comunidad] OK — reglas estilo sistema")
