@@ -2,13 +2,12 @@
 """
 cert_dg_fix.py
 ================
-Asegura que DIRECTOR_GENERAL, OWNER y CO_OWNER puedan firmar
-las 3 firmas de certificación (encargado, docencia, zona).
-Se carga después de cert_flujo_interno.
+Director General NO puede firmar certificaciones por el solo hecho de ser DG.
+Solo firma si tiene el rol/key concreto de esa firma (Docencia, Ala, Encargado).
+OWNER / CO_OWNER sí pueden firmar las 3 (control del sistema).
 """
 from __future__ import annotations
 
-import traceback
 from typing import Set
 
 import discord
@@ -19,7 +18,7 @@ def registrar(bot: commands.Bot) -> None:
     try:
         import cert_flujo_interno as C
     except Exception as e:
-        print("[cert_dg_fix] no hay cert_flujo_interno:", e)
+        print("[cert_dg_fix] no disponible:", e)
         return
 
     KEY_DOC = getattr(C, "KEY_DOC", "DIRECTOR_DOCENCIA")
@@ -29,12 +28,12 @@ def registrar(bot: commands.Bot) -> None:
         out: Set[str] = set()
         if not isinstance(member, discord.Member):
             return out
-        if member.guild_permissions.administrator:
-            out.update({"OWNER", "CO_OWNER", KEY_DOC, KEY_ENC, "DIRECTOR_GENERAL"})
-
         permisos = getattr(C, "permisos", None)
-        config = getattr(C, "config", None)
         roles_store = getattr(C, "roles_store", None)
+        try:
+            import config as cfg
+        except Exception:
+            cfg = None
 
         if permisos:
             for key in (
@@ -60,32 +59,23 @@ def registrar(bot: commands.Bot) -> None:
                         out.add(key)
                 except Exception:
                     pass
-            try:
-                import config as cfg
-
-                for key in list(getattr(cfg, "KEYS_NOMBRES", {}) or {}):
-                    try:
+            if cfg:
+                try:
+                    for key in list(getattr(cfg, "KEYS_NOMBRES", {}) or {}):
                         if permisos.member_tiene_alguna_key(member, key):
                             out.add(key)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
-        if roles_store:
+        if roles_store and cfg:
             try:
-                import config as cfg
-
                 for key in list(getattr(cfg, "KEYS_NOMBRES", {}) or {}):
-                    try:
-                        rid = roles_store.obtener_id_key(key)
-                        if not rid:
-                            continue
-                        rol = member.guild.get_role(rid)
-                        if rol and rol in member.roles:
-                            out.add(key)
-                    except Exception:
-                        pass
+                    rid = roles_store.obtener_id_key(key)
+                    if not rid:
+                        continue
+                    rol = member.guild.get_role(rid)
+                    if rol and rol in member.roles:
+                        out.add(key)
             except Exception:
                 pass
         return out
@@ -93,11 +83,11 @@ def registrar(bot: commands.Bot) -> None:
     def _roles_firma_para(member: discord.Member, reg: dict) -> Set[str]:
         keys = _member_keys(member)
         puede: Set[str] = set()
-        # DG / OWNER / CO_OWNER → las 3 firmas
-        if "DIRECTOR_GENERAL" in keys or "OWNER" in keys or "CO_OWNER" in keys:
+
+        # Solo OWNER / CO_OWNER bypass — NO Director General
+        if "OWNER" in keys or "CO_OWNER" in keys:
             return {"encargado", "docencia", "zona"}
-        if member.guild_permissions.administrator:
-            return {"encargado", "docencia", "zona"}
+
         if (
             member.id == int(reg.get("encargado_id") or 0)
             or "ENCARGADO" in keys
@@ -106,18 +96,16 @@ def registrar(bot: commands.Bot) -> None:
             or "SUPERVISOR" in keys
         ):
             puede.add("encargado")
+
         if KEY_DOC in keys:
             puede.add("docencia")
+
         zona = reg.get("key_director_zona") or "DIRECTOR_ADMINISTRATIVO"
         if zona in keys:
             puede.add("zona")
+
         return puede
 
     C._member_keys = _member_keys
     C._roles_firma_para = _roles_firma_para
-
-    # Si el módulo principal se rompió (placeholder), no hay VistaFirmasUnica
-    if not hasattr(C, "VistaFirmasUnica"):
-        print("[cert_dg_fix] AVISO: cert_flujo_interno incompleto; reinicia tras restaurar el archivo")
-    else:
-        print("[cert_dg_fix] OK — Director General puede firmar las 3")
+    print("[cert_dg_fix] OK — Director General NO firma sin el rol de esa firma")
