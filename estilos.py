@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 estilos.py — Identidad visual del hospital.
-Premium, realista y completa: tono institucional, información clara,
-acabado profesional. Solo presentación (API compatible).
+Estilo tecnológico moderado, en español, claro y profesional.
+Solo presentación (misma firma de funciones).
 """
 from __future__ import annotations
 
@@ -12,33 +12,33 @@ import discord
 
 import config
 
-# Paleta institucional realista (elegante, con color, sin neón extremo)
+# Colores institucionales (tech suave, legibles en Discord)
 COLORES: Dict[str, int] = {
-    "exito": 0x1E8449,
-    "error": 0xC0392B,
-    "aviso": 0xD68910,
-    "info": 0x1A5276,
-    "neutral": 0x5D6D7E,
-    "medico": 0x0E6655,
-    "finanzas": 0xB7950B,
-    "sancion": 0x6C3483,
-    "investigacion": 0x5B2C6F,
-    "rrhh": 0x1F618D,
-    "logistica": 0xCA6F1E,
-    "seguridad": 0x2C3E50,
-    "admin": 0x1B2631,
-    "anuncio": 0x1A5276,
-    "ticket": 0x2874A6,
-    "citatorio": 0xA04000,
-    "certificacion": 0x0E6655,
-    "inactividad": 0x566573,
-    "licencia": 0x2471A3,
-    "estado": 0x0E6655,
-    "roblox": 0x1A5276,
-    "whitelist": 0x1E8449,
-    "aprobado": 0x1E8449,
-    "rechazado": 0xC0392B,
-    "pendiente": 0xD68910,
+    "exito": 0x1ABC9C,
+    "error": 0xE74C3C,
+    "aviso": 0xF39C12,
+    "info": 0x3498DB,
+    "neutral": 0x7F8C8D,
+    "medico": 0x1ABC9C,
+    "finanzas": 0xF1C40F,
+    "sancion": 0x9B59B6,
+    "investigacion": 0x8E44AD,
+    "rrhh": 0x5DADE2,
+    "logistica": 0xE67E22,
+    "seguridad": 0x34495E,
+    "admin": 0x2C3E50,
+    "anuncio": 0x3498DB,
+    "ticket": 0x5DADE2,
+    "citatorio": 0xE67E22,
+    "certificacion": 0x16A085,
+    "inactividad": 0x95A5A6,
+    "licencia": 0x3498DB,
+    "estado": 0x1ABC9C,
+    "roblox": 0x3498DB,
+    "whitelist": 0x1ABC9C,
+    "aprobado": 0x1ABC9C,
+    "rechazado": 0xE74C3C,
+    "pendiente": 0xF39C12,
 }
 
 EMOJI_TIPO: Dict[str, str] = {
@@ -60,7 +60,7 @@ EMOJI_TIPO: Dict[str, str] = {
     "certificacion": "🎓",
     "inactividad": "⏸️",
     "licencia": "📋",
-    "estado": "🏥",
+    "estado": "🖥️",
     "neutral": "📄",
     "roblox": "🔗",
     "whitelist": "✅",
@@ -70,34 +70,34 @@ EMOJI_TIPO: Dict[str, str] = {
 }
 
 _AREA: Dict[str, str] = {
-    "exito": "Registro de operaciones",
-    "error": "Control de incidencias",
-    "aviso": "Alertas institucionales",
-    "info": "Información general",
+    "exito": "Sistema hospitalario",
+    "error": "Control de errores",
+    "aviso": "Avisos del sistema",
+    "info": "Información",
     "neutral": "Gestión hospitalaria",
     "medico": "Área clínica",
-    "finanzas": "Dirección financiera",
-    "sancion": "Régimen disciplinario",
-    "investigacion": "Investigación y docencia",
+    "finanzas": "Finanzas",
+    "sancion": "Disciplina",
+    "investigacion": "Docencia",
     "rrhh": "Recursos humanos",
-    "logistica": "Logística e insumos",
-    "seguridad": "Seguridad hospitalaria",
-    "admin": "Dirección general",
-    "anuncio": "Comunicados oficiales",
-    "ticket": "Mesa de ayuda",
-    "citatorio": "Convocatorias formales",
-    "certificacion": "Formación y acreditación",
+    "logistica": "Logística",
+    "seguridad": "Seguridad",
+    "admin": "Administración",
+    "anuncio": "Comunicados",
+    "ticket": "Soporte",
+    "citatorio": "Citatorios",
+    "certificacion": "Certificaciones",
     "inactividad": "Control de personal",
-    "licencia": "Licencias médicas",
-    "estado": "Centro de operaciones",
-    "roblox": "Verificación de identidad",
-    "whitelist": "Admisión de personal",
+    "licencia": "Licencias",
+    "estado": "Estado del sistema",
+    "roblox": "Verificación",
+    "whitelist": "Admisión",
     "aprobado": "Resoluciones",
     "rechazado": "Resoluciones",
-    "pendiente": "Trámites en curso",
+    "pendiente": "En proceso",
 }
 
-_MARCAS = tuple(EMOJI_TIPO.values()) + ("🏥",)
+_MARCAS = tuple(EMOJI_TIPO.values())
 
 
 def _hospital() -> str:
@@ -105,7 +105,7 @@ def _hospital() -> str:
 
 
 def _footer(tipo: str = "neutral", extra: str = "") -> str:
-    parts = [f"🏥 {_hospital()}"]
+    parts = [f"🖥️ {_hospital()}"]
     area = _AREA.get(tipo)
     if area:
         parts.append(area)
@@ -136,7 +136,6 @@ def crear_embed(
     thumbnail_url: Optional[str] = None,
     image_url: Optional[str] = None,
 ) -> discord.Embed:
-    """Fábrica principal de embeds (compatible con todo el bot)."""
     key = (tipo or "neutral").lower().strip()
     color = COLORES.get(key, COLORES["neutral"])
     emoji = EMOJI_TIPO.get(key, "📄")
@@ -199,12 +198,9 @@ def embed_exito_rapido(
 ) -> discord.Embed:
     return crear_embed(
         "exito",
-        titulo or "Procedimiento completado",
+        titulo or "Listo",
         descripcion
-        or (
-            "La operación se registró correctamente en el sistema del hospital.\n"
-            "Puede consultar el historial correspondiente si requiere constancia."
-        ),
+        or "La acción se guardó correctamente en el sistema del hospital.",
         autor=autor,
     )
 
@@ -212,15 +208,15 @@ def embed_exito_rapido(
 def embed_error_rapido(titulo: str, descripcion: str) -> discord.Embed:
     return crear_embed(
         "error",
-        titulo or "No se pudo completar la solicitud",
+        titulo or "No se pudo completar",
         descripcion
         or (
-            "El sistema interrumpió la operación por una validación pendiente.\n\n"
-            "**Qué puede hacer**\n"
-            "• Revisar que todos los datos estén correctos\n"
-            "• Verificar que cuenta con el permiso adecuado\n"
-            "• Intentar nuevamente en unos momentos\n\n"
-            "Si el problema continúa, contacte a la dirección de su área o a Sistemas."
+            "El sistema no pudo terminar esta acción.\n\n"
+            "**Revisa:**\n"
+            "• Que los datos estén bien escritos\n"
+            "• Que tengas el permiso necesario\n"
+            "• Vuelve a intentarlo en un momento\n\n"
+            "Si sigue fallando, avisa a tu director de área o a Sistemas."
         ),
     )
 
@@ -243,30 +239,26 @@ def embed_info(
 
 def embed_permiso_denegado(requerido: str = "") -> discord.Embed:
     cuerpo = (
-        "No dispone de la **autorización** necesaria para este procedimiento.\n\n"
-        "Este módulo está reservado al personal con la competencia jerárquica correspondiente."
+        "No tienes permiso para usar esta función.\n\n"
+        "Está reservada al personal con el cargo o rol adecuado."
     )
     if requerido:
-        cuerpo += f"\n\n**Nivel o cargo requerido:** `{requerido}`"
+        cuerpo += f"\n\n**Se necesita:** `{requerido}`"
     cuerpo += (
-        "\n\nSi considera que se trata de un error en la asignación de roles, "
-        "consulte con su superior inmediato, con Recursos Humanos o con la Dirección General."
+        "\n\nSi crees que es un error, habla con tu superior, con RRHH "
+        "o con la Dirección General."
     )
-    return crear_embed("error", "Acceso restringido", cuerpo)
+    return crear_embed("error", "Sin permiso", cuerpo)
 
 
 def embed_validacion(mensaje: str) -> discord.Embed:
     return crear_embed(
         "aviso",
-        "Validación de datos",
+        "Datos incompletos o incorrectos",
         mensaje
         or (
-            "Uno o más campos del formulario no cumplen los requisitos.\n\n"
-            "**Revisar:**\n"
-            "• Campos obligatorios completos\n"
-            "• Formato de fechas, identificaciones o montos\n"
-            "• Que el usuario o canal indicado exista en el servidor\n\n"
-            "Corrija la información e intente el envío otra vez."
+            "Falta información o algún dato no es válido.\n\n"
+            "Completa bien el formulario y vuelve a enviarlo."
         ),
     )
 
@@ -301,20 +293,18 @@ def embed_whitelist_roblox(
     )
 
     if aprobado:
-        titulo = "Verificación de identidad aprobada"
+        titulo = "Verificación aprobada"
         desc = (
-            f"La verificación del personaje ha sido **aprobada** conforme al protocolo de ingreso.\n\n"
-            f"La cuenta de Roblox quedó **vinculada** al expediente digital de personal del hospital.\n"
-            f"Bienvenido/a al equipo de **{_hospital()}**."
+            f"La cuenta de Roblox fue **verificada y vinculada** al personal del hospital.\n\n"
+            f"Bienvenido/a a **{_hospital()}**."
         )
         tipo = "whitelist"
         estado = "✅ Aprobado"
     else:
-        titulo = "Verificación de identidad no aprobada"
+        titulo = "Verificación no aprobada"
         desc = (
-            f"La verificación **no fue aprobada** en esta instancia.\n\n"
-            f"El postulante puede corregir los datos (usuario, captura o requisitos) "
-            f"y presentar una **nueva solicitud** según el protocolo de admisión."
+            f"La verificación **no pasó** en esta ocasión.\n\n"
+            f"Puedes corregir los datos y volver a postularte según las reglas de ingreso."
         )
         tipo = "rechazado"
         estado = "❌ No aprobado"
@@ -330,7 +320,7 @@ def embed_whitelist_roblox(
         [
             ("Usuario Roblox", f"`{username}`", True),
             ("Nombre visible", f"**{display}**", True),
-            ("ID de cuenta", f"`{user_id}`", True),
+            ("ID", f"`{user_id}`", True),
         ],
     )
 
@@ -344,16 +334,16 @@ def embed_whitelist_roblox(
             created_fmt = str(created)[:10]
         embed_campo(emb, "Cuenta creada", created_fmt)
 
-    embed_campo(emb, "Resolución", f"**{estado}**")
+    embed_campo(emb, "Resultado", f"**{estado}**")
     if staff:
-        embed_campo(emb, "Evaluado por", staff.mention)
+        embed_campo(emb, "Revisado por", staff.mention)
 
     if profile_url:
         emb.add_field(
-            name="Perfil externo",
-            value=f"[Abrir perfil en Roblox]({profile_url})",
+            name="Perfil",
+            value=f"[Ver en Roblox]({profile_url})",
             inline=False,
         )
 
-    emb.set_footer(text=_footer("whitelist", "Unidad de admisión"))
+    emb.set_footer(text=_footer("whitelist", "Admisión de personal"))
     return emb
