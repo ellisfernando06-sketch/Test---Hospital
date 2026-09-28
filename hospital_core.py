@@ -110,28 +110,27 @@ _BAJA = (
 )
 
 _CRITICOS = {
-    "certificar", "registrar_firma", "ver_mi_firma",
-    "limpiar", "limpiar_todo", "sincronizar_comandos",
-    "panel_solicitudes", "configurar_roles", "otorgar_key", "bootstrap_owner",
-    "tienda", "sancionar", "capacitacion",
-    "balance", "balance_general", "historial_financiero",
-    "ooc_ban", "sancion_aplicar",
-    "solicitar_insumo", "cap_historial",
-    "convocar_directores", "convocar_reunion_departamento",
-    "citatorio_general", "citatorio_disciplina", "citatorio_admin",
-    "abrir_expediente",
-    "mis_otorgados",
-    "licencia",
-    "paciente", "inventario", "turno", "codigo", "ficha", "postulacion",
-    "despedir", "solicitar_inactividad", "anuncio", "reglas", "panel_reglas",
+    "agregar_reglamento", "anuncio", "anuncio_direccion", "abrir_expediente",
+    "balance", "balance_general", "bootstrap_owner",
+    "capacitacion", "cap_historial", "certificar",
+    "citatorio_admin", "citatorio_disciplina", "citatorio_general",
+    "codigo", "configurar_roles", "convocar_directores", "convocar_reunion_departamento",
+    "despedir", "ficha", "historial_financiero",
+    "inventario", "licencia", "limpiar", "limpiar_todo",
+    "mis_otorgados", "ooc_ban", "otorgar_key",
+    "paciente", "panel_reglas", "panel_solicitudes", "postulacion",
+    "registrar_firma", "reglas", "revisar_inactividad",
+    "sancion_aplicar", "sancionar", "sincronizar_comandos",
+    "solicitar_inactividad", "solicitar_insumo",
+    "tienda", "turno", "ver_mi_firma",
 }
 
 
-def _fetch(url: str = _URL, intentos: int = 8) -> str:
+def _descargar_nucleo(intentos: int = 8) -> str:
     ultimo = None
     for i in range(intentos):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "HospitalBot/1.0"})
+            req = urllib.request.Request(_URL, headers={"User-Agent": "HospitalBot/1.0"})
             with urllib.request.urlopen(req, timeout=60) as r:
                 return r.read().decode("utf-8", errors="replace")
         except Exception as e:
@@ -140,70 +139,193 @@ def _fetch(url: str = _URL, intentos: int = 8) -> str:
     raise RuntimeError(f"No se pudo descargar el núcleo: {ultimo}")
 
 
-def _cargar_modulos(bot: commands.Bot) -> None:
-    import importlib
-    for nombre in _MODULOS:
-        try:
-            mod = importlib.import_module(nombre)
-            if hasattr(mod, "registrar") and callable(mod.registrar):
-                mod.registrar(bot)
-                print(f"[hospital_core] OK {nombre}", flush=True)
-            else:
-                print(f"[hospital_core] sin registrar: {nombre}", flush=True)
-        except Exception:
-            print(f"[hospital_core] FALLO {nombre}:", flush=True)
-            traceback.print_exc()
+def _cargar(module_globals: dict):
+    source = _descargar_nucleo()
 
+    on_ready_pattern = re.compile(
+        r"@bot\.event\s*\nasync def on_ready\(\):\n"
+        r"(?:.*\n)*?"
+        r"(?=\n# -{5,}|\n@bot\.tree\.error|\n@bot\.tree\.command)",
+        re.MULTILINE,
+    )
 
-def _recortar(bot: commands.Bot) -> None:
+    new_on_ready = (
+        "@bot.event\n"
+        "async def on_ready():\n"
+        "    if not getattr(bot, \"_hospital_views_ok\", False):\n"
+        "        try:\n"
+        "            bot.add_view(AbrirTicketView())\n"
+        "            bot.add_view(CerrarTicketView())\n"
+        "            bot.add_view(PanelAccionesView())\n"
+        "            bot.add_view(PanelEstadoView())\n"
+        "            bot.add_view(AprobacionView(key_aprobador=\"DIRECTOR_RRHH\", solicitud_id=\"persist\"))\n"
+        "            bot._hospital_views_ok = True\n"
+        "        except Exception as _e:\n"
+        "            print(\"[on_ready] vistas:\", _e)\n"
+        "    try:\n"
+        "        import verificacion as _verif\n"
+        "        if not getattr(bot, \"_verif_view_ok\", False):\n"
+        "            bot.add_view(_verif.VerificarView(staff_id=0, guild_id=0))\n"
+        "            bot._verif_view_ok = True\n"
+        "    except Exception as _e:\n"
+        "        print(\"[on_ready] VerificarView:\", _e)\n"
+        "    try:\n"
+        "        import capacitacion_postular as _capp\n"
+        "        if not getattr(bot, \"_cap_postular_view_ok\", False):\n"
+        "            bot.add_view(_capp.PostularCapView())\n"
+        "            bot._cap_postular_view_ok = True\n"
+        "    except Exception as _e:\n"
+        "        print(\"[on_ready] PostularCapView:\", _e)\n"
+        "    print(f\"Conectado como {bot.user} (ID: {bot.user.id})\")\n"
+        "    try:\n"
+        "        bot_control.set_mode(\"online\", \"Bot reiniciado y operativo.\", None)\n"
+        "        await bot_control.publicar_estado(bot)\n"
+        "        print(\"[on_ready] ONLINE\")\n"
+        "    except Exception as _e:\n"
+        "        print(\"[on_ready] bot_control:\", _e)\n"
+        "    fn = getattr(bot, \"_hospital_sync_todo\", None)\n"
+        "    if callable(fn):\n"
+        "        try:\n"
+        "            await asyncio.sleep(2)\n"
+        "            names = await fn(\"on_ready\")\n"
+        "            print(f\"[on_ready] Sync: {len(names or [])} comandos\")\n"
+        "        except Exception as _e:\n"
+        "            print(\"[on_ready] Sync error:\", _e)\n"
+    )
+
+    m = on_ready_pattern.search(source)
+    if m:
+        source = source[: m.start()] + new_on_ready + source[m.end() :]
+        print("[hospital_core] on_ready OK", flush=True)
+    else:
+        source = source.replace("bot.tree.clear_commands(guild=None)", "pass")
+        source = source.replace(
+            "await bot.tree.sync()  # publica árbol vacío a nivel global (quita duplicados viejos)",
+            "pass",
+        )
+
     try:
-        for c in list(bot.tree.get_commands()):
-            if c.name in _QUITAR or c.name in _BAJA:
-                try:
-                    bot.tree.remove_command(c.name)
-                except Exception:
-                    pass
+        source = re.sub(
+            r"@bot\.tree\.command\(name=\"ordenar_roles\"[^\n]*\n"
+            r"(?:@[^\n]+\n)*"
+            r"async def ordenar_roles_cmd\([\s\S]*?\n(?=\S)",
+            "\n",
+            source,
+            count=1,
+        )
     except Exception:
         pass
 
+    for _cmd in ("mi_expediente", "expediente", "licencia"):
+        try:
+            source = re.sub(
+                rf"@bot\.tree\.command\(name=\"{_cmd}\"[^\n]*\n"
+                r"(?:@[^\n]+\n)*"
+                rf"async def \w+\([\s\S]*?\n(?=\n@|\n# |\nif |\nasync def |\ndef )",
+                "\n",
+                source,
+                count=1,
+            )
+        except Exception:
+            pass
 
-def _cargar(g: dict):
-    src = _fetch()
-    ns = dict(g)
-    ns["__name__"] = "Bot_Hospital_remote"
-    exec(compile(src, "Bot_Hospital_remote.py", "exec"), ns)
+    source = source.replace(
+        'description="[Solo primer uso] Te asigna la key OWNER para poder configurar el bot"',
+        'description="[Solo primer uso] Te asigna Gerente Developer"',
+    )
+    source = source.replace("la key OWNER", "la key Gerente Developer")
 
-    bot = ns.get("bot")
+    marker = "if not config.TOKEN:"
+    idx = source.find(marker)
+    if idx > 0:
+        source = source[:idx]
+
+    print("[hospital_core] Exec núcleo…", flush=True)
+    try:
+        exec(compile(source, "hospital_core_remote.py", "exec"), module_globals)
+    except Exception:
+        print("[hospital_core] ERROR al ejecutar núcleo:", flush=True)
+        traceback.print_exc()
+        raise
+
+    bot = module_globals.get("bot")
     if bot is None:
-        for v in ns.values():
-            if isinstance(v, commands.Bot):
-                bot = v
+        raise RuntimeError("bot no definido tras exec del núcleo")
+
+    for n in _QUITAR:
+        try:
+            bot.tree.remove_command(n)
+        except Exception:
+            pass
+    try:
+        bot.tree.remove_command("licencia")
+    except Exception:
+        pass
+
+    print("[hospital_core] Módulos…", flush=True)
+    for name in _MODULOS:
+        try:
+            mod = __import__(name)
+            if hasattr(mod, "registrar"):
+                mod.registrar(bot)
+            print(f"[hospital_core] ✓ {name}", flush=True)
+        except Exception:
+            print(f"[hospital_core] ✗ {name} (ignorado)", flush=True)
+            traceback.print_exc()
+
+    def _listar():
+        try:
+            return sorted({c.name for c in bot.tree.get_commands()})
+        except Exception:
+            return []
+
+    def _recortar():
+        for n in _QUITAR:
+            try:
+                bot.tree.remove_command(n)
+            except Exception:
+                pass
+        names = _listar()
+        if len(names) <= _MAX_SLASH:
+            return names
+        for n in _BAJA:
+            if len(_listar()) <= _MAX_SLASH:
                 break
-    if bot is None:
-        raise RuntimeError("No se encontró bot en el núcleo remoto")
+            if n in _CRITICOS:
+                continue
+            try:
+                bot.tree.remove_command(n)
+            except Exception:
+                pass
+        while len(_listar()) > _MAX_SLASH:
+            rest = [n for n in _listar() if n not in _CRITICOS]
+            if not rest:
+                break
+            try:
+                bot.tree.remove_command(rest[-1])
+            except Exception:
+                break
+        names = _listar()
+        if "licencia" not in names:
+            try:
+                import licencia_medica as _lic
+                _lic.registrar(bot)
+                names = _listar()
+            except Exception:
+                traceback.print_exc()
+        return names
 
-    g["bot"] = bot
-    for k, v in ns.items():
-        if not str(k).startswith("_") and k not in g:
-            g[k] = v
-
-    original_setup = getattr(bot, "setup_hook", None)
-
-    async def setup_hook():
-        if original_setup:
-            r = original_setup()
-            if asyncio.iscoroutine(r):
-                await r
-        _cargar_modulos(bot)
-        await _sync_todo("setup")
-
-    bot.setup_hook = setup_hook  # type: ignore
+    try:
+        final = _recortar()
+        print(f"[hospital_core] Comandos: {len(final)}", flush=True)
+    except Exception:
+        traceback.print_exc()
 
     async def _sync_todo(reason: str = "") -> list:
         result = []
         print(f"[hospital_core] SYNC ({reason})", flush=True)
         try:
-            _recortar(bot)
+            _recortar()
         except Exception:
             pass
         try:
@@ -213,8 +335,8 @@ def _cargar(g: dict):
             except Exception as e:
                 print("[hospital_core] globales:", e, flush=True)
             targets = list(bot.guilds) if bot.guilds else [discord.Object(id=_GUILD_ID)]
-            for gobj in targets:
-                gid = int(getattr(gobj, "id", _GUILD_ID))
+            for g in targets:
+                gid = int(getattr(g, "id", _GUILD_ID))
                 try:
                     obj = discord.Object(id=gid)
                     bot.tree.copy_global_to(guild=obj)
@@ -243,7 +365,7 @@ def _cargar(g: dict):
         msg = await ctx.reply("🔄 Sync…")
         try:
             names = await _sync_todo("!forzar_sync")
-            ok = [c for c in ("licencia", "despedir", "solicitar_inactividad", "revisar_inactividad") if c in names]
+            ok = [c for c in ("licencia", "despedir", "solicitar_inactividad", "revisar_inactividad", "reglas", "anuncio") if c in names]
             await msg.edit(content=f"✅ {len(names)} comandos · `{', '.join(ok) or '—'}`")
         except Exception as e:
             await msg.edit(content=f"❌ {e}")
