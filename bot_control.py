@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import discord
-from discord import app_commands, ui
+from discord import ui
 
 import config
 import permisos
@@ -160,43 +160,35 @@ def status_embed() -> discord.Embed:
 async def publicar_estado(
     bot: discord.Client, guild: Optional[discord.Guild] = None
 ) -> None:
-    """Publica el embed de estado en el canal configurado (si existe)."""
-    _load_status()
-    emb = status_embed()
-    canal_id = None
+    canal_id = (getattr(config, "CANALES", {}) or {}).get("bot_status")
+    if not canal_id:
+        return
+    canal = bot.get_channel(int(canal_id))
+    if not canal:
+        return
     try:
-        canal_id = (getattr(config, "CANALES", {}) or {}).get("estado_bot") or (
-            getattr(config, "CANALES", {}) or {}
-        ).get("anuncios")
+        await canal.send(embed=status_embed())
+    except discord.Forbidden:
+        pass
     except Exception:
-        canal_id = None
-
-    targets = [guild] if guild else list(bot.guilds)
-    for g in targets:
-        if not g:
-            continue
-        ch = None
-        if canal_id:
-            ch = g.get_channel(int(canal_id))
-        if ch:
-            try:
-                await ch.send(embed=emb)
-            except Exception:
-                pass
+        pass
 
 
 class AprobacionBotView(ui.View):
     def __init__(self, accion: str, solicitante_id: int, bot: discord.Client, extra: str = ""):
-        super().__init__(timeout=600)
+        super().__init__(timeout=3600)
         self.accion = accion
         self.solicitante_id = solicitante_id
         self.bot = bot
-        self.extra = extra or ""
+        self.extra = extra
 
     async def _es_owner(self, interaction: discord.Interaction) -> bool:
         if not isinstance(interaction.user, discord.Member):
             return False
-        return permisos.member_tiene_alguna_key(interaction.user, "OWNER")
+        try:
+            return permisos.member_tiene_key(interaction.user, "OWNER")
+        except Exception:
+            return permisos.member_tiene_alguna_key(interaction.user, "OWNER")
 
     @ui.button(label="Aprobar", style=discord.ButtonStyle.success)
     async def aprobar(self, interaction: discord.Interaction, button: ui.Button):
@@ -205,7 +197,7 @@ class AprobacionBotView(ui.View):
                 embed=crear_embed(
                     "error",
                     "Acceso restringido",
-                    "Solo el **Gerente Developer (OWNER)** puede aprobar esta acción de sistemas.",
+                    "Solo el **Gerente Developer** puede autorizar esta operación de sistemas.",
                 ),
                 ephemeral=True,
             )
@@ -216,8 +208,8 @@ class AprobacionBotView(ui.View):
         await interaction.followup.send(
             embed=crear_embed(
                 "exito",
-                "Acción autorizada",
-                f"Se aprobó la operación **{self.accion}**. Ejecutando protocolo…",
+                "Operación autorizada",
+                f"Se aprobó **{self.accion}**. Ejecutando protocolo…",
             ),
             ephemeral=True,
         )
@@ -230,7 +222,7 @@ class AprobacionBotView(ui.View):
                 embed=crear_embed(
                     "error",
                     "Acceso restringido",
-                    "Solo el **Gerente Developer (OWNER)** puede denegar esta solicitud.",
+                    "Solo el **Gerente Developer** puede denegar esta solicitud.",
                 ),
                 ephemeral=True,
             )
@@ -241,8 +233,8 @@ class AprobacionBotView(ui.View):
         await interaction.followup.send(
             embed=crear_embed(
                 "error",
-                "Acción denegada",
-                f"La operación **{self.accion}** fue rechazada por la administración.",
+                "Operación denegada",
+                f"La acción **{self.accion}** fue rechazada por la administración.",
             ),
             ephemeral=True,
         )
@@ -311,108 +303,137 @@ async def _ejecutar_accion(
             if interaction.response.is_done():
                 await interaction.followup.send(embed=msg)
             else:
-                await interaction.response.send_message(embed=msg)
+                await interaction.response.send_message(msg if isinstance(msg, str) else embed=msg)
 
     elif accion == "reiniciar":
         set_mode(
-            "mantenimiento",
-            "Reinicio de proceso en curso. Los servicios se restablecerán en breve.",
+            "online",
+            extra
+            or "Reinicio completado. Bot operativo y sincronizado tras el reinicio del proceso.",
             por,
         )
         await publicar_estado(bot)
         msg = crear_embed(
             "aviso",
             "Reinicio de sistemas",
-            "Se inició el protocolo de reinicio. El servicio se reanudará automáticamente.",
+            "Se inició el protocolo de reinicio. Si el servicio está supervisado (Railway/PM2), se reanudará automáticamente.",
         )
         if interaction:
             if interaction.response.is_done():
                 await interaction.followup.send(embed=msg)
             else:
                 await interaction.response.send_message(embed=msg)
-        await asyncio.sleep(1.2)
+        await asyncio.sleep(1.5)
         await bot.close()
 
 
-async def _solicitar_o_ejecutar(
-    inter: discord.Interaction,
+async def manejar_control_bot(
+    interaction: discord.Interaction,
+    bot: discord.Client,
     accion: str,
     mensaje: str = "",
 ) -> None:
-    user = inter.user
+    """OWNER ejecuta al momento. CO_OWNER solicita aprobación al OWNER."""
+    user = interaction.user
     if not isinstance(user, discord.Member):
-        await inter.response.send_message(
-            embed=crear_embed("error", "Contexto inválido", "Este comando solo puede usarse en el servidor."),
+        await interaction.response.send_message(
+            embed=crear_embed("error", "Contexto inválido", "Este procedimiento solo aplica dentro del servidor."),
             ephemeral=True,
         )
         return
 
-    if permisos.member_tiene_alguna_key(user, "OWNER"):
-        await inter.response.defer(ephemeral=True)
-        await _ejecutar_accion(inter.client, accion, user.id, mensaje, inter)
-        return
+    try:
+        es_owner = permisos.member_tiene_key(user, "OWNER")
+        es_co = permisos.member_tiene_key(user, "CO_OWNER")
+    except Exception:
+        es_owner = permisos.member_tiene_alguna_key(user, "OWNER")
+        es_co = permisos.member_tiene_alguna_key(user, "CO_OWNER")
 
-    if permisos.member_tiene_alguna_key(user, "CO_OWNER"):
-        emb = crear_embed(
-            "aviso",
-            f"Solicitud de {accion} del sistema",
-            f"**Solicitante:** {user.mention} (Co-Owner)\n"
-            f"**Operación:** `{accion}`\n"
-            f"**Detalle:** {mensaje or '—'}\n\n"
-            f"Requiere autorización del **Gerente Developer**.",
-            autor=user,
-        )
-        view = AprobacionBotView(accion, user.id, inter.client, mensaje)
-        # MD a owners
-        enviados = 0
-        rid = roles_store.obtener_id_key("OWNER")
-        if rid and inter.guild:
-            rol = inter.guild.get_role(rid)
-            if rol:
-                for m in rol.members:
-                    if m.bot:
-                        continue
-                    try:
-                        await m.send(embed=emb, view=view)
-                        enviados += 1
-                    except Exception:
-                        continue
-        await inter.response.send_message(
+    if not es_owner and not es_co:
+        await interaction.response.send_message(
             embed=crear_embed(
-                "info",
-                "Solicitud enviada",
-                f"Se notificó al Gerente Developer ({enviados} destinatario/s). "
-                f"Quedará en espera de autorización.",
+                "error",
+                "Acceso restringido",
+                "Solo **Gerente Developer** o **Co-Owner** pueden gestionar el estado de la plataforma.",
             ),
             ephemeral=True,
         )
         return
 
-    await inter.response.send_message(
-        embed=crear_embed(
-            "error",
-            "Acceso restringido",
-            "Solo **Gerente Developer** o **Co-Owner** pueden gestionar el estado del sistema.",
-        ),
-        ephemeral=True,
+    if es_owner:
+        await interaction.response.defer(ephemeral=True)
+        await _ejecutar_accion(bot, accion, user.id, mensaje, interaction)
+        return
+
+    embed = crear_embed(
+        "aviso",
+        f"Solicitud de {accion} del sistema",
+        f"**Solicitante:** {user.mention} (Co-Owner)\n"
+        f"**Operación:** `{accion}`\n"
+        f"**Detalle:** {mensaje or '—'}\n\n"
+        f"Requiere autorización del **Gerente Developer**.",
+        autor=user,
     )
+    view = AprobacionBotView(accion, user.id, bot, mensaje)
+
+    enviado = False
+    canal_id = (getattr(config, "CANALES", {}) or {}).get("aprobaciones")
+    if canal_id and interaction.guild:
+        canal = interaction.guild.get_channel(int(canal_id))
+        if canal:
+            owner_rid = roles_store.obtener_id_key("OWNER")
+            mencion = ""
+            if owner_rid:
+                rol = interaction.guild.get_role(owner_rid)
+                if rol:
+                    mencion = rol.mention
+            await canal.send(content=mencion or None, embed=embed, view=view)
+            enviado = True
+
+    if not enviado and interaction.guild:
+        owner_rid = roles_store.obtener_id_key("OWNER")
+        if owner_rid:
+            rol = interaction.guild.get_role(owner_rid)
+            if rol:
+                for m in rol.members:
+                    if m.bot:
+                        continue
+                    try:
+                        await m.send(embed=embed, view=view)
+                        enviado = True
+                        break
+                    except discord.Forbidden:
+                        continue
+
+    if enviado:
+        await interaction.response.send_message(
+            embed=crear_embed(
+                "info",
+                "Solicitud enviada",
+                "Se notificó al **Gerente Developer**. La operación quedará pendiente de autorización.",
+            ),
+            ephemeral=True,
+        )
+    else:
+        await interaction.response.send_message(
+            embed=crear_embed(
+                "error",
+                "Sin destinatario",
+                "No se pudo contactar a ningún Gerente Developer. "
+                "Configure el canal `aprobaciones` o verifique que exista un OWNER en el servidor.",
+            ),
+            ephemeral=True,
+        )
 
 
-def registrar(bot: discord.Client) -> None:
-    _load_status()
+# Alias usado por el núcleo Bot_Hospital.py
+async def solicitar_o_ejecutar(
+    interaction: discord.Interaction,
+    bot: discord.Client,
+    accion: str,
+    mensaje: str = "",
+) -> None:
+    await manejar_control_bot(interaction, bot, accion, mensaje)
 
-    # Los comandos de control suelen vivir en el núcleo; este módulo
-    # expone helpers. Si el núcleo ya registró /estado_bot etc., no duplicamos.
-    try:
-        presentes = {c.name for c in bot.tree.get_commands()}
-    except Exception:
-        presentes = set()
 
-    if "estado_bot" not in presentes:
-
-        @bot.tree.command(name="estado_bot", description="Consulta el estado operativo de la plataforma")
-        async def estado_bot_cmd(inter: discord.Interaction):
-            _load_status()
-            await inter.response.send_message(embed=status_embed())
-
-    print("[bot_control] OK — embeds de estado hospitalarios")
+_load_status()
