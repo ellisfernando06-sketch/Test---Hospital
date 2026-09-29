@@ -1,6 +1,8 @@
-# -*- coding: utf-8 -*
+# -*- coding: utf-8 -*-
 """
-config.py — EL ÚNICO ARCHIVO QUE DEBES EDITAR (IDs de canales y nombres).
+config.py — IDs de canales y nombres.
+OWNER / Gerente Developer se muestra siempre como Fundador y Owner.
+El organigrama oficial vive en roles_config.py (rama feature).
 """
 import os
 
@@ -11,7 +13,8 @@ MONEDA = "$"
 LOGO_URL = None
 
 KEYS_NOMBRES = {
-    "OWNER":                ("🛠️ Gerente Developer", "#E74C3C"),
+    "OWNER":                ("👑 Fundador y Owner", "#E74C3C"),
+    "FUNDADOR_OWNER":       ("👑 Fundador y Owner", "#E74C3C"),
     "CO_OWNER":             ("🤝 Co-Owner", "#C0392B"),
     "DIRECTOR_GENERAL":     ("🖥️ Director General", "#2C3E50"),
     "DIRECTOR_DISCIPLINA":  ("⚖️ Director de Disciplina", "#8E44AD"),
@@ -33,6 +36,7 @@ KEYS_NOMBRES = {
     "STAFF_SERVIDOR":       ("🖥️ Staff del Servidor", "#7F8C8D"),
 }
 
+# Legado: la key interna sigue siendo OWNER; el nombre visible es Fundador y Owner
 GERENTE_DEVELOPER_KEY = "OWNER"
 
 JERARQUIA_KEYS = [
@@ -125,11 +129,8 @@ DEPARTAMENTOS = {
         "emoji": "📚",
         "director_key": "DIRECTOR_DOCENCIA",
         "escalafon_nombres": [
-            "📚 Instructor Junior",
-            "📚 Instructor",
-            "📚 Instructor Senior",
-            "📚 Coordinador de Capacitación",
-            "📚 Jefe de Investigación y Docencia",
+            "📚 Instructor Junior", "📚 Instructor", "📚 Instructor Senior",
+            "📚 Coordinador de Capacitación", "📚 Jefe de Investigación y Docencia",
             "📚 Subdirector de Investigación y Docencia",
         ],
     },
@@ -146,10 +147,11 @@ CANALES = {
     "aprobaciones": None, "aprobaciones_rrhh": None,
     "citatorio_general": None, "citatorio_disciplina": None, "citatorio_admin": None,
     "panel_guardia": None, "log_quirofano": None,
+    "bienvenida": None, "verificacion": None,
 }
 
 SEPARADORES_ROLES = [
-    ("sep_cupula", "『 🛠️ GERENCIA / DESARROLLO 』", "#E74C3C"),
+    ("sep_cupula", "『 👑 AUTORIDADES COMPETENTES 』", "#E74C3C"),
     ("sep_servidor", "『 🖥️ STAFF DEL SERVIDOR 』", "#7F8C8D"),
     ("sep_directores", "『 🏛️ DIRECCIÓN HOSPITAL 』", "#2C3E50"),
     ("sep_medico", "『 🩺 CUERPO MÉDICO 』", "#1ABC9C"),
@@ -219,58 +221,31 @@ ROLES_OTORGADOS = {
 }
 
 MAP_CERT_A_ROL = {
-    "rcp": "cert_rcp",
-    "primeros auxilios": "cert_primeros_auxilios",
-    "bioseguridad": "cert_bioseguridad",
-    "atención al paciente": "cert_atencion_paciente",
-    "atencion al paciente": "cert_atencion_paciente",
-    "ética": "cert_etica",
-    "etica": "cert_etica",
-    "evacuación": "cert_evacuacion",
-    "evacuacion": "cert_evacuacion",
-    "laboratorista": "cert_laboratorista",
-    "soporte vital": "cert_sva",
-    "sva": "cert_sva",
-    "urgencias": "cert_urgencias",
-    "procedimientos clínicos": "cert_proc_clinicos",
-    "cirugía": "cert_cirugia",
-    "cirugia": "cert_cirugia",
-    "cuidados de enfermería": "cert_cuidados_enf",
-    "medicamentos": "cert_medicacion",
-    "curaciones": "cert_curaciones",
-    "signos": "cert_signos",
-    "inducción": "cert_induccion",
-    "induccion": "cert_induccion",
-    "expedientes": "cert_expedientes",
-    "entrevistas": "cert_entrevistas",
-    "caja": "cert_caja",
-    "contabilidad": "cert_contabilidad",
-    "presupuesto": "cert_presupuesto",
-    "inventario": "cert_inventario",
-    "almacén": "cert_almacen",
-    "almacen": "cert_almacen",
-    "cadena de frío": "cert_cadena_frio",
-    "vigilancia": "cert_vigilancia",
-    "accesos": "cert_accesos",
-    "amenazas": "cert_amenazas",
-    "recepción": "cert_recepcion",
-    "recepcion": "cert_recepcion",
-    "documentación administrativa": "cert_doc_admin",
-    "agenda": "cert_citas",
-    "formador": "cert_formador",
-    "evaluación": "cert_evaluacion",
-    "evaluacion": "cert_evaluacion",
-    "investigación": "cert_investigacion",
-    "investigacion": "cert_investigacion",
-    "disciplinaria": "cert_disciplina",
-    "liderazgo": "cert_liderazgo",
+    "rcp": "cert_rcp", "primeros auxilios": "cert_primeros_auxilios",
+    "bioseguridad": "cert_bioseguridad", "atención al paciente": "cert_atencion_paciente",
+    "atencion al paciente": "cert_atencion_paciente", "ética": "cert_etica", "etica": "cert_etica",
+    "evacuación": "cert_evacuacion", "evacuacion": "cert_evacuacion",
+    "laboratorista": "cert_laboratorista", "soporte vital": "cert_sva", "sva": "cert_sva",
+    "urgencias": "cert_urgencias", "procedimientos clínicos": "cert_proc_clinicos",
+    "cirugía": "cert_cirugia", "cirugia": "cert_cirugia",
+    "cuidados de enfermería": "cert_cuidados_enf", "medicamentos": "cert_medicacion",
+    "curaciones": "cert_curaciones", "signos": "cert_signos",
+    "inducción": "cert_induccion", "induccion": "cert_induccion",
+    "expedientes": "cert_expedientes", "entrevistas": "cert_entrevistas",
+    "caja": "cert_caja", "contabilidad": "cert_contabilidad", "presupuesto": "cert_presupuesto",
+    "inventario": "cert_inventario", "almacén": "cert_almacen", "almacen": "cert_almacen",
+    "cadena de frío": "cert_cadena_frio", "vigilancia": "cert_vigilancia",
+    "accesos": "cert_accesos", "amenazas": "cert_amenazas",
+    "recepción": "cert_recepcion", "recepcion": "cert_recepcion",
+    "documentación administrativa": "cert_doc_admin", "agenda": "cert_citas",
+    "formador": "cert_formador", "evaluación": "cert_evaluacion", "evaluacion": "cert_evaluacion",
+    "investigación": "cert_investigacion", "investigacion": "cert_investigacion",
+    "disciplinaria": "cert_disciplina", "liderazgo": "cert_liderazgo",
 }
 
 MAP_TIENDA_CAT_A_ROL = {
-    "instrumentos_medicos": "eq_clinico",
-    "farmacia": "eq_farmacia",
-    "tecnologia": "eq_tecnologia",
-    "uniformes": "uniforme_medico",
+    "instrumentos_medicos": "eq_clinico", "farmacia": "eq_farmacia",
+    "tecnologia": "eq_tecnologia", "uniformes": "uniforme_medico",
 }
 
 GRAVEDAD_PACIENTE = ["Estable", "Observación", "Grave", "Crítico"]
@@ -279,14 +254,14 @@ CATEGORIAS_INVENTARIO = [
     "Equipo médico", "Protección personal", "Oficina y papelería", "General",
 ]
 CODIGOS_EMERGENCIA = {
-    "azul": {"nombre": "Código Azul", "descripcion": "Paro cardiorrespiratorio — reanimación inmediata.", "color": "#2980B9", "mencion_keys": ["DIRECTOR_MEDICO", "DIRECTOR_ENFERMERIA", "STAFF"]},
-    "rojo": {"nombre": "Código Rojo", "descripcion": "Incendio dentro de las instalaciones.", "color": "#C0392B", "mencion_keys": ["DIRECTOR_SEGURIDAD", "SUPERVISOR", "STAFF"]},
-    "plata": {"nombre": "Código Plata", "descripcion": "Persona armada o situación con rehenes.", "color": "#95A5A6", "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH"]},
+    "azul": {"nombre": "Código Azul", "descripcion": "Paro cardiorrespiratorio.", "color": "#2980B9", "mencion_keys": ["DIRECTOR_MEDICO", "DIRECTOR_ENFERMERIA", "STAFF"]},
+    "rojo": {"nombre": "Código Rojo", "descripcion": "Incendio.", "color": "#C0392B", "mencion_keys": ["DIRECTOR_SEGURIDAD", "SUPERVISOR", "STAFF"]},
+    "plata": {"nombre": "Código Plata", "descripcion": "Persona armada.", "color": "#95A5A6", "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH"]},
     "negro": {"nombre": "Código Negro", "descripcion": "Amenaza de bomba.", "color": "#2C3E50", "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH"]},
-    "naranja": {"nombre": "Código Naranja", "descripcion": "Derrame de material peligroso o contaminación.", "color": "#E67E22", "mencion_keys": ["DIRECTOR_LOGISTICA", "DIRECTOR_MEDICO"]},
-    "amarillo": {"nombre": "Código Amarillo", "descripcion": "Desastre externo / llegada masiva de heridos.", "color": "#F1C40F", "mencion_keys": ["DIRECTOR_MEDICO", "DIRECTOR_ENFERMERIA", "STAFF"]},
-    "ambar": {"nombre": "Código Ámbar", "descripcion": "Desaparición o secuestro de un menor.", "color": "#D35400", "mencion_keys": ["DIRECTOR_SEGURIDAD", "SUPERVISOR"]},
-    "verde": {"nombre": "Código Verde", "descripcion": "Evacuación general del edificio.", "color": "#27AE60", "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH", "STAFF"]},
+    "naranja": {"nombre": "Código Naranja", "descripcion": "Material peligroso.", "color": "#E67E22", "mencion_keys": ["DIRECTOR_LOGISTICA", "DIRECTOR_MEDICO"]},
+    "amarillo": {"nombre": "Código Amarillo", "descripcion": "Desastre externo.", "color": "#F1C40F", "mencion_keys": ["DIRECTOR_MEDICO", "DIRECTOR_ENFERMERIA", "STAFF"]},
+    "ambar": {"nombre": "Código Ámbar", "descripcion": "Menor desaparecido.", "color": "#D35400", "mencion_keys": ["DIRECTOR_SEGURIDAD", "SUPERVISOR"]},
+    "verde": {"nombre": "Código Verde", "descripcion": "Evacuación.", "color": "#27AE60", "mencion_keys": ["DIRECTOR_SEGURIDAD", "DIRECTOR_RRHH", "STAFF"]},
 }
 FICHA_CAMPOS = {"especialidad": "Especialidad", "licencia": "N° de licencia", "contacto": "Contacto RP", "ingreso": "Fecha de ingreso", "notas": "Notas administrativas"}
 TICKET_STAFF_KEYS = ["SUPERVISOR", "DIRECTOR", "DIRECTOR_DISCIPLINA", "DIRECTOR_GENERAL", "DIRECTOR_ADMINISTRATIVO", "CO_OWNER", "OWNER"]
@@ -300,6 +275,16 @@ TIPOS_SOLICITUD_RRHH = {
 }
 
 def nombre_key(key: str) -> str:
+    """Nombre visible. Preferir organigrama oficial; nunca mostrar Gerente Developer."""
+    try:
+        import roles_config
+        n = roles_config.nombre_key(key)
+        if n and n != key:
+            return n
+    except Exception:
+        pass
+    if key in ("OWNER", "GERENTE_DEVELOPER", "FUNDADOR_OWNER"):
+        return "👑 Fundador y Owner"
     return KEYS_NOMBRES.get(key, (key, ""))[0]
 
 def keys_de_direccion():
