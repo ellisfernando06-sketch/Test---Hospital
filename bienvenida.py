@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""bienvenida.py — Bienvenida tech limpia al entrar al servidor."""
+"""bienvenida.py — Bienvenida + roles de categoría al entrar."""
 from __future__ import annotations
 
 from typing import Optional
@@ -30,8 +30,8 @@ def embed_bienvenida(member: discord.Member) -> discord.Embed:
             f"**Qué hacer**\n"
             f"1. Usa `/reglas` o el panel de reglamento\n"
             f"2. Acepta las reglas en el MD del bot\n"
-            f"3. Si quieres trabajar aquí, ve a **postulaciones**\n"
-            f"4. Separa canales de RP (IC) y fuera de rol (OOC)"
+            f"3. Completa la verificación Roblox si te la piden\n"
+            f"4. Si quieres trabajar aquí, ve a **postulaciones**"
         ),
         color=0x1ABC9C,
         timestamp=discord.utils.utcnow(),
@@ -61,8 +61,8 @@ def embed_bienvenida_dm(member: discord.Member) -> discord.Embed:
             f"Tu entrada a **{hospital}** quedó registrada.\n\n"
             f"**Siguiente paso**\n"
             f"• En el servidor usa **`/reglas`**\n"
-            f"• O abre el panel de reglamento\n"
-            f"• Acepta las reglas para el rol de comunidad\n\n"
+            f"• Acepta las reglas para el rol de comunidad\n"
+            f"• Completa verificación Roblox si aplica\n\n"
             f"Luego podrás usar los canales públicos.\n"
             f"Para unirte al personal, busca **postulaciones**."
         ),
@@ -88,6 +88,12 @@ def _canal_bienvenida(guild: discord.Guild) -> Optional[discord.TextChannel]:
 async def _on_member_join(member: discord.Member) -> None:
     if member.bot or not member.guild:
         return
+    # Roles de categoría (separadores: sin permisos / sin color de cargo)
+    try:
+        import roles_setup
+        await roles_setup.asignar_uniformes_al_entrar(member)
+    except Exception as e:
+        print(f"[bienvenida] uniformes: {e}")
     emb = embed_bienvenida(member)
     canal = _canal_bienvenida(member.guild)
     if canal:
@@ -103,4 +109,4 @@ async def _on_member_join(member: discord.Member) -> None:
 
 def registrar(bot: commands.Bot) -> None:
     bot.add_listener(_on_member_join, "on_member_join")
-    print("[bienvenida] OK")
+    print("[bienvenida] OK — uniformes de categoría al entrar")
