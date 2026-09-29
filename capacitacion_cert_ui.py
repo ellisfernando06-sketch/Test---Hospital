@@ -1,5 +1,8 @@
-# -*- coding: utf-8 -*
-"""Comando /certificar: selector de certificación + modal (sin interacción negada)."""
+# -*- coding: utf-8 -*-
+"""Comando /certificar: selector de certificación + modal.
+Encargados de la capacitación pueden iniciar y firmar el primer paso.
+La emisión final del certificado solo la hacen Prefecto, Dir. Docencia y Autoridades.
+"""
 from __future__ import annotations
 
 import traceback
@@ -17,25 +20,14 @@ except Exception:
 
 
 def _puede_iniciar(member) -> bool:
+    """Puede iniciar el flujo y firmar como encargado."""
     if not isinstance(member, discord.Member):
         return False
     if member.guild_permissions.administrator:
         return True
     if not permisos:
         return False
-    return bool(
-        permisos.member_tiene_alguna_key(
-            member,
-            "OWNER",
-            "CO_OWNER",
-            "DIRECTOR_DOCENCIA",
-            "DIRECTOR_GENERAL",
-            "DIRECTOR",
-            "ENCARGADO_AREA",
-            "JEFE_DEPARTAMENTO",
-            "SUPERVISOR",
-        )
-    )
+    return bool(permisos.member_puede_firmar_encargado(member))
 
 
 class CertificacionSelect(ui.Select):
@@ -145,7 +137,8 @@ class DatosCertificado(ui.Modal, title="Datos del estudiante"):
                 await inter.followup.send(
                     f"✅ Solicitud **#{aid}** creada para {self.usuario.mention}.\n"
                     f"Certificación: **{self.cert.get('nombre')}**\n"
-                    f"Requiere firmas: encargado, Docencia y Director del ala.",
+                    f"Requiere firmas: encargado → Docencia → Director del ala.\n"
+                    f"La **emisión final** solo la hacen Prefecto / Dir. Docencia / Autoridades.",
                     ephemeral=True,
                 )
             except Exception as exc:
@@ -166,7 +159,6 @@ def registrar(bot: commands.Bot) -> None:
     print("[capacitacion_cert_ui] cargando…")
     try:
         certificaciones_abiertas.asegurar_defaults()
-        # Quitar raíz vieja si existe para re-registrar limpio
         try:
             bot.tree.remove_command("certificar")
         except Exception:
@@ -174,7 +166,7 @@ def registrar(bot: commands.Bot) -> None:
 
         @bot.tree.command(
             name="certificar",
-            description="Certifica un estudiante (elige certificación en el menú)",
+            description="Inicia certificación (encargado firma; emisión final: Prefecto/Docencia/Autoridades)",
         )
         @app_commands.describe(usuario="Estudiante que aprobó la certificación")
         async def certificar(inter: discord.Interaction, usuario: discord.Member):
@@ -185,8 +177,8 @@ def registrar(bot: commands.Bot) -> None:
                     )
                 if not _puede_iniciar(inter.user):
                     return await inter.response.send_message(
-                        "❌ Sin permiso para certificar.\n"
-                        "Se requiere: Docencia, Director, Jefe, Supervisor, OWNER…",
+                        "❌ Sin permiso para iniciar certificación.\n"
+                        "Pueden firmar como encargado: Jefes, Médicos, Directores y Autoridades.",
                         ephemeral=True,
                     )
 
