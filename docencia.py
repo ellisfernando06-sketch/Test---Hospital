@@ -1,14 +1,14 @@
-# -*- coding: utf-8 -*
+# -*- coding: utf-8 -*-
 """
 docencia.py — Certificados y capacitaciones (solo Roleplay).
-Director de Docencia emite certificados bonitos de uso exclusivo en RP.
+Emitir certificado final: solo Prefecto, Director de Docencia y Autoridades.
 """
 from __future__ import annotations
 
 import json
 import os
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 
 import discord
 from discord import app_commands, ui
@@ -20,7 +20,6 @@ import permisos
 _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 _CERT_PATH = os.path.join(_DATA_DIR, "certificados.json")
 
-# Tipos de certificado predefinidos (RP)
 TIPOS_CERTIFICADO = {
     "rcp": {
         "titulo": "Certificado de RCP / BLS",
@@ -148,10 +147,6 @@ def embed_certificado(
     receptor: Optional[discord.abc.User] = None,
     emisor: Optional[discord.abc.User] = None,
 ) -> discord.Embed:
-    """
-    Certificado profesional de uso exclusivo en Roleplay.
-    Diseño tipo diploma oficial del hospital.
-    """
     tipo = TIPOS_CERTIFICADO.get(reg.get("tipo") or "personalizado", TIPOS_CERTIFICADO["personalizado"])
     emoji = tipo.get("emoji", "📜")
     titulo = reg.get("titulo") or tipo.get("titulo") or "Certificado"
@@ -226,15 +221,10 @@ def embed_certificado(
 
 
 def _puede_emitir(member: discord.Member) -> bool:
+    """Solo Prefecto, Director de Docencia y Autoridades Competentes."""
     if not isinstance(member, discord.Member):
         return False
-    return permisos.member_tiene_alguna_key(
-        member,
-        "OWNER", "CO_OWNER",
-        "DIRECTOR_DOCENCIA", "DIRECTOR_GENERAL",
-        "DIRECTOR_MEDICO", "DIRECTOR_ENFERMERIA",
-        "DIRECTOR_ADMINISTRATIVO",
-    )
+    return permisos.member_puede_emitir_certificado(member)
 
 
 class ModalCertificado(ui.Modal, title="📜 Emitir certificado RP"):
@@ -253,7 +243,7 @@ class ModalCertificado(ui.Modal, title="📜 Emitir certificado RP"):
     )
     departamento = ui.TextInput(
         label="Departamento / área (opcional)",
-        placeholder="Cuerpo Médico, Enfermería…",
+        placeholder="Área Médica, Logística…",
         max_length=80,
         required=False,
     )
@@ -276,7 +266,11 @@ class ModalCertificado(ui.Modal, title="📜 Emitir certificado RP"):
 
     async def on_submit(self, inter: discord.Interaction):
         if not isinstance(inter.user, discord.Member) or not _puede_emitir(inter.user):
-            await inter.response.send_message("❌ Sin permiso para emitir certificados.", ephemeral=True)
+            await inter.response.send_message(
+                "❌ Solo **Prefecto de Operaciones**, **Director de Docencia** "
+                "o **Autoridades Competentes** pueden emitir certificados.",
+                ephemeral=True,
+            )
             return
 
         reg = emitir(
@@ -289,7 +283,6 @@ class ModalCertificado(ui.Modal, title="📜 Emitir certificado RP"):
             departamento=str(self.departamento) if self.departamento.value else "",
         )
 
-        # También registrar en capacitaciones legacy
         try:
             import capacitaciones
             capacitaciones.certificar(self.usuario.id, str(self.titulo), inter.user.id)
@@ -306,7 +299,6 @@ class ModalCertificado(ui.Modal, title="📜 Emitir certificado RP"):
             embed=emb,
         )
 
-        # DM al receptor
         try:
             await self.usuario.send(
                 content=f"🎓 Has recibido un certificado del **{getattr(config, 'NOMBRE_HOSPITAL', 'Hospital')}**:",
@@ -315,7 +307,6 @@ class ModalCertificado(ui.Modal, title="📜 Emitir certificado RP"):
         except Exception:
             pass
 
-        # Log
         try:
             import logs_store
             ch = logs_store.resolver_canal_log(self.bot, inter.guild, "log_certificados")
@@ -334,7 +325,7 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="crear_certificado",
-        description="Emitir un certificado RP (Director de Docencia / dirección)",
+        description="Emitir certificado RP (solo Prefecto, Dir. Docencia y Autoridades)",
     )
     @app_commands.describe(
         usuario="Personal que recibe el certificado",
@@ -357,7 +348,8 @@ def registrar(bot: commands.Bot) -> None:
     ):
         if not isinstance(inter.user, discord.Member) or not _puede_emitir(inter.user):
             await inter.response.send_message(
-                "❌ Solo **Director de Docencia**, dirección u OWNER pueden emitir certificados.",
+                "❌ Solo **Prefecto de Operaciones**, **Director de Docencia** "
+                "o **Autoridades Competentes** (Fundador y Owner / Co-Owner) pueden emitir certificados.",
                 ephemeral=True,
             )
             return
@@ -394,14 +386,14 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="ver_certificados",
-        description="Ver certificados RP de un miembro (staff)",
+        description="Ver certificados RP de un miembro (Gerencia / Docencia)",
     )
     @app_commands.describe(usuario="Miembro a consultar")
     async def ver_certificados(inter: discord.Interaction, usuario: discord.Member):
         if not isinstance(inter.user, discord.Member) or not permisos.member_tiene_alguna_key(
             inter.user,
-            "OWNER", "CO_OWNER", "DIRECTOR_DOCENCIA", "DIRECTOR_GENERAL",
-            "DIRECTOR_RRHH", "DIRECTOR_ADMINISTRATIVO", "SUPERVISOR",
+            "DIR_DOCENCIA", "DIR_RRHH", "DIR_GENERAL", "PREFECTO_OPERACIONES",
+            "FUNDADOR_OWNER", "CO_OWNER",
         ):
             await inter.response.send_message("❌ Sin permiso.", ephemeral=True)
             return
@@ -439,19 +431,21 @@ def registrar(bot: commands.Bot) -> None:
         if not reg:
             await inter.response.send_message("❌ Certificado no encontrado.", ephemeral=True)
             return
-        # Público si es el dueño o staff
         es_dueno = inter.user.id == int(reg.get("uid") or 0)
         es_staff = isinstance(inter.user, discord.Member) and permisos.member_tiene_alguna_key(
             inter.user,
-            "OWNER", "CO_OWNER", "DIRECTOR_DOCENCIA", "DIRECTOR_GENERAL",
-            "DIRECTOR_RRHH", "SUPERVISOR",
+            "DIR_DOCENCIA", "DIR_RRHH", "DIR_GENERAL", "PREFECTO_OPERACIONES",
+            "FUNDADOR_OWNER", "CO_OWNER",
         )
         if not es_dueno and not es_staff:
-            await inter.response.send_message("❌ Solo el titular o staff pueden mostrar este certificado.", ephemeral=True)
+            await inter.response.send_message(
+                "❌ Solo el titular o Gerencia/Docencia pueden mostrar este certificado.",
+                ephemeral=True,
+            )
             return
         receptor = inter.guild.get_member(int(reg["uid"])) if inter.guild else None
         emisor = inter.guild.get_member(int(reg["emitido_por"])) if inter.guild and reg.get("emitido_por") else None
         emb = embed_certificado(reg, inter.guild, receptor=receptor, emisor=emisor)
         await inter.response.send_message(embed=emb)
 
-    print("[docencia] OK — certificados RP")
+    print("[docencia] OK — certificados RP (emitir: Prefecto / Dir. Docencia / Autoridades)")
