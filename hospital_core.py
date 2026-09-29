@@ -18,7 +18,6 @@ _URL = (
 )
 _GUILD_ID = 1381360019467014184
 
-# Módulos locales (se suman / sustituyen al núcleo remoto)
 _MODULOS = (
     "comandos_nuevos",
     "centro_solicitudes_ui",
@@ -46,14 +45,13 @@ _MODULOS = (
     "despidos",
     "inactividad",
     "bienvenida",
-    "setup_servidor",  # organigrama + normativas + pedir canales
+    "setup_servidor",
 )
 
-# Solo quitar si el módulo local lo vuelve a registrar (evitar duplicados rotos del remoto)
 _REEMPLAZADOS_POR_LOCAL = (
-    "licencia",  # licencia_medica
-    "despedir",  # despidos
-    "anuncio",   # anuncios_largos / mejoras_ui
+    "licencia",
+    "despedir",
+    "anuncio",
 )
 
 
@@ -135,7 +133,6 @@ def _cargar(module_globals: dict):
             "pass",
         )
 
-    # Quitar del CÓDIGO fuente solo comandos que el módulo local sustituye
     for _cmd in _REEMPLAZADOS_POR_LOCAL:
         try:
             source = re.sub(
@@ -149,11 +146,13 @@ def _cargar(module_globals: dict):
         except Exception:
             pass
 
+    # Textos visibles: Fundador y Owner (nunca "Gerente Developer")
     source = source.replace(
         'description="[Solo primer uso] Te asigna la key OWNER para poder configurar el bot"',
-        'description="[Solo primer uso] Te asigna Gerente Developer"',
+        'description="[Solo primer uso] Te asigna Fundador y Owner"',
     )
-    source = source.replace("la key OWNER", "la key Gerente Developer")
+    source = source.replace("la key OWNER", "la key Fundador y Owner")
+    source = source.replace("Gerente Developer", "Fundador y Owner")
 
     marker = "if not config.TOKEN:"
     idx = source.find(marker)
@@ -172,7 +171,6 @@ def _cargar(module_globals: dict):
     if bot is None:
         raise RuntimeError("bot no definido tras exec del núcleo")
 
-    # Cargar TODOS los módulos locales (añaden / sobrescriben comandos)
     print("[hospital_core] Módulos…", flush=True)
     for name in _MODULOS:
         try:
@@ -200,7 +198,6 @@ def _cargar(module_globals: dict):
         try:
             try:
                 app_id = bot.application_id or (await bot.application_info()).id
-                # limpiar solo globales viejos; los de guild se reescriben abajo
                 await bot.http.bulk_upsert_global_commands(int(app_id), [])
             except Exception as e:
                 print("[hospital_core] globales:", e, flush=True)
