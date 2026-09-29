@@ -101,7 +101,7 @@ def embed_whitelist_roblox(
     aprobado: bool = True,
     staff: Optional[discord.abc.User] = None,
 ) -> discord.Embed:
-    username = roblox_data.get("username") or "—"
+    username = roblox_data.get("username") or roblox_data.get("name") or "—"
     display = roblox_data.get("displayName") or username
     user_id = roblox_data.get("id") or "—"
     created = roblox_data.get("created") or "—"
@@ -154,3 +154,18 @@ def embed_whitelist_roblox(
 
     embed.set_footer(text=f"{getattr(config, 'NOMBRE_HOSPITAL', 'Hospital General')}  •  Sistema de Verificación")
     return embed
+
+
+def embed_roblox_verificacion(
+    discord_user: discord.abc.User,
+    roblox_data: Dict[str, Any],
+    staff: Optional[discord.abc.User] = None,
+    aprobado: bool = True,
+) -> discord.Embed:
+    """Alias usado por verificacion.py y comandos_nuevos (mismo diseño whitelist)."""
+    return embed_whitelist_roblox(
+        discord_user=discord_user,
+        roblox_data=roblox_data,
+        aprobado=aprobado,
+        staff=staff,
+    )
