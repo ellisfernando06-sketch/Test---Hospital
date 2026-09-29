@@ -2,6 +2,7 @@
 """
 permisos.py — Sistema de keys / jerarquía según organigrama oficial.
 Fuente de verdad: roles_config.py
+Compatible con keys antiguas (OWNER, DIRECTOR_*) guardadas en roles.json.
 """
 from __future__ import annotations
 
@@ -36,7 +37,6 @@ def _normalizar_key(key: str) -> str:
 
 
 def nivel_de_key(key: str) -> int:
-    """Nivel numérico (menor índice = más alto en la jerarquía)."""
     key = _normalizar_key(key)
     try:
         return roles_config.JERARQUIA_KEYS.index(key)
@@ -61,22 +61,32 @@ def keys_del_member(member: discord.Member) -> List[str]:
 
 
 def member_tiene_key(member: discord.Member, key: str) -> bool:
-    key = _normalizar_key(key)
-    rid = roles_store.obtener_id_key(key)
-    if not rid:
-        return False
-    return any(r.id == rid for r in member.roles)
+    """Acepta key antigua o nueva. Busca el ID en ambas formas para no romper el bot."""
+    candidates = [key, _normalizar_key(key)]
+    for old, newk in _ALIAS_KEYS.items():
+        if key == newk or _normalizar_key(key) == newk:
+            candidates.append(old)
+    seen = set()
+    for k in candidates:
+        if k in seen:
+            continue
+        seen.add(k)
+        rid = roles_store.obtener_id_key(k)
+        if rid and any(r.id == rid for r in member.roles):
+            return True
+    return False
 
 
 def member_tiene_alguna_key(member: discord.Member, *keys: str) -> bool:
     for k in keys:
-        k = _normalizar_key(k)
-        # "DIRECTOR" genérico → cualquier DIR_*
-        if k == "DIRECTOR":
-            for dk in ("DIR_GENERAL", "DIR_MEDICO", "DIR_RRHH", "DIR_DOCENCIA", "DIR_LOGISTICA"):
+        # DIRECTOR genérico → cualquier DIR_*
+        if k == "DIRECTOR" or _normalizar_key(k) == "DIRECTOR":
+            for dk in ("DIR_GENERAL", "DIR_MEDICO", "DIR_RRHH", "DIR_DOCENCIA", "DIR_LOGISTICA",
+                       "DIRECTOR_GENERAL", "DIRECTOR_MEDICO", "DIRECTOR_RRHH", "DIRECTOR_DOCENCIA", "DIRECTOR_LOGISTICA"):
                 if member_tiene_key(member, dk):
                     return True
-        elif member_tiene_key(member, k):
+            continue
+        if member_tiene_key(member, k):
             return True
     return False
 
@@ -89,9 +99,9 @@ def nivel_del_member(member: discord.Member) -> int:
 
 
 def puede_actuar_sobre(emisor: discord.Member, objetivo: discord.Member) -> bool:
-    if member_tiene_key(emisor, "FUNDADOR_OWNER"):
+    if member_tiene_key(emisor, "FUNDADOR_OWNER") or member_tiene_key(emisor, "OWNER"):
         return True
-    return nivel_del_member(emisor) < nivel_del_member(objetivo)  # menor índice = más alto
+    return nivel_del_member(emisor) < nivel_del_member(objetivo)
 
 
 def require_key(*keys: str):
@@ -104,39 +114,27 @@ def require_key(*keys: str):
     return app_commands.check(predicate)
 
 
-# ── Grupos de keys del organigrama ────────────────────────────────────
-
 KEYS_AUTORIDADES = ("FUNDADOR_OWNER", "CO_OWNER")
-
 KEYS_STAFF_SERVER = ("ADMIN_JEFE", "ADMIN", "ADMIN_PRUEBA")
-
 KEYS_GERENCIA = (
-    "PREFECTO_OPERACIONES",
-    "DIR_GENERAL",
-    "DIR_MEDICO",
-    "DIR_RRHH",
-    "DIR_DOCENCIA",
-    "DIR_LOGISTICA",
+    "PREFECTO_OPERACIONES", "DIR_GENERAL", "DIR_MEDICO",
+    "DIR_RRHH", "DIR_DOCENCIA", "DIR_LOGISTICA",
 )
-
 KEYS_EMITIR_CERTIFICADO = (
-    "PREFECTO_OPERACIONES",
-    "DIR_DOCENCIA",
-    "FUNDADOR_OWNER",
-    "CO_OWNER",
+    "PREFECTO_OPERACIONES", "DIR_DOCENCIA", "FUNDADOR_OWNER", "CO_OWNER",
 )
-
-KEYS_APROBAR_INACTIVIDAD = tuple(roles_config.KEYS_APROBAR_INACTIVIDAD)
+try:
+    KEYS_APROBAR_INACTIVIDAD = tuple(roles_config.KEYS_APROBAR_INACTIVIDAD)
+except Exception:
+    KEYS_APROBAR_INACTIVIDAD = ("FUNDADOR_OWNER", "CO_OWNER", "PREFECTO_OPERACIONES", "DIR_GENERAL", "DIR_RRHH")
 
 KEYS_MEDICO = (
     "INTERNO", "RESIDENTE", "JEFE_GUIA_RESIDENTES",
-    "MEDICO_GENERAL", "MEDICO_ESPECIALISTA", "JEFE_SERVICIO",
-    "DIR_MEDICO",
-) + KEYS_GERENCIA[:2] + KEYS_AUTORIDADES  # Prefecto, DIR_GENERAL + autoridades
+    "MEDICO_GENERAL", "MEDICO_ESPECIALISTA", "JEFE_SERVICIO", "DIR_MEDICO",
+) + KEYS_GERENCIA[:2] + KEYS_AUTORIDADES
 
 KEYS_DOCENCIA_STAFF = (
-    "JEFE_GUIA_RESIDENTES", "JEFE_DEPARTAMENTO", "JEFE_SERVICIO",
-    "DIR_DOCENCIA",
+    "JEFE_GUIA_RESIDENTES", "JEFE_DEPARTAMENTO", "JEFE_SERVICIO", "DIR_DOCENCIA",
 ) + KEYS_AUTORIDADES + ("PREFECTO_OPERACIONES",)
 
 
@@ -145,7 +143,6 @@ def member_puede_emitir_certificado(member: discord.Member) -> bool:
 
 
 def member_puede_firmar_encargado(member: discord.Member) -> bool:
-    """Encargado de una capacitación puede firmar el primer paso."""
     return member_tiene_alguna_key(
         member,
         "JEFE_DEPARTAMENTO", "JEFE_SERVICIO", "JEFE_GUIA_RESIDENTES",
