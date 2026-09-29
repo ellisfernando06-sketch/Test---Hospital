@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*
+# -*- coding: utf-8 -*-
 """
-capacitacion_postular.py — Programar/anunciar con botón Postularse
-y enlace a certificación del catálogo por rama.
+capacitacion_postular.py — Programar/anunciar con botón Postularse.
+Keys: DIR_DOCENCIA, JEFE_*, Prefecto, Autoridades.
 """
 from __future__ import annotations
 
@@ -52,9 +52,7 @@ class PostularCapView(discord.ui.View):
         titulo = (c or {}).get("titulo", f"#{cap_id}")
         if ok:
             await inter.response.send_message(
-                f"✅ Te postulaste a **{titulo}** (#{cap_id}).\n{msg}",
-                ephemeral=True,
-            )
+                f"✅ Te postulaste a **{titulo}** (#{cap_id}).\n{msg}", ephemeral=True)
         else:
             await inter.response.send_message(f"⚠️ {msg}", ephemeral=True)
 
@@ -78,8 +76,7 @@ class PostularCapView(discord.ui.View):
         titulo = (c or {}).get("titulo", f"#{cap_id}")
         if not ids:
             return await inter.response.send_message(
-                f"Nadie se ha postulado aún a **{titulo}**.", ephemeral=True
-            )
+                f"Nadie se ha postulado aún a **{titulo}**.", ephemeral=True)
         guild = inter.guild
         menciones = []
         for uid in ids[:40]:
@@ -90,6 +87,13 @@ class PostularCapView(discord.ui.View):
             f"👥 **Postulados a {titulo}** ({len(ids)}):\n" + ", ".join(menciones) + extra,
             ephemeral=True,
         )
+
+
+_KEYS_PROGRAMAR = (
+    "DIR_DOCENCIA", "DIR_GENERAL", "PREFECTO_OPERACIONES",
+    "JEFE_DEPARTAMENTO", "JEFE_GUIA_RESIDENTES", "JEFE_SERVICIO",
+    "FUNDADOR_OWNER", "CO_OWNER",
+)
 
 
 def registrar(bot: commands.Bot) -> None:
@@ -128,13 +132,12 @@ def _parchar_programar(bot: commands.Bot) -> None:
     try:
         depto_choices = [
             app_commands.Choice(name=d["nombre"], value=s)
-            for s, d in config.DEPARTAMENTOS.items()
+            for s, d in getattr(config, "DEPARTAMENTOS", {}).items()
         ]
         depto_choices.insert(0, app_commands.Choice(name="General / Todas las ramas", value="general"))
     except Exception:
         depto_choices = [app_commands.Choice(name="General", value="general")]
 
-    # Hasta 25 certificaciones en el choice de Discord
     certs = certificaciones_abiertas.listar_certificaciones_activas()[:25]
     cert_choices = [
         app_commands.Choice(
@@ -146,12 +149,12 @@ def _parchar_programar(bot: commands.Bot) -> None:
     if not cert_choices:
         cert_choices = [app_commands.Choice(name="(Sin catálogo)", value="0")]
 
-    @grupo.command(name="programar", description="Programa capacitación enlazada a una certificación y permite postularse")
+    @grupo.command(name="programar", description="Programa capacitación enlazada a una certificación")
     @app_commands.describe(
         titulo="Título de la capacitación",
         fecha_hora="Fecha y hora",
-        certificacion="Certificación del catálogo a la que apunta",
-        departamento="Rama / departamento destinatario",
+        certificacion="Certificación del catálogo",
+        departamento="Rama / departamento",
         descripcion="Descripción",
     )
     @app_commands.choices(departamento=depto_choices, certificacion=cert_choices)
@@ -165,17 +168,13 @@ def _parchar_programar(bot: commands.Bot) -> None:
     ):
         if not isinstance(interaction.user, discord.Member):
             return await interaction.response.send_message("❌ Solo en servidor.", ephemeral=True)
-        if not permisos.member_tiene_alguna_key(
-            interaction.user, "SUPERVISOR", "JEFE_DEPARTAMENTO", "DIRECTOR", "OWNER", "CO_OWNER",
-            "DIRECTOR_DOCENCIA", "ENCARGADO_AREA",
-        ):
-            raise permisos.SinPermiso(["SUPERVISOR", "JEFE_DEPARTAMENTO", "DIRECTOR", "OWNER"])
+        if not permisos.member_tiene_alguna_key(interaction.user, *_KEYS_PROGRAMAR):
+            raise permisos.SinPermiso(list(_KEYS_PROGRAMAR))
 
         slug = departamento.value if departamento else "general"
         cert_id = int(certificacion.value) if certificacion and certificacion.value != "0" else 0
         cert = certificaciones_abiertas.obtener_certificacion(cert_id) if cert_id else None
 
-        # Si el título está vacío de sentido, usar nombre de cert
         if cert and (not titulo or titulo.strip().lower() in ("auto", "-", "x")):
             titulo = cert["nombre"]
 
@@ -202,15 +201,12 @@ def _parchar_programar(bot: commands.Bot) -> None:
                 value=f"**{cert['nombre']}** (#{cert['id']})\n_{cert.get('descripcion') or ''}_",
                 inline=False,
             )
-            embed.add_field(
-                name="Director de zona",
-                value=cert.get("director_zona_key") or "DIRECTOR_DOCENCIA",
-                inline=True,
-            )
+            zona = cert.get("director_zona_key") or "DIR_DOCENCIA"
+            embed.add_field(name="Director de zona", value=zona, inline=True)
 
         embed.add_field(
             name="Postulación",
-            value="Pulsa **📝 Postularse** para inscribirte. Al completar, se podrá **certificar** con `/certificar`.",
+            value="Pulsa **📝 Postularse** para inscribirte. Al completar, usa `/certificar`.",
             inline=False,
         )
         embed.set_footer(text=f"id={cap_id} · cert={cert_id} · Botones activos")
@@ -223,26 +219,20 @@ def _parchar_programar(bot: commands.Bot) -> None:
             mencion = " ".join(r.mention for r in roles_m)
 
         await interaction.response.send_message(
-            content=mencion or None,
-            embed=embed,
-            view=PostularCapView(),
-        )
+            content=mencion or None, embed=embed, view=PostularCapView())
 
     @grupo.command(name="anunciar", description="Reenvía anuncio de capacitación con botón Postularse")
     @app_commands.describe(id_capacitacion="ID de la capacitación programada")
     async def capacitacion_anunciar(interaction: discord.Interaction, id_capacitacion: int):
         if not isinstance(interaction.user, discord.Member):
             return await interaction.response.send_message("❌ Solo en servidor.", ephemeral=True)
-        if not permisos.member_tiene_alguna_key(
-            interaction.user, "SUPERVISOR", "JEFE_DEPARTAMENTO", "DIRECTOR", "OWNER", "CO_OWNER", "DIRECTOR_DOCENCIA",
-        ):
-            raise permisos.SinPermiso(["SUPERVISOR", "JEFE_DEPARTAMENTO", "DIRECTOR", "OWNER"])
+        if not permisos.member_tiene_alguna_key(interaction.user, *_KEYS_PROGRAMAR):
+            raise permisos.SinPermiso(list(_KEYS_PROGRAMAR))
 
         c = capacitaciones.obtener(id_capacitacion)
         if not c:
             return await interaction.response.send_message(
-                f"❌ No existe la capacitación #{id_capacitacion}.", ephemeral=True
-            )
+                f"❌ No existe la capacitación #{id_capacitacion}.", ephemeral=True)
 
         cert = None
         if c.get("certificacion_id"):
@@ -259,14 +249,8 @@ def _parchar_programar(bot: commands.Bot) -> None:
         if cert:
             embed.add_field(
                 name="📜 Certificación vinculada",
-                value=f"**{cert['nombre']}** (#{cert['id']})",
-                inline=False,
-            )
-        embed.add_field(
-            name="Postulación",
-            value="Pulsa **📝 Postularse** para inscribirte.",
-            inline=False,
-        )
+                value=f"**{cert['nombre']}** (#{cert['id']})", inline=False)
+        embed.add_field(name="Postulación", value="Pulsa **📝 Postularse** para inscribirte.", inline=False)
         embed.set_footer(text=f"id={c['id']} · cert={c.get('certificacion_id') or 0} · Botones activos")
         await interaction.response.send_message(embed=embed, view=PostularCapView())
 
@@ -275,17 +259,19 @@ def _parchar_programar(bot: commands.Bot) -> None:
     @app_commands.choices(departamento=depto_choices)
     async def listar_certs(interaction: discord.Interaction, departamento: app_commands.Choice[str] = None):
         slug = departamento.value if departamento else ""
-        items = certificaciones_abiertas.listar_por_departamento(slug) if slug else certificaciones_abiertas.listar_certificaciones_activas()
+        items = (
+            certificaciones_abiertas.listar_por_departamento(slug)
+            if slug else certificaciones_abiertas.listar_certificaciones_activas()
+        )
         if not items:
             return await interaction.response.send_message("No hay certificaciones activas.", ephemeral=True)
-        # Agrupar por depto
         from collections import defaultdict
         grupos = defaultdict(list)
         for c in items:
             grupos[c.get("departamento") or "general"].append(c)
         emb = discord.Embed(
             title="📜 Catálogo de certificaciones",
-            description="Estas certificaciones aparecen al **programar** capacitaciones y en `/certificar`.",
+            description="Aparecen al **programar** capacitaciones y en `/certificar`.",
             color=0x8E44AD,
         )
         for dep, lista in sorted(grupos.items()):
