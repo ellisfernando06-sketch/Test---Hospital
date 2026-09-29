@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 roles_setup.py — Crea y ordena roles según el organigrama oficial (roles_config).
+- Roles de organigrama: con color y sin permisos especiales.
+- Separadores de categoría: SIN color y SIN permisos (solo visual).
+- Uniformes: se asignan todos al entrar al servidor.
 No borra roles antiguos aquí; eso se hace en un paso posterior con respaldo.
 """
 from __future__ import annotations
@@ -14,7 +17,9 @@ import roles_store
 
 
 def _hex_to_colour(hex_str: str) -> discord.Colour:
-    h = hex_str.lstrip("#")
+    h = (hex_str or "").lstrip("#")
+    if not h or h.lower() in ("000000", "default", "none"):
+        return discord.Colour.default()
     return discord.Colour(int(h, 16))
 
 
@@ -42,38 +47,78 @@ async def _asegurar_rol(
     resumen: List[str],
     *,
     renombrar_si_antiguo: bool = False,
+    es_separador: bool = False,
 ) -> Optional[discord.Role]:
+    """
+    Crea o detecta un rol.
+    - es_separador=True → sin color y sin permisos (solo visual de categoría).
+    """
     existente = _buscar_rol_por_nombre(guild, nombre)
+
     if existente:
-        # Si es el antiguo Owner/Gerente y el nuevo es Fundador y Owner → renombrar
         if renombrar_si_antiguo and existente.name != nombre:
             try:
-                await existente.edit(
-                    name=nombre,
-                    colour=_hex_to_colour(color_hex),
-                    reason="Migración a organigrama oficial",
-                )
+                kwargs = {
+                    "name": nombre,
+                    "reason": "Migración a organigrama oficial",
+                }
+                if es_separador:
+                    kwargs["colour"] = discord.Colour.default()
+                    kwargs["permissions"] = discord.Permissions.none()
+                    kwargs["hoist"] = False
+                    kwargs["mentionable"] = False
+                else:
+                    kwargs["colour"] = _hex_to_colour(color_hex)
+                await existente.edit(**kwargs)
                 resumen.append(f"🔄 Renombrado: **{existente.name}** → **{nombre}**")
             except Exception:
                 resumen.append(f"✅ Detectado: **{existente.name}** (ID `{existente.id}`)")
         else:
-            # Ajustar color si hace falta
-            try:
-                color_actual = str(existente.colour)
-                if color_hex.lower() not in color_actual.lower():
-                    await existente.edit(colour=_hex_to_colour(color_hex), reason="Ajuste color organigrama")
-            except Exception:
-                pass
+            # Ajustar separadores existentes: quitar color y permisos
+            if es_separador:
+                try:
+                    await existente.edit(
+                        colour=discord.Colour.default(),
+                        permissions=discord.Permissions.none(),
+                        hoist=False,
+                        mentionable=False,
+                        reason="Separador de categoría: sin color ni permisos",
+                    )
+                except Exception:
+                    pass
+            else:
+                try:
+                    color_actual = str(existente.colour)
+                    if color_hex and color_hex.lower() not in color_actual.lower():
+                        await existente.edit(
+                            colour=_hex_to_colour(color_hex),
+                            reason="Ajuste color organigrama",
+                        )
+                except Exception:
+                    pass
             resumen.append(f"✅ Detectado: **{nombre}** (ID `{existente.id}`)")
         return existente
 
+    # Crear nuevo
     try:
-        rol = await guild.create_role(
-            name=nombre,
-            colour=_hex_to_colour(color_hex),
-            reason="Organigrama oficial — creación automática",
-            mentionable=False,
-        )
+        if es_separador:
+            rol = await guild.create_role(
+                name=nombre,
+                colour=discord.Colour.default(),
+                permissions=discord.Permissions.none(),
+                hoist=False,
+                mentionable=False,
+                reason="Separador de categoría — sin color ni permisos",
+            )
+        else:
+            rol = await guild.create_role(
+                name=nombre,
+                colour=_hex_to_colour(color_hex),
+                permissions=discord.Permissions.none(),
+                hoist=False,
+                mentionable=False,
+                reason="Organigrama oficial — creación automática",
+            )
         resumen.append(f"🆕 Creado: **{nombre}** (ID `{rol.id}`)")
         return rol
     except discord.Forbidden:
@@ -200,28 +245,36 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
 async def configurar_organigrama(guild: discord.Guild) -> List[str]:
     """
     Crea / detecta todos los roles del organigrama oficial +
-    Inactividad Justificada + roles otorgados conservados.
+    Inactividad Justificada + roles otorgados conservados +
+    separadores SIN color ni permisos.
     Guarda los IDs en roles_store.
     """
     resumen: List[str] = ["**Organigrama oficial — Roles de permiso**"]
 
     for key, (nombre, color) in roles_config.KEYS_NOMBRES.items():
-        renombrar = key == "FUNDADOR_OWNER"  # renombrar antiguo Owner/Gerente
-        rol = await _asegurar_rol(guild, nombre, color, resumen, renombrar_si_antiguo=renombrar)
+        renombrar = key == "FUNDADOR_OWNER"
+        rol = await _asegurar_rol(
+            guild, nombre, color, resumen,
+            renombrar_si_antiguo=renombrar,
+            es_separador=False,
+        )
         if rol:
             roles_store.guardar_key(key, rol.id)
 
     resumen.append("")
     resumen.append("**Roles otorgados conservados (Docencia + Seguridad + Uniformes)**")
     for clave, (nombre, color) in roles_config.ROLES_OTORGADOS_CONSERVAR.items():
-        rol = await _asegurar_rol(guild, nombre, color, resumen)
+        rol = await _asegurar_rol(guild, nombre, color, resumen, es_separador=False)
         if rol:
             roles_store.guardar_extra(f"otorgado_{clave}", rol.id)
 
     resumen.append("")
-    resumen.append("**Separadores de sección**")
-    for sep_key, nombre, color in roles_config.SEPARADORES_ROLES:
-        rol = await _asegurar_rol(guild, nombre, color, resumen)
+    resumen.append("**Separadores de categoría (sin color · sin permisos)**")
+    for sep_key, nombre, _color in roles_config.SEPARADORES_ROLES:
+        rol = await _asegurar_rol(
+            guild, nombre, "", resumen,
+            es_separador=True,  # ← sin color, sin permisos
+        )
         if rol:
             roles_store.guardar_extra(sep_key, rol.id)
 
@@ -230,6 +283,46 @@ async def configurar_organigrama(guild: discord.Guild) -> List[str]:
     resumen.extend(await ordenar_roles(guild))
 
     return resumen
+
+
+def roles_uniforme(guild: discord.Guild) -> List[discord.Role]:
+    """Devuelve todos los roles de uniforme/categoría que se asignan al entrar."""
+    out: List[discord.Role] = []
+    for clave in ("uniforme_medico", "uniforme_enfermeria", "accesorio_rp"):
+        rid = roles_store.obtener_extra(f"otorgado_{clave}")
+        if rid:
+            rol = guild.get_role(rid)
+            if rol:
+                out.append(rol)
+        else:
+            # Fallback por nombre
+            nombre = roles_config.ROLES_OTORGADOS_CONSERVAR.get(clave, (None,))[0]
+            if nombre:
+                r = _buscar_rol_por_nombre(guild, nombre)
+                if r:
+                    out.append(r)
+    return out
+
+
+async def asignar_uniformes_al_entrar(member: discord.Member) -> int:
+    """
+    Asigna TODOS los roles de categorías de uniforme al miembro que entra.
+    Devuelve cuántos roles se añadieron.
+    """
+    roles = roles_uniforme(member.guild)
+    if not roles:
+        return 0
+    # Solo los que aún no tiene
+    a_dar = [r for r in roles if r not in member.roles]
+    if not a_dar:
+        return 0
+    try:
+        await member.add_roles(*a_dar, reason="Bienvenida — roles de categoría de uniforme")
+        return len(a_dar)
+    except discord.Forbidden:
+        return -1
+    except Exception:
+        return -1
 
 
 # Alias de compatibilidad con el código antiguo
