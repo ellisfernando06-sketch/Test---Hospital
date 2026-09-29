@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""hospital_core.py — arranque estable con reintentos y módulos aislados."""
+"""hospital_core.py — arranque completo. NO elimina comandos del núcleo."""
 from __future__ import annotations
 
 import asyncio
@@ -17,8 +17,8 @@ _URL = (
     f"{_COMMIT}/Bot_Hospital.py"
 )
 _GUILD_ID = 1381360019467014184
-_MAX_SLASH = 98
 
+# Módulos locales (se suman / sustituyen al núcleo remoto)
 _MODULOS = (
     "comandos_nuevos",
     "centro_solicitudes_ui",
@@ -48,82 +48,12 @@ _MODULOS = (
     "bienvenida",
 )
 
-_QUITAR = (
-    "ordenar_roles",
-    "mi_expediente",
-    "expediente",
-    "historial_advertencias",
-    "mi_sanciones",
-    "solicitud_info",
-    "catalogo_tienda",
-    "ver_canal_logs_tickets",
-    "configurar_logs_tickets",
-    "panel_solicitudes_logs",
-    "configurar_canal_logs",
-    "libro_contable",
-    "registrar_gasto",
-    "registrar_ingreso",
-    "ooc_advertencia",
-    "ooc_kick",
-    "ooc_timeout",
-    "carta_solicitud",
-    "reporte_procedimiento",
-    "solicitud_degrado",
-    "solicitud_descargo",
-    "quejas_pendientes",
-    "queja_resolver",
-    "marcar_asistencia",
-    "ver_roblox",
-    "votacion",
-    "organigrama",
-    "estado_hospital",
-    "formulario",
-    "documento_medico",
-    "reporte_departamento",
-    "solicitud_investigacion",
-    "solicitud_permiso",
-    "mis_certificados",
-    "mostrar_certificado",
-    "ver_certificados",
-    "crear_certificado",
-    "mi_inventario",
-    "panel_tienda",
+# Solo quitar si el módulo local lo vuelve a registrar (evitar duplicados rotos del remoto)
+_REEMPLAZADOS_POR_LOCAL = (
+    "licencia",  # licencia_medica
+    "despedir",  # despidos
+    "anuncio",   # anuncios_largos / mejoras_ui
 )
-
-_BAJA = (
-    "sancion_interna",
-    "advertencia",
-    "transferir_departamento",
-    "descenso",
-    "ascenso",
-    "suspender",
-    "reincorporar",
-    "pagar_salario",
-    "depositar",
-    "retirar",
-    "transferir",
-    "solicitud_general",
-    "queja",
-    "asignar_tarea",
-    "panel_acciones",
-    "panel_estado",
-)
-
-_CRITICOS = {
-    "agregar_reglamento", "anuncio", "anuncio_direccion", "abrir_expediente",
-    "balance", "balance_general", "bootstrap_owner",
-    "capacitacion", "cap_historial", "certificar",
-    "citatorio_admin", "citatorio_disciplina", "citatorio_general",
-    "codigo", "configurar_roles", "convocar_directores", "convocar_reunion_departamento",
-    "despedir", "ficha", "historial_financiero",
-    "inventario", "licencia", "limpiar", "limpiar_todo",
-    "mis_otorgados", "ooc_ban", "otorgar_key",
-    "paciente", "panel_reglas", "panel_solicitudes", "postulacion",
-    "registrar_firma", "reglas", "revisar_inactividad",
-    "sancion_aplicar", "sancionar", "sincronizar_comandos",
-    "solicitar_inactividad", "solicitar_insumo",
-    "tienda", "turno", "ver_mi_firma",
-}
 
 
 def _descargar_nucleo(intentos: int = 8) -> str:
@@ -204,19 +134,8 @@ def _cargar(module_globals: dict):
             "pass",
         )
 
-    try:
-        source = re.sub(
-            r"@bot\.tree\.command\(name=\"ordenar_roles\"[^\n]*\n"
-            r"(?:@[^\n]+\n)*"
-            r"async def ordenar_roles_cmd\([\s\S]*?\n(?=\S)",
-            "\n",
-            source,
-            count=1,
-        )
-    except Exception:
-        pass
-
-    for _cmd in ("mi_expediente", "expediente", "licencia"):
+    # Quitar del CÓDIGO fuente solo comandos que el módulo local sustituye
+    for _cmd in _REEMPLAZADOS_POR_LOCAL:
         try:
             source = re.sub(
                 rf"@bot\.tree\.command\(name=\"{_cmd}\"[^\n]*\n"
@@ -252,16 +171,7 @@ def _cargar(module_globals: dict):
     if bot is None:
         raise RuntimeError("bot no definido tras exec del núcleo")
 
-    for n in _QUITAR:
-        try:
-            bot.tree.remove_command(n)
-        except Exception:
-            pass
-    try:
-        bot.tree.remove_command("licencia")
-    except Exception:
-        pass
-
+    # Cargar TODOS los módulos locales (añaden / sobrescriben comandos)
     print("[hospital_core] Módulos…", flush=True)
     for name in _MODULOS:
         try:
@@ -279,61 +189,21 @@ def _cargar(module_globals: dict):
         except Exception:
             return []
 
-    def _recortar():
-        for n in _QUITAR:
-            try:
-                bot.tree.remove_command(n)
-            except Exception:
-                pass
-        names = _listar()
-        if len(names) <= _MAX_SLASH:
-            return names
-        for n in _BAJA:
-            if len(_listar()) <= _MAX_SLASH:
-                break
-            if n in _CRITICOS:
-                continue
-            try:
-                bot.tree.remove_command(n)
-            except Exception:
-                pass
-        while len(_listar()) > _MAX_SLASH:
-            rest = [n for n in _listar() if n not in _CRITICOS]
-            if not rest:
-                break
-            try:
-                bot.tree.remove_command(rest[-1])
-            except Exception:
-                break
-        names = _listar()
-        if "licencia" not in names:
-            try:
-                import licencia_medica as _lic
-                _lic.registrar(bot)
-                names = _listar()
-            except Exception:
-                traceback.print_exc()
-        return names
-
-    try:
-        final = _recortar()
-        print(f"[hospital_core] Comandos: {len(final)}", flush=True)
-    except Exception:
-        traceback.print_exc()
+    names = _listar()
+    print(f"[hospital_core] Comandos en memoria: {len(names)}", flush=True)
+    print(f"[hospital_core] Lista: {', '.join(names)}", flush=True)
 
     async def _sync_todo(reason: str = "") -> list:
         result = []
-        print(f"[hospital_core] SYNC ({reason})", flush=True)
-        try:
-            _recortar()
-        except Exception:
-            pass
+        print(f"[hospital_core] SYNC ({reason}) — se publican TODOS los comandos", flush=True)
         try:
             try:
                 app_id = bot.application_id or (await bot.application_info()).id
+                # limpiar solo globales viejos; los de guild se reescriben abajo
                 await bot.http.bulk_upsert_global_commands(int(app_id), [])
             except Exception as e:
                 print("[hospital_core] globales:", e, flush=True)
+
             targets = list(bot.guilds) if bot.guilds else [discord.Object(id=_GUILD_ID)]
             for g in targets:
                 gid = int(getattr(g, "id", _GUILD_ID))
@@ -342,9 +212,11 @@ def _cargar(module_globals: dict):
                     bot.tree.copy_global_to(guild=obj)
                     synced = await bot.tree.sync(guild=obj)
                     result = sorted(c.name for c in synced)
-                    print(f"[hospital_core] guild {gid}: {len(result)}", flush=True)
+                    print(f"[hospital_core] guild {gid}: {len(result)} comandos", flush=True)
+                    print(f"[hospital_core] sync lista: {', '.join(result)}", flush=True)
                 except Exception as e:
                     print(f"[hospital_core] sync {gid}: {e}", flush=True)
+                    traceback.print_exc()
         except Exception:
             traceback.print_exc()
         return result
@@ -362,11 +234,12 @@ def _cargar(module_globals: dict):
             return
         if not (ctx.author.guild_permissions.administrator or ctx.author.id == ctx.guild.owner_id):
             return await ctx.reply("❌ Solo admin.")
-        msg = await ctx.reply("🔄 Sync…")
+        msg = await ctx.reply("🔄 Sincronizando TODOS los comandos…")
         try:
             names = await _sync_todo("!forzar_sync")
-            ok = [c for c in ("licencia", "despedir", "solicitar_inactividad", "revisar_inactividad", "reglas", "anuncio") if c in names]
-            await msg.edit(content=f"✅ {len(names)} comandos · `{', '.join(ok) or '—'}`")
+            await msg.edit(
+                content=f"✅ **{len(names)}** comandos sincronizados.\n`{', '.join(names[:40])}{'…' if len(names) > 40 else ''}`"
+            )
         except Exception as e:
             await msg.edit(content=f"❌ {e}")
 
@@ -375,13 +248,13 @@ def _cargar(module_globals: dict):
         if getattr(bot, "_hc_backup_done", False):
             return
         bot._hc_backup_done = True
-        await asyncio.sleep(6)
+        await asyncio.sleep(5)
         try:
             await _sync_todo("backup")
         except Exception as e:
             print("[hospital_core] backup:", e, flush=True)
 
-    print("[hospital_core] LISTO", flush=True)
+    print("[hospital_core] LISTO — sin recorte de comandos", flush=True)
     return bot
 
 
