@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-"""comandos_nuevos — restored"""
+"""comandos_nuevos — keys organigrama oficial"""
 from __future__ import annotations
-from datetime import timedelta
 from typing import Optional, List
 import discord
 from discord import app_commands
@@ -21,7 +20,7 @@ def registrar(bot: commands.Bot) -> None:
         app_commands.Choice(name="Suspension", value="Suspensión"),
         app_commands.Choice(name="Otra", value="Otra"),
     ])
-    @require_key("DIRECTOR", "DIRECTOR_DISCIPLINA", "DIRECTOR_ADMINISTRATIVO", "DIRECTOR_RRHH", "DIRECTOR_GENERAL", "SUPERVISOR", "OWNER", "CO_OWNER")
+    @require_key("DIR_RRHH", "DIR_GENERAL", "PREFECTO_OPERACIONES", "JEFE_DEPARTAMENTO", "FUNDADOR_OWNER", "CO_OWNER")
     async def sancionar(interaction: discord.Interaction, usuario: discord.Member, tipo: app_commands.Choice[str], motivo: str, evidencia_texto: str = "", evidencia_archivo: Optional[discord.Attachment] = None, evidencia_archivo2: Optional[discord.Attachment] = None, evidencia_archivo3: Optional[discord.Attachment] = None, duracion: str = ""):
         if not permisos.puede_actuar_sobre(interaction.user, usuario):
             await interaction.response.send_message("No puedes sancionar a ese usuario.", ephemeral=True)
@@ -35,7 +34,7 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(name="verificar_roblox", description="Envia DM de verificacion Roblox")
     @app_commands.describe(usuario="Visitante (opcional)")
-    @require_key("DIRECTOR_ADMINISTRATIVO", "DIRECTOR_GENERAL", "DIRECTOR_RRHH", "OWNER", "CO_OWNER", "SUPERVISOR")
+    @require_key("DIR_GENERAL", "DIR_RRHH", "PREFECTO_OPERACIONES", "FUNDADOR_OWNER", "CO_OWNER")
     async def verificar_roblox(interaction: discord.Interaction, usuario: Optional[discord.Member] = None):
         guild = interaction.guild
         if not guild:
@@ -56,7 +55,7 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(name="ver_roblox", description="Consulta Roblox verificado")
     @app_commands.describe(usuario="Usuario")
-    @require_key("STAFF", "SUPERVISOR", "DIRECTOR", "OWNER")
+    @require_key("RESIDENTE", "JEFE_DEPARTAMENTO", "DIR_MEDICO", "DIR_GENERAL", "FUNDADOR_OWNER", "CO_OWNER")
     async def ver_roblox(interaction: discord.Interaction, usuario: discord.Member):
         info = verificacion.obtener_roblox_completo(usuario.id)
         if not info:
