@@ -46,6 +46,7 @@ _MODULOS = (
     "despidos",
     "inactividad",
     "bienvenida",
+    "setup_servidor",  # organigrama + normativas + pedir canales
 )
 
 # Solo quitar si el módulo local lo vuelve a registrar (evitar duplicados rotos del remoto)
