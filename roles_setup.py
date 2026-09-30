@@ -24,6 +24,7 @@ _KEY_LEGACY_ALIASES: Dict[str, Tuple[str, ...]] = {
     "FUNDADOR_OWNER": ("OWNER",),
     "DIR_GENERAL": ("DIRECTOR_GENERAL",),
     "DIR_MEDICO": ("DIRECTOR_MEDICO",),
+    "DIR_ENFERMERIA": ("DIRECTOR_ENFERMERIA",),
     "DIR_RRHH": ("DIRECTOR_RRHH",),
     "DIR_DOCENCIA": ("DIRECTOR_DOCENCIA",),
     "DIR_LOGISTICA": ("DIRECTOR_LOGISTICA",),
@@ -44,6 +45,9 @@ _NOMBRES_LEGADOS: Dict[str, str] = {
     "director de investigación y docencia": "DIR_DOCENCIA",
     "director de logística": "DIR_LOGISTICA",
     "director de logistica": "DIR_LOGISTICA",
+    "director de enfermería": "DIR_ENFERMERIA",
+    "director de enfermeria": "DIR_ENFERMERIA",
+    "💉 director de enfermería": "DIR_ENFERMERIA",
     "pasante": "INTERNO",
 }
 
@@ -63,11 +67,9 @@ def _guardar_key_con_aliases(key: str, role_id: int) -> None:
 
 
 def _buscar_rol_por_nombre(guild: discord.Guild, nombre: str) -> Optional[discord.Role]:
-    # 1) Exacto
     for r in guild.roles:
         if r.name == nombre:
             return r
-    # 2) Case-insensitive
     nombre_l = nombre.lower().strip()
     for r in guild.roles:
         if (r.name or "").lower().strip() == nombre_l:
@@ -76,14 +78,12 @@ def _buscar_rol_por_nombre(guild: discord.Guild, nombre: str) -> Optional[discor
 
 
 def _buscar_rol_para_key(guild: discord.Guild, key: str) -> Optional[discord.Role]:
-    """Busca el rol de una key: nombre oficial, ID en store, o nombre legado."""
     oficial = roles_config.KEYS_NOMBRES.get(key)
     if oficial:
         r = _buscar_rol_por_nombre(guild, oficial[0])
         if r:
             return r
 
-    # ID ya guardado
     rid = roles_store.obtener_id_key(key)
     if rid:
         r = guild.get_role(rid)
@@ -96,7 +96,6 @@ def _buscar_rol_para_key(guild: discord.Guild, key: str) -> Optional[discord.Rol
             if r:
                 return r
 
-    # Nombres legados
     for nom, k in _NOMBRES_LEGADOS.items():
         if k != key:
             continue
@@ -189,52 +188,34 @@ async def _asegurar_rol(
 
 
 def _orden_deseado() -> List[Tuple[str, str]]:
-    """
-    Lista (tipo, nombre) de arriba → abajo según organigrama.
-    Usa JERARQUIA_KEYS + SEPARADORES_ROLES como única fuente.
-    """
+    """Lista (tipo, nombre) de arriba → abajo según roles_config."""
     orden: List[Tuple[str, str]] = []
     seps = {s[0]: s[1] for s in roles_config.SEPARADORES_ROLES}
 
-    # Mapa sección → keys (mismo orden que SECCIONES / JERARQUIA)
-    bloques: List[Tuple[str, Tuple[str, ...]]] = [
-        ("sep_autoridades", ("FUNDADOR_OWNER", "CO_OWNER")),
-        ("sep_staff_server", ("ADMIN_JEFE", "ADMIN", "ADMIN_PRUEBA")),
-        (
-            "sep_gerencia",
-            (
-                "PREFECTO_OPERACIONES",
-                "DIR_GENERAL",
-                "DIR_MEDICO",
-                "DIR_RRHH",
-                "DIR_DOCENCIA",
-                "DIR_LOGISTICA",
-            ),
-        ),
-        ("sep_jefatura", ("JEFE_DEPARTAMENTO",)),
-        (
-            "sep_area_medica",
-            (
-                "JEFE_SERVICIO",
-                "MEDICO_ESPECIALISTA",
-                "MEDICO_GENERAL",
-                "JEFE_GUIA_RESIDENTES",
-                "RESIDENTE",
-                "INTERNO",
-            ),
-        ),
-        ("sep_area_admin", ("ADMINISTRATIVO_SENIOR", "ADMINISTRATIVO_JUNIOR")),
-        ("sep_sistema", ("INACTIVIDAD_JUSTIFICADA",)),
+    bloques_sep = [
+        ("sep_autoridades", "autoridades"),
+        ("sep_staff_server", "staff_server"),
+        ("sep_gerencia", "gerencia"),
+        ("sep_jefatura", "jefatura"),
+        ("sep_area_medica", "area_medica"),
+        ("sep_area_enfermeria", "area_enfermeria"),
+        ("sep_apoyo_clinico", "apoyo_clinico"),
+        ("sep_area_admin", "area_admin"),
     ]
 
-    for sep_key, keys in bloques:
+    for sep_key, sec_key in bloques_sep:
         if sep_key in seps:
             orden.append(("sep", seps[sep_key]))
-        for key in keys:
+        sec = roles_config.SECCIONES.get(sec_key, {})
+        for key in sec.get("keys", []):
             if key in roles_config.KEYS_NOMBRES:
                 orden.append(("key", roles_config.KEYS_NOMBRES[key][0]))
 
-    # Otorgados al final (debajo del organigrama de mando)
+    if "sep_sistema" in seps:
+        orden.append(("sep", seps["sep_sistema"]))
+    if "INACTIVIDAD_JUSTIFICADA" in roles_config.KEYS_NOMBRES:
+        orden.append(("key", roles_config.KEYS_NOMBRES["INACTIVIDAD_JUSTIFICADA"][0]))
+
     for _clave, (nombre, _c) in roles_config.ROLES_OTORGADOS_CONSERVAR.items():
         orden.append(("otorgado", nombre))
 
@@ -301,13 +282,8 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
 
 
 async def configurar_organigrama(guild: discord.Guild) -> List[str]:
-    """
-    Crea/detecta roles del organigrama, guarda keys (oficial + legado),
-    separadores, otorgados, y reordena.
-    """
     resumen: List[str] = ["**Organigrama oficial — Roles y keys**"]
 
-    # Orden de creación = JERARQUIA_KEYS + INACTIVIDAD
     keys_orden = list(roles_config.JERARQUIA_KEYS)
     if "INACTIVIDAD_JUSTIFICADA" in roles_config.KEYS_NOMBRES:
         keys_orden.append("INACTIVIDAD_JUSTIFICADA")
