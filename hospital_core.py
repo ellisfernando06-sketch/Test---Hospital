@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""hospital_core.py — arranque robusto. Prioriza /setup_servidor sin romper el núcleo."""
+"""hospital_core.py — arranque robusto. Roles y setup prioritarios."""
 from __future__ import annotations
 
 import asyncio
@@ -20,6 +20,7 @@ _GUILD_ID = 1381360019467014184
 
 # Críticos primero
 _MODULOS_PRIORITARIOS = (
+    "roles_comandos",   # /configurar_roles /ordenar_roles /organigrama
     "setup_servidor",
     "limpiar_roles",
     "bienvenida",
@@ -53,7 +54,7 @@ _MODULOS = (
     "inactividad",
 )
 
-# Sin key / reemplazados — liberan cupo del límite de 100
+# Quitar del núcleo (reemplazados localmente o sin key)
 _REEMPLAZADOS_POR_LOCAL = (
     "licencia",
     "despedir",
@@ -61,15 +62,20 @@ _REEMPLAZADOS_POR_LOCAL = (
     "votacion",
     "formulario",
     "catalogo_tienda",
+    "configurar_roles",
+    "ordenar_roles",
+    "organigrama",
 )
 
 _QUITAR_DEL_TREE = (
     "votacion",
     "formulario",
     "catalogo_tienda",
+    "configurar_roles",
+    "ordenar_roles",
+    "organigrama",
 )
 
-# Si aún falta setup, liberar más (sin key de staff)
 _QUITAR_EXTRA_SI_FALTA_SETUP = (
     "balance",
     "mi_inventario",
@@ -100,7 +106,7 @@ def _listar_nombres(bot) -> list:
 def _quitar_cmd(bot, name: str) -> None:
     try:
         bot.tree.remove_command(name)
-        print(f"[hospital_core] liberado cupo: /{name}", flush=True)
+        print(f"[hospital_core] liberado: /{name}", flush=True)
     except Exception:
         pass
 
@@ -118,29 +124,26 @@ def _cargar_modulo(bot, name: str) -> bool:
         return False
 
 
-def _asegurar_setup(bot) -> None:
-    """Si /setup_servidor no quedó registrado, libera cupos y reintenta."""
+def _asegurar_criticos(bot) -> None:
     names = _listar_nombres(bot)
-    if "setup_servidor" in names:
-        print("[hospital_core] ✅ /setup_servidor OK", flush=True)
+    faltan = [c for c in ("setup_servidor", "configurar_roles") if c not in names]
+    if not faltan:
+        print("[hospital_core] ✅ críticos OK", flush=True)
         return
 
-    print("[hospital_core] ⚠️ setup ausente — liberando cupos extra…", flush=True)
+    print(f"[hospital_core] ⚠️ faltan {faltan} — liberando cupos…", flush=True)
     for cmd in _QUITAR_EXTRA_SI_FALTA_SETUP:
         _quitar_cmd(bot, cmd)
 
-    # Reimportar limpio
     import sys
-    for mod_name in ("setup_servidor", "limpiar_roles"):
+    for mod_name in ("roles_comandos", "setup_servidor", "limpiar_roles"):
         if mod_name in sys.modules:
             del sys.modules[mod_name]
         _cargar_modulo(bot, mod_name)
 
     names = _listar_nombres(bot)
-    if "setup_servidor" in names:
-        print("[hospital_core] ✅ /setup_servidor recuperado", flush=True)
-    else:
-        print("[hospital_core] ❌ /setup_servidor sigue ausente", flush=True)
+    for c in ("setup_servidor", "configurar_roles", "ordenar_roles", "organigrama"):
+        print(f"[hospital_core] {c}={'OK' if c in names else 'FALTA'}", flush=True)
 
 
 def _cargar(module_globals: dict):
@@ -257,7 +260,7 @@ def _cargar(module_globals: dict):
     for name in _MODULOS:
         _cargar_modulo(bot, name)
 
-    _asegurar_setup(bot)
+    _asegurar_criticos(bot)
 
     names = _listar_nombres(bot)
     print(f"[hospital_core] Comandos: {len(names)}", flush=True)
@@ -282,11 +285,11 @@ def _cargar(module_globals: dict):
                     synced = await bot.tree.sync(guild=obj)
                     result = sorted(c.name for c in synced)
                     print(f"[hospital_core] guild {gid}: {len(result)}", flush=True)
-                    ok = "setup_servidor" in result
-                    print(
-                        f"[hospital_core] setup_servidor={'OK' if ok else 'FALTA'}",
-                        flush=True,
-                    )
+                    for c in ("configurar_roles", "setup_servidor", "organigrama"):
+                        print(
+                            f"[hospital_core] {c}={'OK' if c in result else 'FALTA'}",
+                            flush=True,
+                        )
                 except Exception as e:
                     print(f"[hospital_core] sync {gid}: {e}", flush=True)
                     traceback.print_exc()
@@ -310,15 +313,14 @@ def _cargar(module_globals: dict):
         msg = await ctx.reply("🔄 Sincronizando…")
         try:
             names = await _sync_todo("!forzar_sync")
-            extra = (
-                " | ✅ /setup_servidor"
-                if "setup_servidor" in (names or [])
-                else " | ⚠️ sin setup_servidor"
-            )
+            checks = []
+            for c in ("configurar_roles", "setup_servidor"):
+                checks.append(f"{'✅' if c in (names or []) else '❌'} /{c}")
             await msg.edit(
                 content=(
-                    f"✅ **{len(names)}** comandos.{extra}\n"
-                    f"`{', '.join(names[:30])}{'…' if len(names) > 30 else ''}`"
+                    f"✅ **{len(names)}** comandos.\n"
+                    f"{' · '.join(checks)}\n"
+                    f"`{', '.join(names[:25])}{'…' if len(names) > 25 else ''}`"
                 )
             )
         except Exception as e:
@@ -335,7 +337,7 @@ def _cargar(module_globals: dict):
         except Exception as e:
             print("[hospital_core] backup:", e, flush=True)
 
-    print("[hospital_core] LISTO — reinicio seguro", flush=True)
+    print("[hospital_core] LISTO", flush=True)
     return bot
 
 
