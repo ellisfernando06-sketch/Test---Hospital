@@ -1,7 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 roles_config.py — ÚNICA FUENTE DE VERDAD del organigrama oficial.
-Incluye cadena médica completa + enfermería + paramédicos.
+
+Patrón de cada área operativa (referencia = Área Médica):
+  1. Jefe de Servicio
+  2. Especialista
+  3. General
+  4. Guía / Docente de en-formación
+  5. En formación (Residente / equivalente)
+  6. Base / Practicante
 """
 from __future__ import annotations
 
@@ -33,7 +40,8 @@ KEYS_NOMBRES: Dict[str, Tuple[str, str]] = {
     # ── JEFATURA DE DEPARTAMENTO ─────────────────────────────
     "JEFE_DEPARTAMENTO":    ("⭐ Jefe de Departamento",          "#2ECC71"),
 
-    # ── ÁREA MÉDICA (escalonado mayor → menor) ───────────────
+    # ── ÁREA MÉDICA (PATRÓN DE REFERENCIA) ───────────────────
+    # 1 Jefe · 2 Especialista · 3 General · 4 Guía · 5 Formación · 6 Base
     "JEFE_SERVICIO":        ("🩺 Jefe de Servicio",              "#16A085"),
     "MEDICO_ESPECIALISTA":  ("🩺 Médico Especialista",           "#1ABC9C"),
     "MEDICO_GENERAL":       ("🩺 Médico General",                "#48C9B0"),
@@ -41,21 +49,29 @@ KEYS_NOMBRES: Dict[str, Tuple[str, str]] = {
     "RESIDENTE":            ("📚 Residente",                     "#3498DB"),
     "INTERNO":              ("📝 Interno / Practicante",         "#85C1E9"),
 
-    # ── ÁREA ENFERMERÍA (escalonado) ─────────────────────────
-    "SUBDIR_ENFERMERIA":    ("💉 Subdirector de Enfermería",     "#2980B9"),
-    "JEFE_ENFERMERIA":      ("💉 Jefe de Enfermería",            "#3498DB"),
-    "ENCARGADO_ENFERMERIA": ("💉 Encargado de Enfermería",       "#5DADE2"),
-    "ENFERMERO_ESPECIALISTA": ("💉 Enfermero/a Especialista",    "#5DADE2"),
-    "ENFERMERO":            ("💉 Enfermero/a",                   "#85C1E9"),
+    # ── ÁREA ENFERMERÍA (mismo patrón que médica) ────────────
+    "JEFE_SERVICIO_ENF":    ("💉 Jefe de Servicio de Enfermería", "#1A5276"),
+    "ENFERMERO_ESPECIALISTA": ("💉 Enfermero/a Especialista",    "#2874A6"),
+    "ENFERMERO_GENERAL":    ("💉 Enfermero/a General",           "#3498DB"),
+    "GUIA_AUXILIARES_ENF":  ("💉 Guía/Docente de Auxiliares",    "#5DADE2"),
+    "ENFERMERO_FORMACION":  ("💉 Enfermero/a en Formación",      "#85C1E9"),
     "AUXILIAR_ENFERMERIA":  ("💉 Auxiliar de Enfermería",        "#AED6F1"),
 
-    # ── APOYO CLÍNICO ────────────────────────────────────────
-    "PARAMEDICO":           ("🚑 Paramédico",                    "#E74C3C"),
-    "TECNICO_SALUD":        ("🔬 Técnico en Salud",              "#E67E22"),
+    # ── APOYO CLÍNICO (mismo patrón, cadena corta) ───────────
+    "JEFE_SERVICIO_APOYO":  ("🚑 Jefe de Servicio de Apoyo Clínico", "#C0392B"),
+    "PARAMEDICO_ESPECIALISTA": ("🚑 Paramédico Especialista",    "#E74C3C"),
+    "PARAMEDICO":           ("🚑 Paramédico",                    "#EC7063"),
+    "GUIA_TECNICOS":        ("🔬 Guía/Docente de Técnicos",      "#E67E22"),
+    "TECNICO_FORMACION":    ("🔬 Técnico en Formación",          "#F5B041"),
+    "TECNICO_SALUD":        ("🔬 Técnico en Salud",              "#F8C471"),
 
-    # ── ÁREA ADMINISTRATIVA ──────────────────────────────────
-    "ADMINISTRATIVO_SENIOR": ("📋 Administrativo Senior",        "#F39C12"),
-    "ADMINISTRATIVO_JUNIOR": ("📋 Administrativo Junior / Auxiliar", "#F5B041"),
+    # ── ÁREA ADMINISTRATIVA (mismo patrón) ───────────────────
+    "JEFE_SERVICIO_ADMIN":  ("📋 Jefe de Servicio Administrativo", "#B9770E"),
+    "ADMINISTRATIVO_SENIOR": ("📋 Administrativo Especialista / Senior", "#F39C12"),
+    "ADMINISTRATIVO_GENERAL": ("📋 Administrativo General",      "#F5B041"),
+    "GUIA_ADMIN":           ("📋 Guía/Docente Administrativo",   "#F7DC6F"),
+    "ADMIN_FORMACION":      ("📋 Administrativo en Formación",   "#F9E79F"),
+    "ADMINISTRATIVO_JUNIOR": ("📋 Administrativo Junior / Auxiliar", "#FCF3CF"),
 
     # ── SISTEMA ──────────────────────────────────────────────
     "INACTIVIDAD_JUSTIFICADA": ("⏸️ Inactividad Justificada",    "#95A5A6"),
@@ -76,7 +92,7 @@ JERARQUIA_KEYS: List[str] = [
     "DIR_DOCENCIA",
     "DIR_LOGISTICA",
     "JEFE_DEPARTAMENTO",
-    # Médicos
+    # Médica (referencia)
     "JEFE_SERVICIO",
     "MEDICO_ESPECIALISTA",
     "MEDICO_GENERAL",
@@ -84,20 +100,29 @@ JERARQUIA_KEYS: List[str] = [
     "RESIDENTE",
     "INTERNO",
     # Enfermería
-    "SUBDIR_ENFERMERIA",
-    "JEFE_ENFERMERIA",
-    "ENCARGADO_ENFERMERIA",
+    "JEFE_SERVICIO_ENF",
     "ENFERMERO_ESPECIALISTA",
-    "ENFERMERO",
+    "ENFERMERO_GENERAL",
+    "GUIA_AUXILIARES_ENF",
+    "ENFERMERO_FORMACION",
     "AUXILIAR_ENFERMERIA",
     # Apoyo clínico
+    "JEFE_SERVICIO_APOYO",
+    "PARAMEDICO_ESPECIALISTA",
     "PARAMEDICO",
+    "GUIA_TECNICOS",
+    "TECNICO_FORMACION",
     "TECNICO_SALUD",
-    # Admin
+    # Administrativa
+    "JEFE_SERVICIO_ADMIN",
     "ADMINISTRATIVO_SENIOR",
+    "ADMINISTRATIVO_GENERAL",
+    "GUIA_ADMIN",
+    "ADMIN_FORMACION",
     "ADMINISTRATIVO_JUNIOR",
 ]
 
+# Secciones = separador + keys (mismo patrón en cada área operativa)
 SECCIONES = {
     "autoridades": {
         "nombre": "Autoridades Competentes",
@@ -130,8 +155,12 @@ SECCIONES = {
         "nombre": "Área Médica",
         "emoji": "🩺",
         "keys": [
-            "JEFE_SERVICIO", "MEDICO_ESPECIALISTA", "MEDICO_GENERAL",
-            "JEFE_GUIA_RESIDENTES", "RESIDENTE", "INTERNO",
+            "JEFE_SERVICIO",
+            "MEDICO_ESPECIALISTA",
+            "MEDICO_GENERAL",
+            "JEFE_GUIA_RESIDENTES",
+            "RESIDENTE",
+            "INTERNO",
         ],
         "color": "#1ABC9C",
     },
@@ -139,21 +168,39 @@ SECCIONES = {
         "nombre": "Área de Enfermería",
         "emoji": "💉",
         "keys": [
-            "SUBDIR_ENFERMERIA", "JEFE_ENFERMERIA", "ENCARGADO_ENFERMERIA",
-            "ENFERMERO_ESPECIALISTA", "ENFERMERO", "AUXILIAR_ENFERMERIA",
+            "JEFE_SERVICIO_ENF",
+            "ENFERMERO_ESPECIALISTA",
+            "ENFERMERO_GENERAL",
+            "GUIA_AUXILIARES_ENF",
+            "ENFERMERO_FORMACION",
+            "AUXILIAR_ENFERMERIA",
         ],
         "color": "#3498DB",
     },
     "apoyo_clinico": {
         "nombre": "Apoyo Clínico",
         "emoji": "🚑",
-        "keys": ["PARAMEDICO", "TECNICO_SALUD"],
+        "keys": [
+            "JEFE_SERVICIO_APOYO",
+            "PARAMEDICO_ESPECIALISTA",
+            "PARAMEDICO",
+            "GUIA_TECNICOS",
+            "TECNICO_FORMACION",
+            "TECNICO_SALUD",
+        ],
         "color": "#E74C3C",
     },
     "area_admin": {
         "nombre": "Área Administrativa",
         "emoji": "📋",
-        "keys": ["ADMINISTRATIVO_SENIOR", "ADMINISTRATIVO_JUNIOR"],
+        "keys": [
+            "JEFE_SERVICIO_ADMIN",
+            "ADMINISTRATIVO_SENIOR",
+            "ADMINISTRATIVO_GENERAL",
+            "GUIA_ADMIN",
+            "ADMIN_FORMACION",
+            "ADMINISTRATIVO_JUNIOR",
+        ],
         "color": "#F39C12",
     },
 }
