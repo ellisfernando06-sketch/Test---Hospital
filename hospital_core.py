@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""hospital_core.py — arranque completo. NO elimina comandos del núcleo."""
+"""hospital_core.py — arranque completo. Prioriza /setup_servidor."""
 from __future__ import annotations
 
 import asyncio
@@ -17,6 +17,13 @@ _URL = (
     f"{_COMMIT}/Bot_Hospital.py"
 )
 _GUILD_ID = 1381360019467014184
+
+# CRÍTICOS primero (antes de llenar el límite de 100 slash)
+_MODULOS_PRIORITARIOS = (
+    "setup_servidor",
+    "limpiar_roles",
+    "bienvenida",
+)
 
 _MODULOS = (
     "comandos_nuevos",
@@ -44,14 +51,20 @@ _MODULOS = (
     "anuncios_largos",
     "despidos",
     "inactividad",
-    "bienvenida",
-    "setup_servidor",
 )
 
+# Quitar del núcleo: reemplazados por local O sin key (liberar cupo)
 _REEMPLAZADOS_POR_LOCAL = (
     "licencia",
     "despedir",
     "anuncio",
+    "votacion",
+    "formulario",
+)
+
+_QUITAR_DEL_TREE = (
+    "votacion",
+    "formulario",
 )
 
 
@@ -66,6 +79,19 @@ def _descargar_nucleo(intentos: int = 8) -> str:
             ultimo = e
             time.sleep(1.2 * (i + 1))
     raise RuntimeError(f"No se pudo descargar el núcleo: {ultimo}")
+
+
+def _cargar_modulo(bot, name: str) -> bool:
+    try:
+        mod = __import__(name)
+        if hasattr(mod, "registrar"):
+            mod.registrar(bot)
+        print(f"[hospital_core] ✓ {name}", flush=True)
+        return True
+    except Exception:
+        print(f"[hospital_core] ✗ {name} (ignorado)", flush=True)
+        traceback.print_exc()
+        return False
 
 
 def _cargar(module_globals: dict):
@@ -143,10 +169,10 @@ def _cargar(module_globals: dict):
                 source,
                 count=1,
             )
+            print(f"[hospital_core] núcleo: quitado '{_cmd}'", flush=True)
         except Exception:
             pass
 
-    # Textos visibles: Fundador y Owner (nunca "Gerente Developer")
     source = source.replace(
         'description="[Solo primer uso] Te asigna la key OWNER para poder configurar el bot"',
         'description="[Solo primer uso] Te asigna Fundador y Owner"',
@@ -171,16 +197,20 @@ def _cargar(module_globals: dict):
     if bot is None:
         raise RuntimeError("bot no definido tras exec del núcleo")
 
+    for _cmd in _QUITAR_DEL_TREE:
+        try:
+            bot.tree.remove_command(_cmd)
+            print(f"[hospital_core] tree.remove_command('{_cmd}')", flush=True)
+        except Exception as e:
+            print(f"[hospital_core] no se pudo quitar '{_cmd}': {e}", flush=True)
+
+    print("[hospital_core] Módulos prioritarios…", flush=True)
+    for name in _MODULOS_PRIORITARIOS:
+        _cargar_modulo(bot, name)
+
     print("[hospital_core] Módulos…", flush=True)
     for name in _MODULOS:
-        try:
-            mod = __import__(name)
-            if hasattr(mod, "registrar"):
-                mod.registrar(bot)
-            print(f"[hospital_core] ✓ {name}", flush=True)
-        except Exception:
-            print(f"[hospital_core] ✗ {name} (ignorado)", flush=True)
-            traceback.print_exc()
+        _cargar_modulo(bot, name)
 
     def _listar():
         try:
@@ -191,10 +221,14 @@ def _cargar(module_globals: dict):
     names = _listar()
     print(f"[hospital_core] Comandos en memoria: {len(names)}", flush=True)
     print(f"[hospital_core] Lista: {', '.join(names)}", flush=True)
+    if "setup_servidor" in names:
+        print("[hospital_core] ✅ /setup_servidor REGISTRADO", flush=True)
+    else:
+        print("[hospital_core] ⚠️ /setup_servidor NO está en el árbol", flush=True)
 
     async def _sync_todo(reason: str = "") -> list:
         result = []
-        print(f"[hospital_core] SYNC ({reason}) — se publican TODOS los comandos", flush=True)
+        print(f"[hospital_core] SYNC ({reason})", flush=True)
         try:
             try:
                 app_id = bot.application_id or (await bot.application_info()).id
@@ -211,7 +245,10 @@ def _cargar(module_globals: dict):
                     synced = await bot.tree.sync(guild=obj)
                     result = sorted(c.name for c in synced)
                     print(f"[hospital_core] guild {gid}: {len(result)} comandos", flush=True)
-                    print(f"[hospital_core] sync lista: {', '.join(result)}", flush=True)
+                    if "setup_servidor" in result:
+                        print("[hospital_core] ✅ setup_servidor en sync", flush=True)
+                    else:
+                        print("[hospital_core] ⚠️ setup_servidor NO en sync", flush=True)
                 except Exception as e:
                     print(f"[hospital_core] sync {gid}: {e}", flush=True)
                     traceback.print_exc()
@@ -232,11 +269,16 @@ def _cargar(module_globals: dict):
             return
         if not (ctx.author.guild_permissions.administrator or ctx.author.id == ctx.guild.owner_id):
             return await ctx.reply("❌ Solo admin.")
-        msg = await ctx.reply("🔄 Sincronizando TODOS los comandos…")
+        msg = await ctx.reply("🔄 Sincronizando comandos…")
         try:
             names = await _sync_todo("!forzar_sync")
+            tiene = "setup_servidor" in (names or [])
+            extra = " | ✅ setup_servidor" if tiene else " | ⚠️ sin setup_servidor"
             await msg.edit(
-                content=f"✅ **{len(names)}** comandos sincronizados.\n`{', '.join(names[:40])}{'…' if len(names) > 40 else ''}`"
+                content=(
+                    f"✅ **{len(names)}** comandos.{extra}\n"
+                    f"`{', '.join(names[:35])}{'…' if len(names) > 35 else ''}`"
+                )
             )
         except Exception as e:
             await msg.edit(content=f"❌ {e}")
@@ -252,7 +294,7 @@ def _cargar(module_globals: dict):
         except Exception as e:
             print("[hospital_core] backup:", e, flush=True)
 
-    print("[hospital_core] LISTO — sin recorte de comandos", flush=True)
+    print("[hospital_core] LISTO", flush=True)
     return bot
 
 
