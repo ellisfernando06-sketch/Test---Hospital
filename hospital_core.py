@@ -1,9 +1,15 @@
 # -*- coding: utf-8 -*-
-"""hospital_core.py — arranque robusto. Roles y setup prioritarios."""
+"""
+hospital_core.py — Arranque del bot.
+====================================
+Prioridad: no tumbar el proceso. Comandos críticos del organigrama primero.
+Los fallos de módulos secundarios se ignoran (log) y el bot sigue.
+"""
 from __future__ import annotations
 
 import asyncio
 import re
+import sys
 import time
 import traceback
 import urllib.request
@@ -18,14 +24,15 @@ _URL = (
 )
 _GUILD_ID = 1381360019467014184
 
-# Críticos primero
-_MODULOS_PRIORITARIOS = (
-    "roles_comandos",   # /configurar_roles /ordenar_roles /organigrama
-    "setup_servidor",
-    "limpiar_roles",
+# ── Módulos críticos (organigrama / setup) — PRIMERO ──────────────────────
+_MODULOS_CRITICOS = (
+    "roles_comandos",    # /configurar_roles /ordenar_roles /organigrama
+    "setup_servidor",    # /setup_servidor
+    "limpiar_roles",     # /limpiar_roles_viejos
     "bienvenida",
 )
 
+# ── Resto (si falla uno, no tumba el bot) ─────────────────────────────────
 _MODULOS = (
     "comandos_nuevos",
     "centro_solicitudes_ui",
@@ -54,32 +61,35 @@ _MODULOS = (
     "inactividad",
 )
 
-# Quitar del núcleo (reemplazados localmente o sin key)
-_REEMPLAZADOS_POR_LOCAL = (
+# Quitar del NÚCLEO remoto (reemplazados localmente o sin key / liberan cupo)
+_QUITAR_DEL_NUCLEO = (
+    # Reemplazados por módulos locales
     "licencia",
     "despedir",
     "anuncio",
-    "votacion",
-    "formulario",
-    "catalogo_tienda",
     "configurar_roles",
     "ordenar_roles",
     "organigrama",
-)
-
-_QUITAR_DEL_TREE = (
+    # Sin key de staff — liberan el límite de 100 slash
     "votacion",
     "formulario",
     "catalogo_tienda",
-    "configurar_roles",
-    "ordenar_roles",
-    "organigrama",
-)
-
-_QUITAR_EXTRA_SI_FALTA_SETUP = (
     "balance",
-    "mi_inventario",
+    "balance_general",
+    "depositar",
+    "retirar",
+    "transferir",
+    "pagar_salario",
     "historial_financiero",
+    "mi_inventario",
+)
+
+_CRITICOS_SLASH = (
+    "configurar_roles",
+    "ordenar_roles",
+    "organigrama",
+    "setup_servidor",
+    "limpiar_roles_viejos",
 )
 
 
@@ -92,70 +102,95 @@ def _descargar_nucleo(intentos: int = 8) -> str:
                 return r.read().decode("utf-8", errors="replace")
         except Exception as e:
             ultimo = e
+            print(f"[hospital_core] descarga núcleo intento {i+1}: {e}", flush=True)
             time.sleep(1.2 * (i + 1))
     raise RuntimeError(f"No se pudo descargar el núcleo: {ultimo}")
 
 
-def _listar_nombres(bot) -> list:
+def _strip_comando(source: str, name: str) -> str:
+    try:
+        return re.sub(
+            rf"@bot\.tree\.command\(name=\"{re.escape(name)}\"[^\n]*\n"
+            r"(?:@[^\n]+\n)*"
+            rf"async def \w+\([\s\S]*?\n(?=\n@|\n# |\nif |\nasync def |\ndef )",
+            "\n",
+            source,
+            count=1,
+        )
+    except Exception:
+        return source
+
+
+def _listar(bot) -> list:
     try:
         return sorted({c.name for c in bot.tree.get_commands()})
     except Exception:
         return []
 
 
-def _quitar_cmd(bot, name: str) -> None:
+def _quitar_tree(bot, name: str) -> None:
     try:
         bot.tree.remove_command(name)
-        print(f"[hospital_core] liberado: /{name}", flush=True)
     except Exception:
         pass
 
 
 def _cargar_modulo(bot, name: str) -> bool:
     try:
+        if name in sys.modules:
+            # permitir re-registro limpio de críticos
+            if name in _MODULOS_CRITICOS:
+                del sys.modules[name]
         mod = __import__(name)
         if hasattr(mod, "registrar"):
             mod.registrar(bot)
         print(f"[hospital_core] ✓ {name}", flush=True)
         return True
-    except Exception:
-        print(f"[hospital_core] ✗ {name} (ignorado)", flush=True)
+    except Exception as e:
+        print(f"[hospital_core] ✗ {name}: {type(e).__name__}: {e}", flush=True)
         traceback.print_exc()
         return False
 
 
 def _asegurar_criticos(bot) -> None:
-    names = _listar_nombres(bot)
-    faltan = [c for c in ("setup_servidor", "configurar_roles") if c not in names]
+    names = set(_listar(bot))
+    faltan = [c for c in _CRITICOS_SLASH if c not in names]
     if not faltan:
-        print("[hospital_core] ✅ críticos OK", flush=True)
+        print("[hospital_core] ✅ comandos críticos presentes", flush=True)
         return
 
-    print(f"[hospital_core] ⚠️ faltan {faltan} — liberando cupos…", flush=True)
-    for cmd in _QUITAR_EXTRA_SI_FALTA_SETUP:
-        _quitar_cmd(bot, cmd)
+    print(f"[hospital_core] ⚠️ faltan críticos {faltan} — liberando cupos…", flush=True)
+    # Liberar más comandos no esenciales del tree
+    extra = (
+        "asignar_tarea",
+        "marcar_asistencia",
+        "reporte_departamento",
+        "carta_solicitud",
+        "quejas_pendientes",
+    )
+    for c in extra:
+        _quitar_tree(bot, c)
 
-    import sys
-    for mod_name in ("roles_comandos", "setup_servidor", "limpiar_roles"):
-        if mod_name in sys.modules:
-            del sys.modules[mod_name]
-        _cargar_modulo(bot, mod_name)
+    for mod in _MODULOS_CRITICOS:
+        if mod in sys.modules:
+            del sys.modules[mod]
+        _cargar_modulo(bot, mod)
 
-    names = _listar_nombres(bot)
-    for c in ("setup_servidor", "configurar_roles", "ordenar_roles", "organigrama"):
+    names = set(_listar(bot))
+    for c in _CRITICOS_SLASH:
         print(f"[hospital_core] {c}={'OK' if c in names else 'FALTA'}", flush=True)
 
 
 def _cargar(module_globals: dict):
     source = _descargar_nucleo()
 
+    # on_ready seguro
     on_ready_pattern = re.compile(
         r"@bot\.event\s*\nasync def on_ready\(\):\n"
         r"(?:.*\n)*?"
         r"(?=\n# -{5,}|\n@bot\.tree\.error|\n@bot\.tree\.command)",
         re.MULTILINE,
     )
-
     new_on_ready = (
         "@bot.event\n"
         "async def on_ready():\n"
@@ -199,31 +234,18 @@ def _cargar(module_globals: dict):
         "        except Exception as _e:\n"
         "            print(\"[on_ready] Sync error:\", _e)\n"
     )
-
     m = on_ready_pattern.search(source)
     if m:
         source = source[: m.start()] + new_on_ready + source[m.end() :]
-        print("[hospital_core] on_ready OK", flush=True)
+        print("[hospital_core] on_ready parcheado", flush=True)
     else:
         source = source.replace("bot.tree.clear_commands(guild=None)", "pass")
-        source = source.replace(
-            "await bot.tree.sync()  # publica árbol vacío a nivel global (quita duplicados viejos)",
-            "pass",
-        )
 
-    for _cmd in _REEMPLAZADOS_POR_LOCAL:
-        try:
-            source = re.sub(
-                rf"@bot\.tree\.command\(name=\"{_cmd}\"[^\n]*\n"
-                r"(?:@[^\n]+\n)*"
-                rf"async def \w+\([\s\S]*?\n(?=\n@|\n# |\nif |\nasync def |\ndef )",
-                "\n",
-                source,
-                count=1,
-            )
-            print(f"[hospital_core] núcleo: quitado '{_cmd}'", flush=True)
-        except Exception:
-            pass
+    for cmd in _QUITAR_DEL_NUCLEO:
+        before = source
+        source = _strip_comando(source, cmd)
+        if source != before:
+            print(f"[hospital_core] núcleo sin /{cmd}", flush=True)
 
     source = source.replace(
         'description="[Solo primer uso] Te asigna la key OWNER para poder configurar el bot"',
@@ -241,7 +263,7 @@ def _cargar(module_globals: dict):
     try:
         exec(compile(source, "hospital_core_remote.py", "exec"), module_globals)
     except Exception:
-        print("[hospital_core] ERROR núcleo:", flush=True)
+        print("[hospital_core] ERROR FATAL núcleo:", flush=True)
         traceback.print_exc()
         raise
 
@@ -249,32 +271,34 @@ def _cargar(module_globals: dict):
     if bot is None:
         raise RuntimeError("bot no definido tras exec del núcleo")
 
-    for _cmd in _QUITAR_DEL_TREE:
-        _quitar_cmd(bot, _cmd)
+    # Limpiar tree por si el strip no alcanzó
+    for cmd in _QUITAR_DEL_NUCLEO:
+        _quitar_tree(bot, cmd)
 
-    print("[hospital_core] Prioritarios…", flush=True)
-    for name in _MODULOS_PRIORITARIOS:
+    print("[hospital_core] === CRÍTICOS ===", flush=True)
+    for name in _MODULOS_CRITICOS:
         _cargar_modulo(bot, name)
 
-    print("[hospital_core] Módulos…", flush=True)
+    print("[hospital_core] === MÓDULOS ===", flush=True)
     for name in _MODULOS:
         _cargar_modulo(bot, name)
 
     _asegurar_criticos(bot)
 
-    names = _listar_nombres(bot)
-    print(f"[hospital_core] Comandos: {len(names)}", flush=True)
-    print(f"[hospital_core] Lista: {', '.join(names)}", flush=True)
+    names = _listar(bot)
+    print(f"[hospital_core] Total comandos en memoria: {len(names)}", flush=True)
+    for c in _CRITICOS_SLASH:
+        print(f"[hospital_core] {c}={'OK' if c in names else 'FALTA'}", flush=True)
 
     async def _sync_todo(reason: str = "") -> list:
-        result = []
+        result: list = []
         print(f"[hospital_core] SYNC ({reason})", flush=True)
         try:
             try:
                 app_id = bot.application_id or (await bot.application_info()).id
                 await bot.http.bulk_upsert_global_commands(int(app_id), [])
             except Exception as e:
-                print("[hospital_core] globales:", e, flush=True)
+                print("[hospital_core] clear globales:", e, flush=True)
 
             targets = list(bot.guilds) if bot.guilds else [discord.Object(id=_GUILD_ID)]
             for g in targets:
@@ -284,10 +308,10 @@ def _cargar(module_globals: dict):
                     bot.tree.copy_global_to(guild=obj)
                     synced = await bot.tree.sync(guild=obj)
                     result = sorted(c.name for c in synced)
-                    print(f"[hospital_core] guild {gid}: {len(result)}", flush=True)
-                    for c in ("configurar_roles", "setup_servidor", "organigrama"):
+                    print(f"[hospital_core] guild {gid}: {len(result)} comandos", flush=True)
+                    for c in _CRITICOS_SLASH:
                         print(
-                            f"[hospital_core] {c}={'OK' if c in result else 'FALTA'}",
+                            f"[hospital_core] sync {c}={'OK' if c in result else 'FALTA'}",
                             flush=True,
                         )
                 except Exception as e:
@@ -308,26 +332,28 @@ def _cargar(module_globals: dict):
     async def _forzar_sync(ctx: commands.Context):
         if not ctx.guild or not isinstance(ctx.author, discord.Member):
             return
-        if not (ctx.author.guild_permissions.administrator or ctx.author.id == ctx.guild.owner_id):
+        if not (
+            ctx.author.guild_permissions.administrator
+            or ctx.author.id == ctx.guild.owner_id
+        ):
             return await ctx.reply("❌ Solo admin.")
-        msg = await ctx.reply("🔄 Sincronizando…")
+        msg = await ctx.reply("🔄 Sincronizando comandos…")
         try:
             names = await _sync_todo("!forzar_sync")
-            checks = []
-            for c in ("configurar_roles", "setup_servidor"):
-                checks.append(f"{'✅' if c in (names or []) else '❌'} /{c}")
+            checks = " · ".join(
+                f"{'✅' if c in (names or []) else '❌'} /{c}" for c in _CRITICOS_SLASH[:4]
+            )
             await msg.edit(
                 content=(
-                    f"✅ **{len(names)}** comandos.\n"
-                    f"{' · '.join(checks)}\n"
-                    f"`{', '.join(names[:25])}{'…' if len(names) > 25 else ''}`"
+                    f"✅ **{len(names)}** comandos.\n{checks}\n"
+                    f"`{', '.join(names[:20])}{'…' if len(names) > 20 else ''}`"
                 )
             )
         except Exception as e:
             await msg.edit(content=f"❌ {e}")
 
     @bot.listen("on_ready")
-    async def _backup():
+    async def _backup_sync():
         if getattr(bot, "_hc_backup_done", False):
             return
         bot._hc_backup_done = True
@@ -337,7 +363,7 @@ def _cargar(module_globals: dict):
         except Exception as e:
             print("[hospital_core] backup:", e, flush=True)
 
-    print("[hospital_core] LISTO", flush=True)
+    print("[hospital_core] LISTO — arranque seguro", flush=True)
     return bot
 
 
