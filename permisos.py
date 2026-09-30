@@ -28,7 +28,7 @@ _ALIAS_KEYS = {
     "DIRECTOR_RRHH": "DIR_RRHH",
     "DIRECTOR_DOCENCIA": "DIR_DOCENCIA",
     "DIRECTOR_LOGISTICA": "DIR_LOGISTICA",
-    "DIRECTOR_ENFERMERIA": "DIR_MEDICO",
+    "DIRECTOR_ENFERMERIA": "DIR_ENFERMERIA",
     "PASANTE": "INTERNO",
 }
 
@@ -40,6 +40,7 @@ _ALIAS_NOMBRES: dict[str, Tuple[str, ...]] = {
     "CO_OWNER": ("co-owner", "co owner", "🤝 co-owner"),
     "DIR_GENERAL": ("director general", "🖥️ director general"),
     "DIR_MEDICO": ("director médico", "director medico", "🩺 director médico"),
+    "DIR_ENFERMERIA": ("director de enfermería", "director de enfermeria", "💉 director de enfermería"),
     "DIR_RRHH": ("director de rrhh", "director de recursos humanos"),
     "DIR_DOCENCIA": (
         "director de docencia",
@@ -62,6 +63,7 @@ KEYS_GERENCIA: Tuple[str, ...] = (
     "PREFECTO_OPERACIONES",
     "DIR_GENERAL",
     "DIR_MEDICO",
+    "DIR_ENFERMERIA",
     "DIR_RRHH",
     "DIR_DOCENCIA",
     "DIR_LOGISTICA",
@@ -77,10 +79,19 @@ KEYS_EMITIR_CERTIFICADO: Tuple[str, ...] = (
 KEYS_FIRMAR_ENCARGADO: Tuple[str, ...] = (
     "JEFE_DEPARTAMENTO",
     "JEFE_SERVICIO",
+    "JEFE_SERVICIO_ENF",
+    "JEFE_SERVICIO_APOYO",
+    "JEFE_SERVICIO_ADMIN",
     "JEFE_GUIA_RESIDENTES",
+    "GUIA_AUXILIARES_ENF",
+    "GUIA_TECNICOS",
+    "GUIA_ADMIN",
     "MEDICO_ESPECIALISTA",
     "MEDICO_GENERAL",
+    "ENFERMERO_ESPECIALISTA",
+    "ENFERMERO_GENERAL",
     "DIR_MEDICO",
+    "DIR_ENFERMERIA",
     "DIR_DOCENCIA",
     "DIR_LOGISTICA",
     "DIR_RRHH",
@@ -109,14 +120,31 @@ KEYS_MEDICO: Tuple[str, ...] = (
     "MEDICO_ESPECIALISTA",
     "JEFE_SERVICIO",
     "DIR_MEDICO",
+    "AUXILIAR_ENFERMERIA",
+    "ENFERMERO_FORMACION",
+    "GUIA_AUXILIARES_ENF",
+    "ENFERMERO_GENERAL",
+    "ENFERMERO_ESPECIALISTA",
+    "JEFE_SERVICIO_ENF",
+    "DIR_ENFERMERIA",
+    "TECNICO_SALUD",
+    "TECNICO_FORMACION",
+    "GUIA_TECNICOS",
+    "PARAMEDICO",
+    "PARAMEDICO_ESPECIALISTA",
+    "JEFE_SERVICIO_APOYO",
     "PREFECTO_OPERACIONES",
     "DIR_GENERAL",
 ) + KEYS_AUTORIDADES
 
 KEYS_DOCENCIA_STAFF: Tuple[str, ...] = (
     "JEFE_GUIA_RESIDENTES",
+    "GUIA_AUXILIARES_ENF",
+    "GUIA_TECNICOS",
+    "GUIA_ADMIN",
     "JEFE_DEPARTAMENTO",
     "JEFE_SERVICIO",
+    "JEFE_SERVICIO_ENF",
     "DIR_DOCENCIA",
     "PREFECTO_OPERACIONES",
 ) + KEYS_AUTORIDADES
@@ -227,9 +255,10 @@ def member_tiene_alguna_key(member: discord.Member, *keys: str) -> bool:
     for k in keys:
         if k == "DIRECTOR" or _normalizar_key(k) == "DIRECTOR":
             dirs = (
-                "DIR_GENERAL", "DIR_MEDICO", "DIR_RRHH", "DIR_DOCENCIA", "DIR_LOGISTICA",
-                "DIRECTOR_GENERAL", "DIRECTOR_MEDICO", "DIRECTOR_RRHH",
-                "DIRECTOR_DOCENCIA", "DIRECTOR_LOGISTICA",
+                "DIR_GENERAL", "DIR_MEDICO", "DIR_ENFERMERIA", "DIR_RRHH",
+                "DIR_DOCENCIA", "DIR_LOGISTICA",
+                "DIRECTOR_GENERAL", "DIRECTOR_MEDICO", "DIRECTOR_ENFERMERIA",
+                "DIRECTOR_RRHH", "DIRECTOR_DOCENCIA", "DIRECTOR_LOGISTICA",
             )
             if any(member_tiene_key(member, dk) for dk in dirs):
                 return True
@@ -296,12 +325,10 @@ def require_key(*keys: str):
         if not isinstance(interaction.user, discord.Member):
             raise SinPermiso(list(keys))
         u = interaction.user
-        # Fundador / Owner siempre
         if member_tiene_key(u, "FUNDADOR_OWNER") or member_tiene_key(u, "OWNER"):
             return True
         if member_tiene_alguna_key(u, *keys):
             return True
-        # Bootstrap inicial sin roles.json
         if not roles_store.todas_las_keys() and u.guild_permissions.administrator:
             return True
         raise SinPermiso(list(keys))
@@ -309,7 +336,6 @@ def require_key(*keys: str):
 
 
 def require_nivel(nivel_maximo: int):
-    """nivel_del_member <= nivel_maximo (0 = más alto)."""
     async def predicate(interaction: discord.Interaction) -> bool:
         if not isinstance(interaction.user, discord.Member):
             raise SinPermiso([f"nivel<={nivel_maximo}"])
@@ -323,7 +349,6 @@ def require_autoridad():
     return require_key("FUNDADOR_OWNER", "CO_OWNER", "OWNER")
 
 
-# Compatibilidad con código antiguo
 def member_staff_server(member: discord.Member) -> bool:
     return member_es_staff_server(member)
 
