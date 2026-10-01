@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-verificacion.py — Verificación Roblox reactivada.
-
-- /verificar_roblox  → staff inicia verificación a un miembro (DM + modal)
-- Al aprobar: quita Visitante, otorga Comunidad (y Miembro si falta)
-- Renombra el apodo al username de Roblox (también admin/staff; owner puede fallar por API)
+verificacion.py — Verificación Roblox.
+/verificar_roblox @user | /verificar_all (DM a todos)
+Al aprobar: Comunidad + Miembro, renombre username Roblox.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from datetime import datetime, timezone
@@ -94,28 +93,12 @@ def guardar_verificado(
     extra: Optional[dict] = None,
 ) -> None:
     data = _load()
-    entry = {
-        "roblox": roblox,
-        "roblox_id": roblox_id,
-        "fecha": _now(),
-        "staff_id": staff_id,
-    }
+    entry = {"roblox": roblox, "roblox_id": roblox_id, "fecha": _now(), "staff_id": staff_id}
     if extra:
         entry.update(extra)
     data["verificados"][str(uid)] = entry
     data["pendientes"].pop(str(uid), None)
     _save(data)
-
-
-def obtener_roblox(uid: int) -> Optional[str]:
-    data = _load()
-    info = data["verificados"].get(str(uid))
-    return info.get("roblox") if info else None
-
-
-def obtener_roblox_completo(uid: int) -> Optional[dict]:
-    data = _load()
-    return data["verificados"].get(str(uid))
 
 
 async def buscar_usuario_roblox(username: str) -> Optional[Dict[str, Any]]:
@@ -145,7 +128,6 @@ async def buscar_usuario_roblox(username: str) -> Optional[Dict[str, Any]]:
                     return None
         except Exception:
             return None
-
         try:
             async with session.get(
                 f"https://users.roblox.com/v1/users/{user_id}",
@@ -156,7 +138,6 @@ async def buscar_usuario_roblox(username: str) -> Optional[Dict[str, Any]]:
                 info = await resp.json()
         except Exception:
             return None
-
         avatar_url = None
         try:
             async with session.get(
@@ -176,18 +157,12 @@ async def buscar_usuario_roblox(username: str) -> Optional[Dict[str, Any]]:
                         avatar_url = data_list[0]["imageUrl"]
         except Exception:
             pass
-
         info["avatar_url"] = avatar_url
         info["username"] = info.get("name")
         return info
 
 
 async def _renombrar_roblox(member: discord.Member, roblox_name: str) -> str:
-    """
-    Cambia el apodo al username de Roblox.
-    Intenta con todos (admin/staff incluidos). El dueño del servidor
-    a veces no se puede renombrar por limitación de Discord.
-    """
     nick = (roblox_name or "")[:32]
     if not nick:
         return "sin nombre"
@@ -197,41 +172,34 @@ async def _renombrar_roblox(member: discord.Member, roblox_name: str) -> str:
         await member.edit(nick=nick, reason=f"Verificación Roblox → {nick}")
         return f"renombrado a `{nick}`"
     except discord.Forbidden:
-        return f"sin permiso para renombrar a `{nick}` (sube el bot / Manage Nicknames)"
+        return f"sin permiso renombre `{nick}`"
     except Exception as e:
         return f"error renombre: {e}"
 
 
 async def _aplicar_roles_verificacion(
-    member: discord.Member,
-    roblox_name: str,
-) -> tuple[List[str], List[str]]:
-    """Quita Visitante, da Comunidad (+ Miembro si falta)."""
+    member: discord.Member, roblox_name: str
+) -> tuple:
     guild = member.guild
-    ok: List[str] = []
-    err: List[str] = []
-
+    ok, err = [], []
     try:
         import roles_acceso
 
         await roles_acceso.asegurar_roles_acceso(guild)
     except Exception:
         pass
-
     r_vis = rol_visitante(guild)
     r_com = rol_comunidad(guild)
     r_miem = rol_miembro(guild)
-
     try:
         if r_vis and r_vis in member.roles:
             await member.remove_roles(r_vis, reason=f"Verificado Roblox: {roblox_name}")
             ok.append(f"− {r_vis.name}")
     except Exception as e:
         err.append(f"Visitante: {e}")
-
     for rol, label in ((r_com, "Comunidad"), (r_miem, "Miembro")):
         if not rol:
-            err.append(f"No existe rol {label}")
+            err.append(f"No existe {label}")
             continue
         if rol in member.roles:
             ok.append(f"ya tenía {rol.name}")
@@ -241,7 +209,6 @@ async def _aplicar_roles_verificacion(
             ok.append(f"+ {rol.name}")
         except Exception as e:
             err.append(f"{label}: {e}")
-
     return ok, err
 
 
@@ -262,47 +229,36 @@ class RobloxModal(ui.Modal, title="🎮 Verificación Roblox"):
         roblox_input = str(self.usuario_roblox).strip()
         if not roblox_input or " " in roblox_input:
             await interaction.response.send_message(
-                "❌ Usuario inválido (sin espacios).",
-                ephemeral=True,
+                "❌ Usuario inválido (sin espacios).", ephemeral=True
             )
             return
-
         await interaction.response.defer(ephemeral=True)
-
         roblox_data = await buscar_usuario_roblox(roblox_input)
         if not roblox_data:
             await interaction.followup.send(
                 embed=crear_embed(
                     "error",
                     "Usuario Roblox no encontrado",
-                    f"No existe **`{roblox_input}`**. Revisa el nombre exacto.",
+                    f"No existe **`{roblox_input}`**.",
                 ),
                 ephemeral=True,
             )
             return
-
         guild = interaction.client.get_guild(self.guild_id)
         if not guild:
             await interaction.followup.send(
                 "❌ Servidor no encontrado.", ephemeral=True
             )
             return
-
         member = guild.get_member(interaction.user.id)
         if not member:
             await interaction.followup.send(
                 "❌ No estás en el servidor.", ephemeral=True
             )
             return
-
         roblox_name = roblox_data.get("name") or roblox_input
-
-        # Roles (Comunidad + Miembro, quita Visitante)
         roles_ok, roles_err = await _aplicar_roles_verificacion(member, roblox_name)
-
-        # Apodo = username Roblox (todos, incl. admin)
         nick_msg = await _renombrar_roblox(member, roblox_name)
-
         guardar_verificado(
             member.id,
             roblox_name,
@@ -314,7 +270,6 @@ class RobloxModal(ui.Modal, title="🎮 Verificación Roblox"):
                 "nick": nick_msg,
             },
         )
-
         staff_member = guild.get_member(self.staff_id)
         embed_verif = embed_roblox_verificacion(
             discord_user=member,
@@ -323,56 +278,23 @@ class RobloxModal(ui.Modal, title="🎮 Verificación Roblox"):
             aprobado=True,
         )
         embed_verif.add_field(
-            name="Roles",
-            value="\n".join(roles_ok) or "—",
-            inline=True,
+            name="Roles", value="\n".join(roles_ok) or "—", inline=True
         )
         if roles_err:
             embed_verif.add_field(
-                name="Avisos roles",
-                value="\n".join(roles_err)[:500],
-                inline=True,
+                name="Avisos", value="\n".join(roles_err)[:500], inline=True
             )
         embed_verif.add_field(name="Apodo", value=nick_msg, inline=False)
-
         await interaction.followup.send(
-            content="🎉 **Verificación exitosa**",
-            embed=embed_verif,
-            ephemeral=True,
+            content="🎉 **Verificación exitosa**", embed=embed_verif, ephemeral=True
         )
         try:
             await member.send(
-                content=(
-                    f"🏆 **Verificación Roblox aprobada**\n"
-                    f"Usuario: **`{roblox_name}`**\n"
-                    f"Apodo: {nick_msg}\n"
-                    f"Roles: {', '.join(roles_ok) or 'revisar con staff'}"
-                ),
+                content=f"🏆 Verificación aprobada · `{roblox_name}` · {nick_msg}",
                 embed=embed_verif,
             )
         except discord.Forbidden:
             pass
-
-        canal_id = config.CANALES.get("log_roles") or config.CANALES.get("log_general")
-        if canal_id:
-            canal = guild.get_channel(int(canal_id))
-            if canal:
-                log = crear_embed(
-                    "exito",
-                    "✅ Verificación Roblox",
-                    f"**Discord:** {member.mention} (`{member.id}`)\n"
-                    f"**Roblox:** `{roblox_name}` (ID `{roblox_data.get('id')}`)\n"
-                    f"**Display:** {roblox_data.get('displayName')}\n"
-                    f"**Staff:** <@{self.staff_id}>\n"
-                    f"**Apodo:** {nick_msg}\n"
-                    f"**Roles:** {', '.join(roles_ok)}",
-                    autor=member,
-                    thumbnail_url=roblox_data.get("avatar_url"),
-                )
-                try:
-                    await canal.send(embed=log)
-                except Exception:
-                    pass
 
 
 class VerificarView(ui.View):
@@ -399,12 +321,10 @@ async def enviar_dm_verificacion(member: discord.Member, staff: discord.Member) 
         "roblox",
         "Verificación de cuenta Roblox",
         f"¡Hola **{member.display_name}**!\n\n"
-        f"El staff de **{hospital}** solicita verificar tu cuenta de Roblox.\n\n"
-        f"Al completar:\n"
-        f"• Se te otorga **Comunidad** (y **Miembro** si aplica)\n"
-        f"• Tu **apodo** pasa a ser tu username de Roblox\n\n"
-        f"**Solicitado por:** {staff.mention}\n"
-        f"⏱️ Tienes 24 horas.",
+        f"Staff de **{hospital}** solicita verificar tu Roblox.\n\n"
+        f"• Rol **Comunidad** (+ Miembro si aplica)\n"
+        f"• Apodo = username Roblox\n\n"
+        f"**Solicitado por:** {staff.mention}\n⏱️ 24 horas.",
         autor=staff,
     )
     view = VerificarView(staff.id, member.guild.id)
@@ -434,7 +354,7 @@ def _puede_staff(member: discord.Member) -> bool:
 
 
 def registrar(bot: commands.Bot) -> None:
-    for name in ("verificar_roblox", "verificar"):
+    for name in ("verificar_roblox", "verificar", "verificar_all"):
         try:
             bot.tree.remove_command(name)
         except Exception:
@@ -442,7 +362,7 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="verificar_roblox",
-        description="[Staff] Inicia verificación Roblox (roles + renombre username)",
+        description="[Staff] Verificación Roblox a un miembro (roles + renombre)",
     )
     @app_commands.describe(miembro="Usuario a verificar")
     async def verificar_roblox_cmd(
@@ -454,37 +374,32 @@ def registrar(bot: commands.Bot) -> None:
             )
         if not _puede_staff(inter.user):
             return await inter.response.send_message(
-                "❌ Solo staff con permiso de roles.", ephemeral=True
+                "❌ Solo staff.", ephemeral=True
             )
         if miembro.bot:
             return await inter.response.send_message(
-                "❌ No se verifica a bots.", ephemeral=True
+                "❌ No bots.", ephemeral=True
             )
-
         ok = await enviar_dm_verificacion(miembro, inter.user)
         if ok:
             await inter.response.send_message(
                 embed=crear_embed(
                     "exito",
                     "Verificación enviada",
-                    f"Se envió el DM a {miembro.mention}.\n"
-                    f"Al completar: **Comunidad** + apodo = username Roblox.",
+                    f"DM enviado a {miembro.mention}.",
                 ),
                 ephemeral=True,
             )
         else:
-            # Fallback: modal en el canal para el propio staff si DM cerrado
             await inter.response.send_message(
                 embed=crear_embed(
                     "aviso",
                     "DM cerrado",
-                    f"{miembro.mention} tiene los MD cerrados.\n"
-                    f"Pídele que active MD o usa el botón de abajo **en su presencia**.",
+                    f"{miembro.mention} no acepta MD. Usa el botón abajo.",
                 ),
                 view=VerificarView(inter.user.id, inter.guild.id),
                 ephemeral=True,
             )
-
         data = _load()
         data["pendientes"][str(miembro.id)] = {
             "staff_id": inter.user.id,
@@ -494,11 +409,52 @@ def registrar(bot: commands.Bot) -> None:
         _save(data)
 
     @bot.tree.command(
-        name="verificar",
-        description="[Staff] Alias de /verificar_roblox",
+        name="verificar", description="[Staff] Alias de /verificar_roblox"
     )
     @app_commands.describe(miembro="Usuario a verificar")
     async def verificar_alias(inter: discord.Interaction, miembro: discord.Member):
         await verificar_roblox_cmd.callback(inter, miembro)
 
-    print("[verificacion] OK — /verificar_roblox (roles + renombre Roblox)")
+    @bot.tree.command(
+        name="verificar_all",
+        description="[Staff] Envía por DM la verificación Roblox a TODOS los miembros",
+    )
+    async def verificar_all_cmd(inter: discord.Interaction):
+        if not inter.guild or not isinstance(inter.user, discord.Member):
+            return await inter.response.send_message(
+                "❌ Solo en el servidor.", ephemeral=True
+            )
+        if not _puede_staff(inter.user):
+            return await inter.response.send_message(
+                "❌ Solo staff.", ephemeral=True
+            )
+        await inter.response.defer(ephemeral=True)
+        miembros = [m for m in inter.guild.members if not m.bot]
+        enviados = fallidos = 0
+        data = _load()
+        for m in miembros:
+            if await enviar_dm_verificacion(m, inter.user):
+                enviados += 1
+                data["pendientes"][str(m.id)] = {
+                    "staff_id": inter.user.id,
+                    "guild_id": inter.guild.id,
+                    "at": _now(),
+                    "masivo": True,
+                }
+            else:
+                fallidos += 1
+            await asyncio.sleep(0.35)
+        _save(data)
+        await inter.followup.send(
+            embed=crear_embed(
+                "exito" if enviados else "aviso",
+                "Verificación masiva",
+                f"**Miembros:** {len(miembros)}\n"
+                f"**DM enviados:** {enviados}\n"
+                f"**DM cerrados:** {fallidos}\n\n"
+                f"Al completar: **Comunidad** + apodo Roblox.",
+            ),
+            ephemeral=True,
+        )
+
+    print("[verificacion] OK — /verificar_roblox + /verificar_all")
