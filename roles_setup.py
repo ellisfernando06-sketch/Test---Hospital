@@ -1,11 +1,23 @@
 # -*- coding: utf-8 -*-
-"""roles_setup.py — organigrama oficial + keys duales + orden."""
+"""
+roles_setup.py — Organigrama oficial.
+
+1. Escanea roles ya existentes en Discord (por nombre exacto / similar / legado).
+2. Reutiliza keys ya guardadas en roles.json si el rol sigue vivo.
+3. Crea solo lo que falte.
+4. Guarda key oficial + alias legado (OWNER, DIRECTOR_*, PASANTE).
+5. Ordena según organigrama.
+"""
 from __future__ import annotations
-from typing import Dict, List, Optional, Tuple
+
+from typing import Dict, List, Optional, Set, Tuple
+
 import discord
+
 import roles_config
 import roles_store
 
+# Key oficial → aliases que apuntan al mismo role_id
 _KEY_LEGACY_ALIASES: Dict[str, Tuple[str, ...]] = {
     "FUNDADOR_OWNER": ("OWNER",),
     "DIR_GENERAL": ("DIRECTOR_GENERAL",),
@@ -17,85 +29,194 @@ _KEY_LEGACY_ALIASES: Dict[str, Tuple[str, ...]] = {
     "INTERNO": ("PASANTE",),
 }
 
+# Nombres alternativos / viejos → key oficial (para escanear lo ya creado)
+_NOMBRES_LEGADOS: Dict[str, str] = {
+    "gerente developer": "FUNDADOR_OWNER",
+    "🛠️ gerente developer": "FUNDADOR_OWNER",
+    "👑 owner": "FUNDADOR_OWNER",
+    "owner": "FUNDADOR_OWNER",
+    "fundador": "FUNDADOR_OWNER",
+    "fundador y owner": "FUNDADOR_OWNER",
+    "co-owner": "CO_OWNER",
+    "co owner": "CO_OWNER",
+    "director general": "DIR_GENERAL",
+    "director médico": "DIR_MEDICO",
+    "director medico": "DIR_MEDICO",
+    "director de enfermería": "DIR_ENFERMERIA",
+    "director de enfermeria": "DIR_ENFERMERIA",
+    "director de rrhh": "DIR_RRHH",
+    "director de docencia": "DIR_DOCENCIA",
+    "director de investigación y docencia": "DIR_DOCENCIA",
+    "director de logística": "DIR_LOGISTICA",
+    "director de logistica": "DIR_LOGISTICA",
+    "prefecto": "PREFECTO_OPERACIONES",
+    "prefecto de operaciones": "PREFECTO_OPERACIONES",
+    "residente": "RESIDENTE",
+    "pasante": "INTERNO",
+    "interno": "INTERNO",
+    "practicante": "INTERNO",
+    "médico especialista": "MEDICO_ESPECIALISTA",
+    "medico especialista": "MEDICO_ESPECIALISTA",
+    "médico general": "MEDICO_GENERAL",
+    "medico general": "MEDICO_GENERAL",
+    "jefe de servicio": "JEFE_SERVICIO",
+    "enfermero": "ENFERMERO_GENERAL",
+    "enfermera": "ENFERMERO_GENERAL",
+    "auxiliar de enfermería": "AUXILIAR_ENFERMERIA",
+    "auxiliar de enfermeria": "AUXILIAR_ENFERMERIA",
+    "paramédico": "PARAMEDICO",
+    "paramedico": "PARAMEDICO",
+}
+
+
 def _hex_to_colour(hex_str: str) -> discord.Colour:
     h = (hex_str or "").lstrip("#")
     if not h or h.lower() in ("000000", "default", "none"):
         return discord.Colour.default()
-    return discord.Colour(int(h, 16))
+    try:
+        return discord.Colour(int(h, 16))
+    except Exception:
+        return discord.Colour.default()
+
 
 def _guardar_key_con_aliases(key: str, role_id: int) -> None:
     roles_store.guardar_key(key, role_id)
     for alias in _KEY_LEGACY_ALIASES.get(key, ()):
         roles_store.guardar_key(alias, role_id)
 
+
+def _norm(s: str) -> str:
+    return (s or "").lower().strip()
+
+
 def _buscar_rol_por_nombre(guild: discord.Guild, nombre: str) -> Optional[discord.Role]:
     for r in guild.roles:
         if r.name == nombre:
             return r
-    nl = nombre.lower().strip()
+    nl = _norm(nombre)
     for r in guild.roles:
-        if (r.name or "").lower().strip() == nl:
+        if _norm(r.name) == nl:
+            return r
+    # sin emoji / sin espacios extra
+    nl2 = "".join(c for c in nl if c.isalnum() or c.isspace())
+    for r in guild.roles:
+        rn = "".join(c for c in _norm(r.name) if c.isalnum() or c.isspace())
+        if rn == nl2 and rn:
             return r
     return None
 
+
 def _buscar_rol_para_key(guild: discord.Guild, key: str) -> Optional[discord.Role]:
-    oficial = roles_config.KEYS_NOMBRES.get(key)
-    if oficial:
-        r = _buscar_rol_por_nombre(guild, oficial[0])
-        if r:
-            return r
+    """1) store ID vivo · 2) nombre oficial · 3) nombres legados · 4) alias store."""
+    # 1) ID ya guardado (key oficial)
     rid = roles_store.obtener_id_key(key)
     if rid:
         r = guild.get_role(rid)
         if r:
             return r
+    # alias en store
     for alias in _KEY_LEGACY_ALIASES.get(key, ()):
         rid = roles_store.obtener_id_key(alias)
-        if rid and guild.get_role(rid):
-            return guild.get_role(rid)
-    if key == "FUNDADOR_OWNER":
+        if rid:
+            r = guild.get_role(rid)
+            if r:
+                return r
+
+    # 2) nombre oficial del organigrama
+    oficial = roles_config.KEYS_NOMBRES.get(key)
+    if oficial:
+        r = _buscar_rol_por_nombre(guild, oficial[0])
+        if r:
+            return r
+
+    # 3) nombres legados mapeados a esta key
+    for nom, k in _NOMBRES_LEGADOS.items():
+        if k != key:
+            continue
         for r in guild.roles:
-            rn = (r.name or "").lower()
-            if "gerente developer" in rn or rn in ("owner", "fundador y owner") or "fundador" in rn:
+            rn = _norm(r.name)
+            if rn == nom or nom in rn:
                 return r
     return None
 
-async def _asegurar_rol(guild, nombre, color_hex, resumen, *, renombrar_si_antiguo=False, es_separador=False, rol_existente=None):
+
+async def _asegurar_rol(
+    guild: discord.Guild,
+    nombre: str,
+    color_hex: str,
+    resumen: List[str],
+    *,
+    renombrar_si_antiguo: bool = False,
+    es_separador: bool = False,
+    rol_existente: Optional[discord.Role] = None,
+) -> Optional[discord.Role]:
     existente = rol_existente or _buscar_rol_por_nombre(guild, nombre)
+
     if existente:
         if renombrar_si_antiguo and existente.name != nombre:
             try:
-                kwargs = {"name": nombre, "reason": "Organigrama oficial"}
+                kwargs = {"name": nombre, "reason": "Organigrama oficial — migración"}
                 if es_separador:
-                    kwargs.update(colour=discord.Colour.default(), permissions=discord.Permissions.none(), hoist=False, mentionable=False)
+                    kwargs.update(
+                        colour=discord.Colour.default(),
+                        permissions=discord.Permissions.none(),
+                        hoist=False,
+                        mentionable=False,
+                    )
                 else:
                     kwargs["colour"] = _hex_to_colour(color_hex)
                 old = existente.name
                 await existente.edit(**kwargs)
-                resumen.append(f"🔄 {old} → **{nombre}**")
+                resumen.append(f"🔄 Renombrado: **{old}** → **{nombre}**")
             except Exception:
-                resumen.append(f"✅ **{existente.name}**")
+                resumen.append(f"✅ Detectado: **{existente.name}** (`{existente.id}`)")
         else:
             if es_separador:
                 try:
-                    await existente.edit(colour=discord.Colour.default(), permissions=discord.Permissions.none(), hoist=False, mentionable=False)
+                    await existente.edit(
+                        colour=discord.Colour.default(),
+                        permissions=discord.Permissions.none(),
+                        hoist=False,
+                        mentionable=False,
+                        reason="Separador: sin color ni permisos",
+                    )
                 except Exception:
                     pass
-            resumen.append(f"✅ **{nombre}**")
+            resumen.append(f"✅ Detectado: **{nombre}** (`{existente.id}`)")
         return existente
+
+    # Crear solo si no existe
     try:
         if es_separador:
-            rol = await guild.create_role(name=nombre, colour=discord.Colour.default(), permissions=discord.Permissions.none(), hoist=False, mentionable=False, reason="Separador")
+            rol = await guild.create_role(
+                name=nombre,
+                colour=discord.Colour.default(),
+                permissions=discord.Permissions.none(),
+                hoist=False,
+                mentionable=False,
+                reason="Separador organigrama",
+            )
         else:
-            rol = await guild.create_role(name=nombre, colour=_hex_to_colour(color_hex), permissions=discord.Permissions.none(), hoist=False, mentionable=False, reason="Organigrama")
-        resumen.append(f"🆕 **{nombre}**")
+            rol = await guild.create_role(
+                name=nombre,
+                colour=_hex_to_colour(color_hex),
+                permissions=discord.Permissions.none(),
+                hoist=False,
+                mentionable=False,
+                reason="Organigrama oficial — nuevo",
+            )
+        resumen.append(f"🆕 Creado: **{nombre}** (`{rol.id}`)")
         return rol
+    except discord.Forbidden:
+        resumen.append(f"❌ Sin permisos para crear: **{nombre}**")
+        return None
     except Exception as e:
-        resumen.append(f"❌ {nombre}: {e}")
+        resumen.append(f"❌ Error **{nombre}**: {e}")
         return None
 
-def _orden_deseado():
-    orden = []
+
+def _orden_deseado() -> List[Tuple[str, str]]:
+    orden: List[Tuple[str, str]] = []
     seps = {s[0]: s[1] for s in roles_config.SEPARADORES_ROLES}
     bloques = [
         ("sep_autoridades", "autoridades"),
@@ -121,20 +242,24 @@ def _orden_deseado():
         orden.append(("otorgado", nombre))
     return orden
 
+
 async def ordenar_roles(guild: discord.Guild) -> List[str]:
-    resumen = []
+    resumen: List[str] = []
     if not guild.me:
-        return ["❌ Sin bot member"]
+        return ["❌ No se pudo obtener el miembro del bot."]
     bot_top = guild.me.top_role
-    roles_ordenados, vistos = [], set()
+    roles_ordenados: List[discord.Role] = []
+    vistos: Set[int] = set()
     for _, nombre in _orden_deseado():
         rol = _buscar_rol_por_nombre(guild, nombre)
-        if not rol or rol.id in vistos or rol.is_default() or rol.managed or not (rol < bot_top):
+        if not rol or rol.id in vistos:
+            continue
+        if rol.is_default() or rol.managed or not (rol < bot_top):
             continue
         roles_ordenados.append(rol)
         vistos.add(rol.id)
     if not roles_ordenados:
-        return ["⚠️ Nada que ordenar"]
+        return ["⚠️ No hay roles gestionables para ordenar."]
     base = bot_top.position - 1
     positions = {}
     for i, rol in enumerate(roles_ordenados):
@@ -142,50 +267,88 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
         if pos >= 1:
             positions[rol] = pos
     try:
-        await guild.edit_role_positions(positions=positions, reason="Organigrama oficial")
-        resumen.append(f"✅ Reordenados {len(positions)}")
+        await guild.edit_role_positions(positions=positions, reason="Orden organigrama oficial")
+        resumen.append(f"✅ Reordenados ({len(positions)}).")
         for r in roles_ordenados:
             if r in positions:
                 resumen.append(f"  • {r.name}")
+    except discord.Forbidden:
+        resumen.append("❌ Sin permisos para reordenar (sube el rol del bot).")
     except Exception as e:
-        resumen.append(f"❌ {e}")
+        resumen.append(f"❌ Error al reordenar: {e}")
     return resumen
 
+
 async def configurar_organigrama(guild: discord.Guild) -> List[str]:
-    resumen = ["**Organigrama — roles y keys**"]
-    keys = list(roles_config.JERARQUIA_KEYS)
+    """
+    Escanea → reutiliza keys existentes → crea faltantes → ordena.
+    """
+    resumen: List[str] = [
+        "**Organigrama — escaneo + keys + creación**",
+        "_Roles existentes se reutilizan; solo se crean los que faltan._",
+        "",
+    ]
+
+    keys_orden = list(roles_config.JERARQUIA_KEYS)
     if "INACTIVIDAD_JUSTIFICADA" in roles_config.KEYS_NOMBRES:
-        keys.append("INACTIVIDAD_JUSTIFICADA")
-    for key in keys:
+        keys_orden.append("INACTIVIDAD_JUSTIFICADA")
+
+    detectados = creados = 0
+    for key in keys_orden:
         if key not in roles_config.KEYS_NOMBRES:
             continue
         nombre, color = roles_config.KEYS_NOMBRES[key]
         encontrado = _buscar_rol_para_key(guild, key)
-        rol = await _asegurar_rol(guild, nombre, color, resumen, renombrar_si_antiguo=(key == "FUNDADOR_OWNER"), rol_existente=encontrado)
+        era_existente = encontrado is not None
+        rol = await _asegurar_rol(
+            guild,
+            nombre,
+            color,
+            resumen,
+            renombrar_si_antiguo=(key == "FUNDADOR_OWNER"),
+            rol_existente=encontrado,
+        )
         if rol:
             _guardar_key_con_aliases(key, rol.id)
-            resumen.append(f"   🔑 `{key}` → `{rol.id}`")
-    resumen.append("**Otorgados**")
+            aliases = _KEY_LEGACY_ALIASES.get(key, ())
+            extra = f" + {', '.join(f'`{a}`' for a in aliases)}" if aliases else ""
+            resumen.append(f"   🔑 `{key}`{extra} → `{rol.id}`")
+            if era_existente:
+                detectados += 1
+            else:
+                creados += 1
+
+    resumen.append("")
+    resumen.append(f"**Resumen keys:** {detectados} detectados · {creados} creados")
+    resumen.append("")
+    resumen.append("**Roles otorgados (certs · seguridad · uniformes)**")
     for clave, (nombre, color) in roles_config.ROLES_OTORGADOS_CONSERVAR.items():
         rol = await _asegurar_rol(guild, nombre, color, resumen)
         if rol:
             roles_store.guardar_extra(f"otorgado_{clave}", rol.id)
-    resumen.append("**Separadores**")
+
+    resumen.append("")
+    resumen.append("**Separadores (sin color · sin permisos)**")
     for sep_key, nombre, _ in roles_config.SEPARADORES_ROLES:
         rol = await _asegurar_rol(guild, nombre, "", resumen, es_separador=True)
         if rol:
             roles_store.guardar_extra(sep_key, rol.id)
-    resumen.append("**Orden**")
+
+    resumen.append("")
+    resumen.append("**Orden jerárquico**")
     resumen.extend(await ordenar_roles(guild))
     return resumen
 
+
 def roles_uniforme(guild: discord.Guild) -> List[discord.Role]:
-    out = []
+    out: List[discord.Role] = []
     for clave in ("uniforme_medico", "uniforme_enfermeria", "accesorio_rp"):
         rid = roles_store.obtener_extra(f"otorgado_{clave}")
-        if rid and guild.get_role(rid):
-            out.append(guild.get_role(rid))
-            continue
+        if rid:
+            rol = guild.get_role(rid)
+            if rol:
+                out.append(rol)
+                continue
         nombre = roles_config.ROLES_OTORGADOS_CONSERVAR.get(clave, (None,))[0]
         if nombre:
             r = _buscar_rol_por_nombre(guild, nombre)
@@ -193,16 +356,20 @@ def roles_uniforme(guild: discord.Guild) -> List[discord.Role]:
                 out.append(r)
     return out
 
+
 async def asignar_uniformes_al_entrar(member: discord.Member) -> int:
     roles = roles_uniforme(member.guild)
+    if not roles:
+        return 0
     a_dar = [r for r in roles if r not in member.roles]
     if not a_dar:
         return 0
     try:
-        await member.add_roles(*a_dar, reason="Bienvenida — categorías")
+        await member.add_roles(*a_dar, reason="Bienvenida — roles de categoría")
         return len(a_dar)
     except Exception:
         return -1
+
 
 async def configurar_todo(guild: discord.Guild) -> List[str]:
     return await configurar_organigrama(guild)
