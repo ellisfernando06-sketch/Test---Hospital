@@ -1,14 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-verificacion.py — Verificación de usuario Roblox enlazada con la API oficial.
-
-Flujo mejorado:
-  1. El staff elige miembros con rol "Visitante".
-  2. El bot les envía un DM pidiendo su usuario de Roblox.
-  3. Al confirmar, el bot consulta la API de Roblox, obtiene avatar,
-     display name, ID y fecha de creación.
-  4. Envía un embed rico de verificación del personaje (estilo whitelist).
-  5. Se quita Visitante y se pone Miembro.
+verificacion.py — Verificación Roblox.
+Tras verificar: se quita Visitante y se otorga **Comunidad**.
+(Miembro se otorga al aceptar las reglas en comunidad.py)
 """
 from __future__ import annotations
 
@@ -28,6 +22,7 @@ _DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 _PATH = os.path.join(_DATA_DIR, "verificaciones.json")
 
 ROL_VISITANTE_NOMBRES = ["Visitante", "👤 Visitante", "visitante"]
+ROL_COMUNIDAD_NOMBRES = ["Comunidad", "🌐 Comunidad", "comunidad", "✅ Comunidad"]
 ROL_MIEMBRO_NOMBRES = ["Miembro", "👤 Miembro", "miembro", "✅ Miembro"]
 
 
@@ -56,12 +51,10 @@ def _save(data: dict) -> None:
 
 
 def encontrar_rol(guild: discord.Guild, nombres: List[str]) -> Optional[discord.Role]:
-    """Detecta un rol por nombre exacto (case-insensitive)."""
     lower = {n.lower(): n for n in nombres}
     for rol in guild.roles:
         if rol.name.lower() in lower or rol.name in nombres:
             return rol
-    # Búsqueda parcial suave
     for rol in guild.roles:
         rn = rol.name.lower()
         for n in nombres:
@@ -78,14 +71,27 @@ def rol_miembro(guild: discord.Guild) -> Optional[discord.Role]:
     return encontrar_rol(guild, ROL_MIEMBRO_NOMBRES)
 
 
-def guardar_verificado(uid: int, roblox: str, staff_id: int, roblox_id: Optional[int] = None, extra: Optional[dict] = None) -> None:
+def rol_comunidad(guild: discord.Guild) -> Optional[discord.Role]:
+    try:
+        import roles_acceso
+
+        r = roles_acceso.rol_comunidad(guild)
+        if r:
+            return r
+    except Exception:
+        pass
+    return encontrar_rol(guild, ROL_COMUNIDAD_NOMBRES)
+
+
+def guardar_verificado(
+    uid: int,
+    roblox: str,
+    staff_id: int,
+    roblox_id: Optional[int] = None,
+    extra: Optional[dict] = None,
+) -> None:
     data = _load()
-    entry = {
-        "roblox": roblox,
-        "roblox_id": roblox_id,
-        "fecha": _now(),
-        "staff_id": staff_id,
-    }
+    entry = {"roblox": roblox, "roblox_id": roblox_id, "fecha": _now(), "staff_id": staff_id}
     if extra:
         entry.update(extra)
     data["verificados"][str(uid)] = entry
@@ -104,27 +110,15 @@ def obtener_roblox_completo(uid: int) -> Optional[dict]:
     return data["verificados"].get(str(uid))
 
 
-# ─────────────────────────────────────────────────────────────
-# API de Roblox (pública, sin token)
-# ─────────────────────────────────────────────────────────────
-
 async def buscar_usuario_roblox(username: str) -> Optional[Dict[str, Any]]:
-    """
-    Busca un usuario de Roblox por nombre de usuario.
-    Devuelve dict con: id, name, displayName, created, avatar_url, description...
-    o None si no existe / error.
-    """
     username = username.strip()
     if not username or " " in username:
         return None
-
     headers = {
         "Content-Type": "application/json",
         "User-Agent": "HospitalBot/1.0 (Discord Verification)",
     }
-
     async with aiohttp.ClientSession(headers=headers) as session:
-        # 1. Resolver username → userId
         payload = {"usernames": [username], "excludeBannedUsers": True}
         try:
             async with session.post(
@@ -143,8 +137,6 @@ async def buscar_usuario_roblox(username: str) -> Optional[Dict[str, Any]]:
                     return None
         except Exception:
             return None
-
-        # 2. Datos completos del usuario
         try:
             async with session.get(
                 f"https://users.roblox.com/v1/users/{user_id}",
@@ -155,8 +147,6 @@ async def buscar_usuario_roblox(username: str) -> Optional[Dict[str, Any]]:
                 info = await resp.json()
         except Exception:
             return None
-
-        # 3. Avatar headshot
         avatar_url = None
         try:
             async with session.get(
@@ -176,9 +166,8 @@ async def buscar_usuario_roblox(username: str) -> Optional[Dict[str, Any]]:
                         avatar_url = data_list[0]["imageUrl"]
         except Exception:
             pass
-
         info["avatar_url"] = avatar_url
-        info["username"] = info.get("name")  # compat
+        info["username"] = info.get("name")
         return info
 
 
@@ -204,19 +193,15 @@ class RobloxModal(ui.Modal, title="🎮 Verificación Roblox"):
             )
             return
 
-        # Defer porque la API puede tardar
         await interaction.response.defer(ephemeral=True)
 
-        # Consultar Roblox
         roblox_data = await buscar_usuario_roblox(roblox_input)
         if not roblox_data:
             await interaction.followup.send(
                 embed=crear_embed(
                     "error",
                     "Usuario Roblox no encontrado",
-                    f"No existe ninguna cuenta con el nombre **`{roblox_input}`**.\n"
-                    "Verifica que lo escribiste **exactamente** igual (mayúsculas/minúsculas no importan, pero sin espacios ni caracteres extra).\n\n"
-                    "Inténtalo de nuevo con el botón.",
+                    f"No existe ninguna cuenta con el nombre **`{roblox_input}`**.",
                 ),
                 ephemeral=True,
             )
@@ -225,43 +210,53 @@ class RobloxModal(ui.Modal, title="🎮 Verificación Roblox"):
         guild = interaction.client.get_guild(self.guild_id)
         if not guild:
             await interaction.followup.send(
-                "❌ No pude encontrar el servidor. Contacta al staff.",
-                ephemeral=True,
+                "❌ No pude encontrar el servidor.", ephemeral=True
             )
             return
 
         member = guild.get_member(interaction.user.id)
         if not member:
             await interaction.followup.send(
-                "❌ No estás en el servidor.",
-                ephemeral=True,
+                "❌ No estás en el servidor.", ephemeral=True
             )
             return
 
         r_vis = rol_visitante(guild)
+        r_com = rol_comunidad(guild)
         r_miem = rol_miembro(guild)
 
-        if not r_miem:
+        if not r_com and not r_miem:
+            try:
+                import roles_acceso
+
+                created = await roles_acceso.asegurar_roles_acceso(guild)
+                r_com = created.get("comunidad") or rol_comunidad(guild)
+            except Exception:
+                pass
+        if not r_com and not r_miem:
             await interaction.followup.send(
-                "❌ El rol **Miembro** no existe en el servidor. Avísale al admin.",
+                "❌ No existe el rol **Comunidad**. Créalo o usa `/configurar_roles`.",
                 ephemeral=True,
             )
             return
 
-        # Cambiar roles
         try:
             if r_vis and r_vis in member.roles:
-                await member.remove_roles(r_vis, reason=f"Verificado Roblox: {roblox_data.get('name')}")
-            if r_miem not in member.roles:
-                await member.add_roles(r_miem, reason=f"Verificado Roblox: {roblox_data.get('name')}")
+                await member.remove_roles(
+                    r_vis, reason=f"Verificado Roblox: {roblox_data.get('name')}"
+                )
+            target = r_com or r_miem
+            if target and target not in member.roles:
+                await member.add_roles(
+                    target, reason=f"Verificado Roblox: {roblox_data.get('name')}"
+                )
         except discord.Forbidden:
             await interaction.followup.send(
-                "❌ El bot no tiene permisos para cambiar roles. Avísale al admin.",
+                "❌ El bot no tiene permisos para cambiar roles.",
                 ephemeral=True,
             )
             return
 
-        # Guardar
         staff_member = guild.get_member(self.staff_id)
         guardar_verificado(
             member.id,
@@ -274,31 +269,25 @@ class RobloxModal(ui.Modal, title="🎮 Verificación Roblox"):
             },
         )
 
-        # Embed rico de verificación del personaje (estilo whitelist)
         embed_verif = embed_roblox_verificacion(
             discord_user=member,
             roblox_data=roblox_data,
             staff=staff_member,
             aprobado=True,
         )
-
-        # Mensaje de confirmación ephemeral + el embed completo
         await interaction.followup.send(
-            content="🎉 **¡Verificación exitosa!** Aquí está la ficha de tu personaje:",
+            content="🎉 **¡Verificación exitosa!** Ficha de tu personaje:",
             embed=embed_verif,
             ephemeral=True,
         )
-
-        # También enviar el embed al DM del usuario (por si el ephemeral se pierde)
         try:
             await member.send(
-                content="🏆 **Tu verificación de personaje Roblox ha sido aprobada**",
+                content="🏆 **Verificación Roblox aprobada** — rol **Comunidad** otorgado.",
                 embed=embed_verif,
             )
         except discord.Forbidden:
             pass
 
-        # Log en canal
         canal_id = config.CANALES.get("log_roles") or config.CANALES.get("log_general")
         if canal_id:
             canal = guild.get_channel(canal_id)
@@ -309,7 +298,8 @@ class RobloxModal(ui.Modal, title="🎮 Verificación Roblox"):
                     f"**Discord:** {member.mention} (`{member.id}`)\n"
                     f"**Roblox:** `{roblox_data.get('name')}` (ID: `{roblox_data.get('id')}`)\n"
                     f"**Display:** {roblox_data.get('displayName')}\n"
-                    f"**Staff que inició:** <@{self.staff_id}>",
+                    f"**Staff:** <@{self.staff_id}>\n"
+                    f"**Rol:** Comunidad",
                     autor=member,
                     thumbnail_url=roblox_data.get("avatar_url"),
                 )
@@ -321,7 +311,7 @@ class RobloxModal(ui.Modal, title="🎮 Verificación Roblox"):
 
 class VerificarView(ui.View):
     def __init__(self, staff_id: int, guild_id: int):
-        super().__init__(timeout=86400)  # 24h
+        super().__init__(timeout=86400)
         self.staff_id = staff_id
         self.guild_id = guild_id
 
@@ -335,22 +325,17 @@ class VerificarView(ui.View):
         await interaction.response.send_modal(RobloxModal(self.staff_id, self.guild_id))
 
 
-async def enviar_dm_verificacion(
-    member: discord.Member,
-    staff: discord.Member,
-) -> bool:
-    """Envía DM de verificación con embed creativo. Devuelve True si se envió."""
+async def enviar_dm_verificacion(member: discord.Member, staff: discord.Member) -> bool:
     embed = crear_embed(
         "roblox",
         "Verificación de cuenta Roblox",
         f"¡Hola **{member.display_name}**! 👋\n\n"
         f"El staff del **{config.NOMBRE_HOSPITAL}** te solicita verificar tu personaje de Roblox "
-        f"para poder otorgarte el rol de **Miembro** y acceder a todas las áreas del servidor.\n\n"
-        f"🔹 Pulsa el botón de abajo\n"
-        f"🔹 Escribe tu **usuario exacto de Roblox** (sin espacios)\n"
-        f"🔹 El bot consultará la API oficial de Roblox y te mostrará la ficha de tu personaje\n\n"
+        f"para otorgarte el rol de **Comunidad**.\n\n"
+        f"🔹 Pulsa el botón\n"
+        f"🔹 Escribe tu usuario exacto de Roblox\n"
         f"**Solicitado por:** {staff.mention}\n\n"
-        f"⏱️ Tienes 24 horas para completar este proceso.",
+        f"⏱️ Tienes 24 horas.",
         autor=staff,
     )
     view = VerificarView(staff.id, member.guild.id)
