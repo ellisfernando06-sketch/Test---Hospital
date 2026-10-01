@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 bienvenida.py — Mensaje de bienvenida AUTOMÁTICO al entrar al servidor.
-- Canal de bienvenida (config / nombre / system channel)
-- Embed profesional
-- DM al usuario (si tiene DMs abiertos)
-- Roles de categoría (uniformes) al entrar
 """
 from __future__ import annotations
 
@@ -24,23 +20,23 @@ def embed_bienvenida(member: discord.Member) -> discord.Embed:
     hospital = _hospital()
     total = member.guild.member_count if member.guild else "—"
 
+    desc = (
+        f"¡Hola, {member.mention}!\n\n"
+        f"Acabas de ingresar a **{hospital}**.\n"
+        f"Este servidor es un espacio de **roleplay hospitalario**.\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"**📋 Primeros pasos**\n"
+        f"1️⃣ Lee las **normativas** del servidor\n"
+        f"2️⃣ Acepta las reglas / verificación si aplica\n"
+        f"3️⃣ Completa la **verificación Roblox** si te la piden\n"
+        f"4️⃣ Si quieres unirte al personal → **postulaciones**\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"¡Que tengas una excelente estadía! 🩺"
+    )
+
     emb = discord.Embed(
         title=f"🏥 Bienvenido/a a {hospital}",
-        description=(
-            f"¡Hola, {member.mention}!
-
-"
-            f"Acabas de ingresar a **{hospital}**.\n"
-            f"Este servidor es un espacio de **roleplay hospitalario**.\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"**📋 Primeros pasos**\n"
-            f"1️⃣ Lee las **normativas** del servidor\n"
-            f"2️⃣ Acepta las reglas / verificación si aplica\n"
-            f"3️⃣ Completa la **verificación Roblox** si te la piden\n"
-            f"4️⃣ Si quieres unirte al personal → **postulaciones**\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"¡Que tengas una excelente estadía! 🩺"
-        ),
+        description=desc,
         color=0x1ABC9C,
         timestamp=discord.utils.utcnow(),
     )
@@ -62,24 +58,24 @@ def embed_bienvenida(member: discord.Member) -> discord.Embed:
 
 def embed_bienvenida_dm(member: discord.Member) -> discord.Embed:
     hospital = _hospital()
+    desc = (
+        f"Hola, **{member.display_name}**.\n\n"
+        f"Tu entrada a **{hospital}** quedó registrada.\n\n"
+        f"**Siguiente paso**\n"
+        f"• Revisa las normativas en el servidor\n"
+        f"• Usa `/reglas` si está disponible\n"
+        f"• Completa verificación Roblox si aplica\n\n"
+        f"Gracias por unirte. ¡Bienvenido/a!"
+    )
     return discord.Embed(
         title=f"🏥 Acceso a {hospital}",
-        description=(
-            f"Hola, **{member.display_name}**.\n\n"
-            f"Tu entrada a **{hospital}** quedó registrada.\n\n"
-            f"**Siguiente paso**\n"
-            f"• Revisa las normativas en el servidor\n"
-            f"• Usa `/reglas` si está disponible\n"
-            f"• Completa verificación Roblox si aplica\n\n"
-            f"Gracias por unirte. ¡Bienvenido/a!"
-        ),
+        description=desc,
         color=0x3498DB,
         timestamp=discord.utils.utcnow(),
     ).set_footer(text=f"{hospital} · Mensaje automático")
 
 
 def _canal_bienvenida(guild: discord.Guild) -> Optional[discord.TextChannel]:
-    """Prioridad: config CANALES → nombres típicos → system channel."""
     canales = getattr(config, "CANALES", {}) or {}
     for key in ("bienvenida", "welcome", "entrada"):
         cid = canales.get(key)
@@ -91,21 +87,13 @@ def _canal_bienvenida(guild: discord.Guild) -> Optional[discord.TextChannel]:
             except Exception:
                 pass
 
-    keywords = (
-        "bienvenida",
-        "welcome",
-        "entrada",
-        "ingresos",
-        "general",
-        "inicio",
-        "lobby",
-    )
+    keywords = ("bienvenida", "welcome", "entrada", "ingresos", "general", "inicio", "lobby")
     for kw in keywords:
         for ch in guild.text_channels:
-            if kw in (ch.name or "").lower().replace("-", " ").replace("_", " "):
+            name = (ch.name or "").lower().replace("-", " ").replace("_", " ")
+            if kw in name:
                 return ch
 
-    # Último recurso: canal del sistema de Discord
     try:
         sys_ch = guild.system_channel
         if isinstance(sys_ch, discord.TextChannel):
@@ -119,7 +107,6 @@ async def _on_member_join(member: discord.Member) -> None:
     if member.bot or not member.guild:
         return
 
-    # 1) Roles de categoría (uniformes)
     try:
         import roles_setup
 
@@ -129,7 +116,6 @@ async def _on_member_join(member: discord.Member) -> None:
     except Exception as e:
         print(f"[bienvenida] uniformes: {e}", flush=True)
 
-    # 2) Mensaje en canal
     emb = embed_bienvenida(member)
     canal = _canal_bienvenida(member.guild)
     if canal:
@@ -137,13 +123,12 @@ async def _on_member_join(member: discord.Member) -> None:
             await canal.send(content=f"👋 {member.mention}", embed=emb)
             print(f"[bienvenida] canal #{canal.name} → {member.id}", flush=True)
         except discord.Forbidden:
-            print(f"[bienvenida] sin permiso para hablar en #{canal.name}", flush=True)
+            print(f"[bienvenida] sin permiso en #{canal.name}", flush=True)
         except Exception as e:
             print(f"[bienvenida] canal: {e}", flush=True)
     else:
         print("[bienvenida] no se encontró canal de bienvenida", flush=True)
 
-    # 3) DM (opcional; falla si el usuario tiene DMs cerrados)
     try:
         await member.send(embed=embed_bienvenida_dm(member))
     except Exception:
