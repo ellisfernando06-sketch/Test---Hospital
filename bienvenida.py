@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
-"""bienvenida.py — Bienvenida automática + roles de categoría al entrar."""
+"""
+bienvenida.py — Bienvenida automática al entrar.
+NO otorga roles de jerarquía, uniformes ni herramientas.
+Los roles de acceso se dan al firmar reglas (Miembro) y al verificarse (Comunidad).
+Los separadores del organigrama solo organizan la lista de roles (sin color/permisos).
+"""
 from __future__ import annotations
 
 from typing import Optional
@@ -23,10 +28,9 @@ def embed_bienvenida(member: discord.Member) -> discord.Embed:
         f"Este servidor es un espacio de **roleplay hospitalario**.\n\n"
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"**📋 Primeros pasos**\n"
-        f"1️⃣ Lee las **normativas** del servidor\n"
-        f"2️⃣ Acepta las reglas / verificación si aplica\n"
-        f"3️⃣ Completa la **verificación Roblox** si te la piden\n"
-        f"4️⃣ Si quieres unirte al personal → **postulaciones**\n"
+        f"1️⃣ Lee y **acepta las reglas** → rol **Miembro**\n"
+        f"2️⃣ Completa la **verificación** → rol **Comunidad**\n"
+        f"3️⃣ Si quieres unirte al personal → **postulaciones**\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"¡Que tengas una excelente estadía! 🩺"
     )
@@ -57,10 +61,9 @@ def embed_bienvenida_dm(member: discord.Member) -> discord.Embed:
         f"Hola, **{member.display_name}**.\n\n"
         f"Tu entrada a **{hospital}** quedó registrada.\n\n"
         f"**Siguiente paso**\n"
-        f"• Revisa las normativas en el servidor\n"
-        f"• Usa `/reglas` si está disponible\n"
-        f"• Completa verificación Roblox si aplica\n\n"
-        f"Gracias por unirte. ¡Bienvenido/a!"
+        f"• Acepta las **reglas** → rol **Miembro**\n"
+        f"• Completa la **verificación** → rol **Comunidad**\n\n"
+        f"¡Bienvenido/a!"
     )
     return discord.Embed(
         title=f"🏥 Acceso a {hospital}",
@@ -96,32 +99,11 @@ def _canal_bienvenida(guild: discord.Guild) -> Optional[discord.TextChannel]:
     return None
 
 
-async def _otorgar_categorias(member: discord.Member) -> int:
-    try:
-        import roles_categoria
-
-        return await roles_categoria.otorgar_categorias_al_entrar(member)
-    except Exception:
-        pass
-    try:
-        import roles_setup
-
-        return await roles_setup.asignar_uniformes_al_entrar(member)
-    except Exception as e:
-        print(f"[bienvenida] categorías: {e}", flush=True)
-        return 0
-
-
 async def _on_member_join(member: discord.Member) -> None:
     if member.bot or not member.guild:
         return
 
-    n = await _otorgar_categorias(member)
-    if n and n > 0:
-        print(f"[bienvenida] categorías +{n} → {member.id}", flush=True)
-    elif n == -1:
-        print("[bienvenida] sin permiso Gestionar roles", flush=True)
-
+    # Solo mensaje de bienvenida (sin roles de categoría/uniformes)
     emb = embed_bienvenida(member)
     canal = _canal_bienvenida(member.guild)
     if canal:
@@ -138,4 +120,4 @@ async def _on_member_join(member: discord.Member) -> None:
 
 def registrar(bot: commands.Bot) -> None:
     bot.add_listener(_on_member_join, "on_member_join")
-    print("[bienvenida] OK — mensaje + roles de categoría al entrar", flush=True)
+    print("[bienvenida] OK — solo mensaje (Miembro/Comunidad se dan por reglas/verificación)", flush=True)
