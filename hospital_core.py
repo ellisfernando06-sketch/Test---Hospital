@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""hospital_core.py — Arranque seguro. Prioriza organigrama."""
+"""
+hospital_core.py — Arranque a prueba de fallos.
+Prioriza organigrama local. Si el núcleo remoto falla, no tumba el proceso:
+levanta bot mínimo + módulos locales críticos.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -19,6 +23,7 @@ _URL = (
 )
 _GUILD_ID = 1381360019467014184
 
+# Módulos del organigrama (primero, siempre)
 _MODULOS_CRITICOS = (
     "roles_comandos",
     "setup_servidor",
@@ -68,16 +73,19 @@ _CRITICOS_SLASH = (
 )
 
 
-def _descargar_nucleo(intentos: int = 8) -> str:
+def _descargar_nucleo(intentos: int = 6) -> str:
     ultimo = None
     for i in range(intentos):
         try:
-            req = urllib.request.Request(_URL, headers={"User-Agent": "HospitalBot/1.0"})
-            with urllib.request.urlopen(req, timeout=60) as r:
-                return r.read().decode("utf-8", errors="replace")
+            req = urllib.request.Request(_URL, headers={"User-Agent": "HospitalBot/1.1"})
+            with urllib.request.urlopen(req, timeout=45) as r:
+                data = r.read().decode("utf-8", errors="replace")
+            if len(data) < 500:
+                raise RuntimeError("núcleo vacío o incompleto")
+            return data
         except Exception as e:
             ultimo = e
-            time.sleep(1.2 * (i + 1))
+            time.sleep(1.0 * (i + 1))
     raise RuntimeError(f"No se pudo descargar el núcleo: {ultimo}")
 
 
@@ -112,7 +120,10 @@ def _quitar_tree(bot, name: str) -> None:
 def _cargar_modulo(bot, name: str) -> bool:
     try:
         if name in sys.modules and name in _MODULOS_CRITICOS:
-            del sys.modules[name]
+            try:
+                del sys.modules[name]
+            except Exception:
+                pass
         mod = __import__(name)
         if hasattr(mod, "registrar"):
             mod.registrar(bot)
@@ -120,8 +131,33 @@ def _cargar_modulo(bot, name: str) -> bool:
         return True
     except Exception as e:
         print(f"[hospital_core] ✗ {name}: {type(e).__name__}: {e}", flush=True)
-        traceback.print_exc()
         return False
+
+
+def _bot_minimo() -> commands.Bot:
+    """Fallback si el núcleo remoto no carga."""
+    intents = discord.Intents.default()
+    try:
+        intents.message_content = True
+        intents.members = True
+        intents.guilds = True
+    except Exception:
+        pass
+    bot = commands.Bot(command_prefix="!", intents=intents)
+
+    @bot.event
+    async def on_ready():
+        print(f"[hospital_core] Fallback online: {bot.user}", flush=True)
+        fn = getattr(bot, "_hospital_sync_todo", None)
+        if callable(fn):
+            try:
+                await asyncio.sleep(2)
+                await fn("fallback_ready")
+            except Exception as e:
+                print("[hospital_core] sync fallback:", e, flush=True)
+
+    print("[hospital_core] ⚠️ Bot mínimo (sin núcleo remoto)", flush=True)
+    return bot
 
 
 def _asegurar_criticos(bot) -> None:
@@ -130,17 +166,80 @@ def _asegurar_criticos(bot) -> None:
     if not faltan:
         print("[hospital_core] ✅ críticos OK", flush=True)
         return
-    print(f"[hospital_core] ⚠️ faltan {faltan}", flush=True)
+    print(f"[hospital_core] ⚠️ faltan slash: {faltan} — reintento", flush=True)
     for c in ("asignar_tarea", "marcar_asistencia", "carta_solicitud"):
         _quitar_tree(bot, c)
     for mod in _MODULOS_CRITICOS:
         if mod in sys.modules:
-            del sys.modules[mod]
+            try:
+                del sys.modules[mod]
+            except Exception:
+                pass
         _cargar_modulo(bot, mod)
 
 
-def _cargar(module_globals: dict):
+def _instalar_sync(bot) -> None:
+    async def _sync_todo(reason: str = "") -> list:
+        result = []
+        try:
+            try:
+                app_id = bot.application_id
+                if not app_id:
+                    info = await bot.application_info()
+                    app_id = info.id
+                await bot.http.bulk_upsert_global_commands(int(app_id), [])
+            except Exception:
+                pass
+            targets = list(bot.guilds) if bot.guilds else [discord.Object(id=_GUILD_ID)]
+            for g in targets:
+                gid = int(getattr(g, "id", _GUILD_ID))
+                obj = discord.Object(id=gid)
+                try:
+                    bot.tree.copy_global_to(guild=obj)
+                except Exception:
+                    pass
+                synced = await bot.tree.sync(guild=obj)
+                result = sorted(c.name for c in synced)
+                print(f"[hospital_core] sync guild {gid}: {len(result)} cmds", flush=True)
+        except Exception:
+            traceback.print_exc()
+        return result
+
+    bot._hospital_sync_todo = _sync_todo
+
+    try:
+        bot.remove_command("forzar_sync")
+    except Exception:
+        pass
+
+    @bot.command(name="forzar_sync")
+    async def _forzar_sync(ctx: commands.Context):
+        if not ctx.guild or not isinstance(ctx.author, discord.Member):
+            return
+        if not (ctx.author.guild_permissions.administrator or ctx.author.id == ctx.guild.owner_id):
+            return await ctx.reply("❌ Solo admin.")
+        msg = await ctx.reply("🔄 Sincronizando…")
+        try:
+            names = await _sync_todo("!forzar_sync")
+            await msg.edit(content=f"✅ **{len(names)}** comandos.\n`{', '.join(names[:30])}`")
+        except Exception as e:
+            await msg.edit(content=f"❌ {e}")
+
+    @bot.listen("on_ready")
+    async def _backup_sync():
+        if getattr(bot, "_hc_backup_done", False):
+            return
+        bot._hc_backup_done = True
+        await asyncio.sleep(4)
+        try:
+            await _sync_todo("backup")
+        except Exception as e:
+            print("[hospital_core] backup sync:", e, flush=True)
+
+
+def _cargar_nucleo(module_globals: dict):
     source = _descargar_nucleo()
+    # on_ready más estable
     on_ready_pattern = re.compile(
         r"@bot\.event\s*\nasync def on_ready\(\):\n(?:.*\n)*?(?=\n# -{5,}|\n@bot\.tree\.error|\n@bot\.tree\.command)",
         re.MULTILINE,
@@ -181,73 +280,50 @@ def _cargar(module_globals: dict):
     exec(compile(source, "hospital_core_remote.py", "exec"), module_globals)
     bot = module_globals.get("bot")
     if bot is None:
-        raise RuntimeError("bot no definido")
+        raise RuntimeError("bot no definido tras exec")
+    return bot
+
+
+def _cargar(module_globals: dict):
+    bot = None
+    try:
+        bot = _cargar_nucleo(module_globals)
+        print("[hospital_core] Núcleo OK", flush=True)
+    except Exception as e:
+        print(f"[hospital_core] ⚠️ Núcleo falló: {type(e).__name__}: {e}", flush=True)
+        traceback.print_exc()
+        bot = _bot_minimo()
+        module_globals["bot"] = bot
 
     for cmd in _QUITAR_DEL_NUCLEO:
         _quitar_tree(bot, cmd)
 
+    # Siempre cargar organigrama + locales (nunca tumbar)
     for name in _MODULOS_CRITICOS:
         _cargar_modulo(bot, name)
     for name in _MODULOS:
         _cargar_modulo(bot, name)
+
     _asegurar_criticos(bot)
+    _instalar_sync(bot)
 
     names = _listar(bot)
-    print(f"[hospital_core] Comandos: {len(names)}", flush=True)
-
-    async def _sync_todo(reason: str = "") -> list:
-        result = []
-        try:
-            try:
-                app_id = bot.application_id or (await bot.application_info()).id
-                await bot.http.bulk_upsert_global_commands(int(app_id), [])
-            except Exception:
-                pass
-            targets = list(bot.guilds) if bot.guilds else [discord.Object(id=_GUILD_ID)]
-            for g in targets:
-                gid = int(getattr(g, "id", _GUILD_ID))
-                obj = discord.Object(id=gid)
-                bot.tree.copy_global_to(guild=obj)
-                synced = await bot.tree.sync(guild=obj)
-                result = sorted(c.name for c in synced)
-                print(f"[hospital_core] guild {gid}: {len(result)}", flush=True)
-        except Exception:
-            traceback.print_exc()
-        return result
-
-    bot._hospital_sync_todo = _sync_todo
-
-    try:
-        bot.remove_command("forzar_sync")
-    except Exception:
-        pass
-
-    @bot.command(name="forzar_sync")
-    async def _forzar_sync(ctx: commands.Context):
-        if not ctx.guild or not isinstance(ctx.author, discord.Member):
-            return
-        if not (ctx.author.guild_permissions.administrator or ctx.author.id == ctx.guild.owner_id):
-            return await ctx.reply("❌ Solo admin.")
-        msg = await ctx.reply("🔄 Sincronizando…")
-        try:
-            names = await _sync_todo("!forzar_sync")
-            await msg.edit(content=f"✅ **{len(names)}** comandos.\n`{', '.join(names[:25])}`")
-        except Exception as e:
-            await msg.edit(content=f"❌ {e}")
-
-    @bot.listen("on_ready")
-    async def _backup_sync():
-        if getattr(bot, "_hc_backup_done", False):
-            return
-        bot._hc_backup_done = True
-        await asyncio.sleep(4)
-        try:
-            await _sync_todo("backup")
-        except Exception as e:
-            print("[hospital_core] backup:", e, flush=True)
-
+    print(f"[hospital_core] Comandos en tree: {len(names)}", flush=True)
     print("[hospital_core] LISTO", flush=True)
     return bot
 
 
-bot = _cargar(globals())
+# ── Punto de carga (nunca SystemExit aquí) ──────────────────────────────
+try:
+    bot = _cargar(globals())
+except Exception as e:
+    print(f"[hospital_core] FATAL recuperable: {type(e).__name__}: {e}", flush=True)
+    traceback.print_exc()
+    bot = _bot_minimo()
+    try:
+        for name in _MODULOS_CRITICOS:
+            _cargar_modulo(bot, name)
+        _instalar_sync(bot)
+    except Exception:
+        traceback.print_exc()
+    print("[hospital_core] LISTO (modo emergencia)", flush=True)

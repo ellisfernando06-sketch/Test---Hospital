@@ -1,16 +1,22 @@
 # -*- coding: utf-8 -*-
-"""Bot Hospital — punto de entrada."""
+"""Bot Hospital — punto de entrada (Railway)."""
+import traceback
+
 import config
 
-# Carga todo el registro de comandos y define `bot`
-import hospital_core  # noqa: F401 — ejecuta el módulo y registra comandos
+# Carga registro de comandos y define `bot` (hospital_core no tumba el proceso)
+import hospital_core  # noqa: F401
 
 from hospital_core import bot
 
-if not config.TOKEN:
+if not getattr(config, "TOKEN", None):
     raise SystemExit(
-        "No hay TOKEN. En Railway ve a Variables y crea TOKEN "
-        "(o DISCORD_TOKEN / BOT_TOKEN) con el token del bot. "
-        "No lo pongas en config.py."
+        "No hay TOKEN. En Railway → Variables crea TOKEN "
+        "(o DISCORD_TOKEN / BOT_TOKEN) con el token del bot."
     )
-bot.run(config.TOKEN)
+
+try:
+    bot.run(config.TOKEN)
+except Exception:
+    traceback.print_exc()
+    raise
