@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""roles_config.py — organigrama + especialidades + certs + seguridad + herramientas PJ."""
+"""roles_config.py — organigrama + categorías + separadores largos."""
 from __future__ import annotations
 from typing import Dict, List, Tuple
 
@@ -75,20 +75,20 @@ SECCIONES = {
 }
 
 SEPARADORES_ROLES = [
-    ("sep_autoridades", "『 👑 AUTORIDADES COMPETENTES 』", "#E74C3C"),
-    ("sep_staff_server", "『 🛡️ STAFF DEL SERVER 』", "#9B59B6"),
-    ("sep_gerencia", "『 🏛️ GERENCIA 』", "#2C3E50"),
-    ("sep_jefatura", "『 ⭐ JEFATURA DE DEPARTAMENTO 』", "#2ECC71"),
-    ("sep_area_medica", "『 🩺 ÁREA MÉDICA 』", "#1ABC9C"),
-    ("sep_especialidades", "『 🔬 ESPECIALIDADES MÉDICAS 』", "#16A085"),
-    ("sep_area_enfermeria", "『 💉 ÁREA DE ENFERMERÍA 』", "#3498DB"),
-    ("sep_apoyo_clinico", "『 🚑 APOYO CLÍNICO 』", "#E74C3C"),
-    ("sep_area_admin", "『 📋 ÁREA ADMINISTRATIVA 』", "#F39C12"),
-    ("sep_seguridad", "『 🛡️ DEPARTAMENTO DE SEGURIDAD 』", "#2C3E50"),
-    ("sep_certificados", "『 🎓 CERTIFICADOS / CAPACITACIONES 』", "#9B59B6"),
-    ("sep_uniformes", "『 👔 UNIFORMES / CATEGORÍA 』", "#34495E"),
-    ("sep_herramientas_pj", "『 🎒 HERRAMIENTAS DE PJ 』", "#7F8C8D"),
-    ("sep_sistema", "『 ⚙️ SISTEMA 』", "#95A5A6"),
+    ("sep_autoridades", "━━━━━━━━ 『 👑  AUTORIDADES COMPETENTES 』 ━━━━━━━━", "#E74C3C"),
+    ("sep_staff_server", "━━━━━━━━ 『 🛡️  STAFF DEL SERVER 』 ━━━━━━━━", "#9B59B6"),
+    ("sep_gerencia", "━━━━━━━━ 『 🏛️  GERENCIA HOSPITALARIA 』 ━━━━━━━━", "#2C3E50"),
+    ("sep_jefatura", "━━━━━━━━ 『 ⭐  JEFATURA DE DEPARTAMENTO 』 ━━━━━━━━", "#2ECC71"),
+    ("sep_area_medica", "━━━━━━━━ 『 🩺  ÁREA MÉDICA 』 ━━━━━━━━", "#1ABC9C"),
+    ("sep_especialidades", "━━━━━━━━ 『 🔬  ESPECIALIDADES MÉDICAS 』 ━━━━━━━━", "#16A085"),
+    ("sep_area_enfermeria", "━━━━━━━━ 『 💉  ÁREA DE ENFERMERÍA 』 ━━━━━━━━", "#3498DB"),
+    ("sep_apoyo_clinico", "━━━━━━━━ 『 🚑  APOYO CLÍNICO 』 ━━━━━━━━", "#E74C3C"),
+    ("sep_area_admin", "━━━━━━━━ 『 📋  ÁREA ADMINISTRATIVA 』 ━━━━━━━━", "#F39C12"),
+    ("sep_seguridad", "━━━━━━━━ 『 🛡️  DEPARTAMENTO DE SEGURIDAD 』 ━━━━━━━━", "#2C3E50"),
+    ("sep_certificados", "━━━━━━━━ 『 🎓  CERTIFICADOS / CAPACITACIONES 』 ━━━━━━━━", "#9B59B6"),
+    ("sep_uniformes", "━━━━━━━━ 『 👔  UNIFORMES / CATEGORÍA 』 ━━━━━━━━", "#34495E"),
+    ("sep_herramientas_pj", "━━━━━━━━ 『 🎒  HERRAMIENTAS DE PJ 』 ━━━━━━━━", "#7F8C8D"),
+    ("sep_sistema", "━━━━━━━━ 『 ⚙️  SISTEMA 』 ━━━━━━━━", "#95A5A6"),
 ]
 
 ESPECIALIDADES_MEDICAS = {
