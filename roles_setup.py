@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""roles_setup.py — escanea, reutiliza keys, crea faltantes, ordena."""
+"""roles_setup.py — organigrama + especialidades + certs + seguridad."""
 from __future__ import annotations
 
 import asyncio
@@ -19,17 +19,17 @@ _KEY_LEGACY_ALIASES: Dict[str, Tuple[str, ...]] = {
     "DIR_DOCENCIA": ("DIRECTOR_DOCENCIA",),
     "DIR_LOGISTICA": ("DIRECTOR_LOGISTICA",),
     "INTERNO": ("PASANTE",),
+    "JEFE_SEGURIDAD": ("jefe_seguridad",),
+    "SUPERVISOR_SEGURIDAD": ("supervisor_seguridad",),
+    "GUARDIA": ("guardia",),
 }
 
 _NOMBRES_LEGADOS: Dict[str, str] = {
     "gerente developer": "FUNDADOR_OWNER",
-    "🛠️ gerente developer": "FUNDADOR_OWNER",
-    "👑 owner": "FUNDADOR_OWNER",
     "owner": "FUNDADOR_OWNER",
     "fundador": "FUNDADOR_OWNER",
     "fundador y owner": "FUNDADOR_OWNER",
     "co-owner": "CO_OWNER",
-    "co owner": "CO_OWNER",
     "director general": "DIR_GENERAL",
     "director médico": "DIR_MEDICO",
     "director medico": "DIR_MEDICO",
@@ -37,16 +37,15 @@ _NOMBRES_LEGADOS: Dict[str, str] = {
     "director de enfermeria": "DIR_ENFERMERIA",
     "director de rrhh": "DIR_RRHH",
     "director de docencia": "DIR_DOCENCIA",
-    "director de docencia e investigación": "DIR_DOCENCIA",
-    "director de investigación y docencia": "DIR_DOCENCIA",
     "director de logística": "DIR_LOGISTICA",
     "director de logistica": "DIR_LOGISTICA",
     "prefecto": "PREFECTO_OPERACIONES",
-    "prefecto de operaciones": "PREFECTO_OPERACIONES",
     "residente": "RESIDENTE",
     "pasante": "INTERNO",
     "interno": "INTERNO",
-    "practicante": "INTERNO",
+    "jefe de seguridad": "JEFE_SEGURIDAD",
+    "supervisor de seguridad": "SUPERVISOR_SEGURIDAD",
+    "guardia": "GUARDIA",
 }
 
 
@@ -77,11 +76,6 @@ def _buscar_rol_por_nombre(guild: discord.Guild, nombre: str) -> Optional[discor
     nl = _norm(nombre)
     for r in guild.roles:
         if _norm(r.name) == nl:
-            return r
-    nl2 = "".join(c for c in nl if c.isalnum() or c.isspace())
-    for r in guild.roles:
-        rn = "".join(c for c in _norm(r.name) if c.isalnum() or c.isspace())
-        if rn and rn == nl2:
             return r
     return None
 
@@ -176,10 +170,10 @@ async def _asegurar_rol(
                 reason="Organigrama oficial",
             )
         resumen.append(f"🆕 **{nombre}** (`{rol.id}`)")
-        await asyncio.sleep(0.45)
+        await asyncio.sleep(0.4)
         return rol
     except discord.Forbidden:
-        resumen.append(f"❌ Sin permisos: **{nombre}** (sube el rol del bot)")
+        resumen.append(f"❌ Sin permisos: **{nombre}**")
         return None
     except Exception as e:
         resumen.append(f"❌ **{nombre}**: {e}")
@@ -189,28 +183,50 @@ async def _asegurar_rol(
 def _orden_deseado() -> List[Tuple[str, str]]:
     orden: List[Tuple[str, str]] = []
     seps = {s[0]: s[1] for s in roles_config.SEPARADORES_ROLES}
-    bloques = [
+
+    def add_sep(key: str):
+        if key in seps:
+            orden.append(("sep", seps[key]))
+
+    def add_section(sec_key: str):
+        for key in roles_config.SECCIONES.get(sec_key, {}).get("keys", []):
+            if key in roles_config.KEYS_NOMBRES:
+                orden.append(("key", roles_config.KEYS_NOMBRES[key][0]))
+
+    def add_grupo(grupo: dict):
+        for _c, (nombre, _col) in grupo.items():
+            orden.append(("otorgado", nombre))
+
+    for sep_key, sec_key in [
         ("sep_autoridades", "autoridades"),
         ("sep_staff_server", "staff_server"),
         ("sep_gerencia", "gerencia"),
         ("sep_jefatura", "jefatura"),
         ("sep_area_medica", "area_medica"),
+    ]:
+        add_sep(sep_key)
+        add_section(sec_key)
+
+    add_sep("sep_especialidades")
+    add_grupo(getattr(roles_config, "ESPECIALIDADES_MEDICAS", {}))
+
+    for sep_key, sec_key in [
         ("sep_area_enfermeria", "area_enfermeria"),
         ("sep_apoyo_clinico", "apoyo_clinico"),
         ("sep_area_admin", "area_admin"),
-    ]
-    for sep_key, sec_key in bloques:
-        if sep_key in seps:
-            orden.append(("sep", seps[sep_key]))
-        for key in roles_config.SECCIONES.get(sec_key, {}).get("keys", []):
-            if key in roles_config.KEYS_NOMBRES:
-                orden.append(("key", roles_config.KEYS_NOMBRES[key][0]))
-    if "sep_sistema" in seps:
-        orden.append(("sep", seps["sep_sistema"]))
+        ("sep_seguridad", "seguridad"),
+    ]:
+        add_sep(sep_key)
+        add_section(sec_key)
+
+    add_sep("sep_certificados")
+    add_grupo(getattr(roles_config, "CERTIFICADOS", {}))
+    add_sep("sep_uniformes")
+    add_grupo(getattr(roles_config, "UNIFORMES_CATEGORIA", {}))
+
+    add_sep("sep_sistema")
     if "INACTIVIDAD_JUSTIFICADA" in roles_config.KEYS_NOMBRES:
         orden.append(("key", roles_config.KEYS_NOMBRES["INACTIVIDAD_JUSTIFICADA"][0]))
-    for _, (nombre, _) in roles_config.ROLES_OTORGADOS_CONSERVAR.items():
-        orden.append(("otorgado", nombre))
     return orden
 
 
@@ -251,7 +267,7 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
 async def configurar_organigrama(guild: discord.Guild) -> List[str]:
     resumen: List[str] = [
         "**Organigrama — escaneo + creación**",
-        "_Existentes se reutilizan · faltantes se crean · keys se guardan._",
+        "_Existentes se reutilizan · faltantes se crean._",
         "",
     ]
     keys_orden = list(roles_config.JERARQUIA_KEYS)
@@ -272,9 +288,7 @@ async def configurar_organigrama(guild: discord.Guild) -> List[str]:
         )
         if rol:
             _guardar_key_con_aliases(key, rol.id)
-            aliases = _KEY_LEGACY_ALIASES.get(key, ())
-            extra = f" + {', '.join(f'`{a}`' for a in aliases)}" if aliases else ""
-            resumen.append(f"   🔑 `{key}`{extra} → `{rol.id}`")
+            resumen.append(f"   🔑 `{key}` → `{rol.id}`")
             if era:
                 detectados += 1
             else:
@@ -285,14 +299,17 @@ async def configurar_organigrama(guild: discord.Guild) -> List[str]:
     resumen.append("")
     resumen.append(f"**Keys:** {detectados} detectados · {creados} creados · {fallidos} fallidos")
     resumen.append("")
-    resumen.append("**Otorgados (certs · seguridad · uniformes)**")
-    for clave, (nombre, color) in roles_config.ROLES_OTORGADOS_CONSERVAR.items():
-        rol = await _asegurar_rol(guild, nombre, color, resumen)
-        if rol:
-            roles_store.guardar_extra(f"otorgado_{clave}", rol.id)
+    resumen.append("**Categorías otorgadas**")
+
+    for sep_key, titulo, grupo in getattr(roles_config, "CATEGORIAS_OTORGADAS_ORDEN", []):
+        resumen.append(f"*{titulo}*")
+        for clave, (nombre, color) in grupo.items():
+            rol = await _asegurar_rol(guild, nombre, color, resumen)
+            if rol:
+                roles_store.guardar_extra(f"otorgado_{clave}", rol.id)
 
     resumen.append("")
-    resumen.append("**Separadores**")
+    resumen.append("**Separadores (sin color · sin permisos)**")
     for sep_key, nombre, _ in roles_config.SEPARADORES_ROLES:
         rol = await _asegurar_rol(guild, nombre, "", resumen, es_separador=True)
         if rol:
