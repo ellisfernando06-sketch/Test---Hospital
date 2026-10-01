@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-bienvenida.py — Bienvenida automática + roles de categoría al entrar.
-"""
+"""bienvenida.py — Bienvenida automática + roles de categoría al entrar."""
 from __future__ import annotations
 
 from typing import Optional
@@ -98,21 +96,31 @@ def _canal_bienvenida(guild: discord.Guild) -> Optional[discord.TextChannel]:
     return None
 
 
+async def _otorgar_categorias(member: discord.Member) -> int:
+    try:
+        import roles_categoria
+
+        return await roles_categoria.otorgar_categorias_al_entrar(member)
+    except Exception:
+        pass
+    try:
+        import roles_setup
+
+        return await roles_setup.asignar_uniformes_al_entrar(member)
+    except Exception as e:
+        print(f"[bienvenida] categorías: {e}", flush=True)
+        return 0
+
+
 async def _on_member_join(member: discord.Member) -> None:
     if member.bot or not member.guild:
         return
 
-    # Roles de categoría (uniformes + accesorios)
-    try:
-        import roles_setup
-
-        n = await roles_setup.asignar_uniformes_al_entrar(member)
-        if n and n > 0:
-            print(f"[bienvenida] categorías +{n} → {member.id}", flush=True)
-        elif n == -1:
-            print("[bienvenida] sin permiso para dar roles de categoría", flush=True)
-    except Exception as e:
-        print(f"[bienvenida] categorías: {e}", flush=True)
+    n = await _otorgar_categorias(member)
+    if n and n > 0:
+        print(f"[bienvenida] categorías +{n} → {member.id}", flush=True)
+    elif n == -1:
+        print("[bienvenida] sin permiso Gestionar roles", flush=True)
 
     emb = embed_bienvenida(member)
     canal = _canal_bienvenida(member.guild)
@@ -121,8 +129,6 @@ async def _on_member_join(member: discord.Member) -> None:
             await canal.send(content=f"👋 {member.mention}", embed=emb)
         except Exception as e:
             print(f"[bienvenida] canal: {e}", flush=True)
-    else:
-        print("[bienvenida] sin canal de bienvenida", flush=True)
 
     try:
         await member.send(embed=embed_bienvenida_dm(member))
