@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-bienvenida.py — Mensaje de bienvenida AUTOMÁTICO al entrar al servidor.
+bienvenida.py — Bienvenida automática + roles de categoría al entrar.
 """
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ def _hospital() -> str:
 def embed_bienvenida(member: discord.Member) -> discord.Embed:
     hospital = _hospital()
     total = member.guild.member_count if member.guild else "—"
-
     desc = (
         f"¡Hola, {member.mention}!\n\n"
         f"Acabas de ingresar a **{hospital}**.\n"
@@ -33,7 +32,6 @@ def embed_bienvenida(member: discord.Member) -> discord.Embed:
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
         f"¡Que tengas una excelente estadía! 🩺"
     )
-
     emb = discord.Embed(
         title=f"🏥 Bienvenido/a a {hospital}",
         description=desc,
@@ -48,11 +46,10 @@ def embed_bienvenida(member: discord.Member) -> discord.Embed:
         emb.set_thumbnail(url=member.display_avatar.url)
     except Exception:
         pass
-
     emb.add_field(name="👤 Usuario", value=member.mention, inline=True)
     emb.add_field(name="🆔 ID", value=f"`{member.id}`", inline=True)
     emb.add_field(name="👥 Miembros", value=f"`{total}`", inline=True)
-    emb.set_footer(text=f"{hospital} · Sistema de bienvenida automática")
+    emb.set_footer(text=f"{hospital} · Bienvenida automática")
     return emb
 
 
@@ -86,14 +83,12 @@ def _canal_bienvenida(guild: discord.Guild) -> Optional[discord.TextChannel]:
                     return ch
             except Exception:
                 pass
-
     keywords = ("bienvenida", "welcome", "entrada", "ingresos", "general", "inicio", "lobby")
     for kw in keywords:
         for ch in guild.text_channels:
             name = (ch.name or "").lower().replace("-", " ").replace("_", " ")
             if kw in name:
                 return ch
-
     try:
         sys_ch = guild.system_channel
         if isinstance(sys_ch, discord.TextChannel):
@@ -107,27 +102,27 @@ async def _on_member_join(member: discord.Member) -> None:
     if member.bot or not member.guild:
         return
 
+    # Roles de categoría (uniformes + accesorios)
     try:
         import roles_setup
 
         n = await roles_setup.asignar_uniformes_al_entrar(member)
         if n and n > 0:
-            print(f"[bienvenida] uniformes +{n} → {member.id}", flush=True)
+            print(f"[bienvenida] categorías +{n} → {member.id}", flush=True)
+        elif n == -1:
+            print("[bienvenida] sin permiso para dar roles de categoría", flush=True)
     except Exception as e:
-        print(f"[bienvenida] uniformes: {e}", flush=True)
+        print(f"[bienvenida] categorías: {e}", flush=True)
 
     emb = embed_bienvenida(member)
     canal = _canal_bienvenida(member.guild)
     if canal:
         try:
             await canal.send(content=f"👋 {member.mention}", embed=emb)
-            print(f"[bienvenida] canal #{canal.name} → {member.id}", flush=True)
-        except discord.Forbidden:
-            print(f"[bienvenida] sin permiso en #{canal.name}", flush=True)
         except Exception as e:
             print(f"[bienvenida] canal: {e}", flush=True)
     else:
-        print("[bienvenida] no se encontró canal de bienvenida", flush=True)
+        print("[bienvenida] sin canal de bienvenida", flush=True)
 
     try:
         await member.send(embed=embed_bienvenida_dm(member))
@@ -137,4 +132,4 @@ async def _on_member_join(member: discord.Member) -> None:
 
 def registrar(bot: commands.Bot) -> None:
     bot.add_listener(_on_member_join, "on_member_join")
-    print("[bienvenida] OK — mensaje automático + uniformes al entrar", flush=True)
+    print("[bienvenida] OK — mensaje + roles de categoría al entrar", flush=True)
