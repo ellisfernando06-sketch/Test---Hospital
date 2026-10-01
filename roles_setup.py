@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""roles_setup.py — organigrama + especialidades + certs + seguridad."""
+"""roles_setup.py — organigrama + especialidades + certs + seguridad + herramientas PJ."""
 from __future__ import annotations
 
 import asyncio
@@ -223,6 +223,8 @@ def _orden_deseado() -> List[Tuple[str, str]]:
     add_grupo(getattr(roles_config, "CERTIFICADOS", {}))
     add_sep("sep_uniformes")
     add_grupo(getattr(roles_config, "UNIFORMES_CATEGORIA", {}))
+    add_sep("sep_herramientas_pj")
+    add_grupo(getattr(roles_config, "HERRAMIENTAS_PJ", {}))
 
     add_sep("sep_sistema")
     if "INACTIVIDAD_JUSTIFICADA" in roles_config.KEYS_NOMBRES:
