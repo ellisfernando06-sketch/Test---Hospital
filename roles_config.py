@@ -14,7 +14,7 @@ KEYS_NOMBRES: Dict[str, Tuple[str, str]] = {
     "DIR_MEDICO": ("🩺 Director Médico", "#1ABC9C"),
     "DIR_ENFERMERIA": ("💉 Director de Enfermería", "#3498DB"),
     "DIR_RRHH": ("👥 Director de RRHH", "#9B59B6"),
-    "DIR_DOCENCIA": ("📚 Director de Docencia e Investigación", "#8E44AD"),
+    "DIR_DOCENCIA": ("📚 Director de Docencia", "#8E44AD"),
     "DIR_LOGISTICA": ("📦 Director de Logística", "#E67E22"),
     "JEFE_DEPARTAMENTO": ("⭐ Jefe de Departamento", "#2ECC71"),
     "JEFE_SERVICIO": ("🩺 Jefe de Servicio", "#16A085"),
@@ -44,13 +44,31 @@ KEYS_NOMBRES: Dict[str, Tuple[str, str]] = {
     "INACTIVIDAD_JUSTIFICADA": ("⏸️ Inactividad Justificada", "#95A5A6"),
 }
 
-JERARQUIA_KEYS: List[str] = list(KEYS_NOMBRES.keys())
-JERARQUIA_KEYS = [k for k in JERARQUIA_KEYS if k != "INACTIVIDAD_JUSTIFICADA"]
+# Orden jerárquico explícito (no depender del orden del dict)
+JERARQUIA_KEYS: List[str] = [
+    "FUNDADOR_OWNER", "CO_OWNER",
+    "ADMIN_JEFE", "ADMIN", "ADMIN_PRUEBA",
+    "PREFECTO_OPERACIONES",
+    "DIR_GENERAL", "DIR_MEDICO", "DIR_ENFERMERIA", "DIR_RRHH", "DIR_DOCENCIA", "DIR_LOGISTICA",
+    "JEFE_DEPARTAMENTO",
+    "JEFE_SERVICIO", "MEDICO_ESPECIALISTA", "MEDICO_GENERAL", "JEFE_GUIA_RESIDENTES", "RESIDENTE", "INTERNO",
+    "JEFE_SERVICIO_ENF", "ENFERMERO_ESPECIALISTA", "ENFERMERO_GENERAL", "GUIA_AUXILIARES_ENF", "ENFERMERO_FORMACION", "AUXILIAR_ENFERMERIA",
+    "JEFE_SERVICIO_APOYO", "PARAMEDICO_ESPECIALISTA", "PARAMEDICO", "GUIA_TECNICOS", "TECNICO_FORMACION", "TECNICO_SALUD",
+    "JEFE_SERVICIO_ADMIN", "ADMINISTRATIVO_SENIOR", "ADMINISTRATIVO_GENERAL", "GUIA_ADMIN", "ADMIN_FORMACION", "ADMINISTRATIVO_JUNIOR",
+]
 
 SECCIONES = {
     "autoridades": {"nombre": "Autoridades", "emoji": "👑", "keys": ["FUNDADOR_OWNER", "CO_OWNER"], "color": "#E74C3C"},
     "staff_server": {"nombre": "Staff", "emoji": "🛡️", "keys": ["ADMIN_JEFE", "ADMIN", "ADMIN_PRUEBA"], "color": "#9B59B6"},
-    "gerencia": {"nombre": "Gerencia", "emoji": "🏛️", "keys": ["PREFECTO_OPERACIONES", "DIR_GENERAL", "DIR_MEDICO", "DIR_ENFERMERIA", "DIR_RRHH", "DIR_DOCENCIA", "DIR_LOGISTICA"], "color": "#2C3E50"},
+    "gerencia": {
+        "nombre": "Gerencia",
+        "emoji": "🏛️",
+        "keys": [
+            "PREFECTO_OPERACIONES", "DIR_GENERAL", "DIR_MEDICO",
+            "DIR_ENFERMERIA", "DIR_RRHH", "DIR_DOCENCIA", "DIR_LOGISTICA",
+        ],
+        "color": "#2C3E50",
+    },
     "jefatura": {"nombre": "Jefatura", "emoji": "⭐", "keys": ["JEFE_DEPARTAMENTO"], "color": "#2ECC71"},
     "area_medica": {"nombre": "Área Médica", "emoji": "🩺", "keys": ["JEFE_SERVICIO", "MEDICO_ESPECIALISTA", "MEDICO_GENERAL", "JEFE_GUIA_RESIDENTES", "RESIDENTE", "INTERNO"], "color": "#1ABC9C"},
     "area_enfermeria": {"nombre": "Enfermería", "emoji": "💉", "keys": ["JEFE_SERVICIO_ENF", "ENFERMERO_ESPECIALISTA", "ENFERMERO_GENERAL", "GUIA_AUXILIARES_ENF", "ENFERMERO_FORMACION", "AUXILIAR_ENFERMERIA"], "color": "#3498DB"},
