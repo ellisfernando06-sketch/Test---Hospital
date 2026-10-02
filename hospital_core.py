@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-hospital_core.py — Arranque a prueba de fallos.
-"""
+"""hospital_core.py — Arranque a prueba de fallos."""
 from __future__ import annotations
 
 import asyncio
@@ -44,6 +42,8 @@ _MODULOS = (
     "canales_direccion",
     "firmas",
     "firmas_hook",
+    "cert_roles",
+    "cert_roles_hook",
     "capacitacion_cert_ui",
     "cert_flujo_interno",
     "cert_dg_fix",
@@ -71,6 +71,7 @@ _CRITICOS_SLASH = (
     "configurar_roles", "ordenar_roles", "organigrama",
     "setup_servidor", "limpiar_roles_viejos",
     "configurar_canal_direccion", "ver_canales_direccion",
+    "otorgar_rol_certificado",
 )
 
 
@@ -152,7 +153,7 @@ def _bot_minimo() -> commands.Bot:
                 await asyncio.sleep(2)
                 await fn("fallback_ready")
             except Exception as e:
-                print("[hospital_core] sync fallback:", e, flush=True)
+                print("[hospital_core] sync:", e, flush=True)
     return bot
 
 
@@ -162,7 +163,6 @@ def _asegurar_criticos(bot) -> None:
     if not faltan:
         print("[hospital_core] ✅ críticos OK", flush=True)
         return
-    print(f"[hospital_core] ⚠️ faltan: {faltan}", flush=True)
     for mod in _MODULOS_CRITICOS:
         if mod in sys.modules:
             try:
@@ -194,7 +194,6 @@ def _instalar_sync(bot) -> None:
                     pass
                 synced = await bot.tree.sync(guild=obj)
                 result = sorted(c.name for c in synced)
-                print(f"[hospital_core] sync guild {gid}: {len(result)} cmds", flush=True)
         except Exception:
             traceback.print_exc()
         return result
@@ -214,7 +213,7 @@ def _instalar_sync(bot) -> None:
         msg = await ctx.reply("🔄 Sincronizando…")
         try:
             names = await _sync_todo("!forzar_sync")
-            await msg.edit(content=f"✅ **{len(names)}** comandos.\n`{', '.join(names[:30])}`")
+            await msg.edit(content=f"✅ **{len(names)}** comandos.")
         except Exception as e:
             await msg.edit(content=f"❌ {e}")
 
@@ -226,8 +225,8 @@ def _instalar_sync(bot) -> None:
         await asyncio.sleep(4)
         try:
             await _sync_todo("backup")
-        except Exception as e:
-            print("[hospital_core] backup sync:", e, flush=True)
+        except Exception:
+            pass
 
 
 def _cargar_nucleo(module_globals: dict):
@@ -267,25 +266,21 @@ def _cargar_nucleo(module_globals: dict):
     idx = source.find(marker)
     if idx > 0:
         source = source[:idx]
-    print("[hospital_core] Exec núcleo…", flush=True)
     exec(compile(source, "hospital_core_remote.py", "exec"), module_globals)
     bot = module_globals.get("bot")
     if bot is None:
-        raise RuntimeError("bot no definido tras exec")
+        raise RuntimeError("bot no definido")
     return bot
 
 
 def _cargar(module_globals: dict):
-    bot = None
     try:
         bot = _cargar_nucleo(module_globals)
-        print("[hospital_core] Núcleo OK", flush=True)
     except Exception as e:
-        print(f"[hospital_core] ⚠️ Núcleo falló: {type(e).__name__}: {e}", flush=True)
+        print(f"[hospital_core] Núcleo falló: {e}", flush=True)
         traceback.print_exc()
         bot = _bot_minimo()
         module_globals["bot"] = bot
-
     for cmd in _QUITAR_DEL_NUCLEO:
         _quitar_tree(bot, cmd)
     for name in _MODULOS_CRITICOS:
@@ -294,7 +289,6 @@ def _cargar(module_globals: dict):
         _cargar_modulo(bot, name)
     _asegurar_criticos(bot)
     _instalar_sync(bot)
-    print(f"[hospital_core] Comandos: {len(_listar(bot))}", flush=True)
     print("[hospital_core] LISTO", flush=True)
     return bot
 
@@ -305,9 +299,6 @@ except Exception as e:
     print(f"[hospital_core] FATAL: {e}", flush=True)
     traceback.print_exc()
     bot = _bot_minimo()
-    try:
-        for name in _MODULOS_CRITICOS:
-            _cargar_modulo(bot, name)
-        _instalar_sync(bot)
-    except Exception:
-        traceback.print_exc()
+    for name in _MODULOS_CRITICOS:
+        _cargar_modulo(bot, name)
+    _instalar_sync(bot)
