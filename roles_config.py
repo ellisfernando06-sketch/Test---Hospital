@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""roles_config.py — organigrama + sistema (Visitante/Miembro/Comunidad) + categorías."""
+"""roles_config.py — organigrama: Canciller / Vice Canciller + direcciones."""
 from __future__ import annotations
 from typing import Dict, List, Tuple
 
@@ -9,7 +9,11 @@ KEYS_NOMBRES: Dict[str, Tuple[str, str]] = {
     "ADMIN_JEFE": ("🛡️ Admin en Jefe", "#9B59B6"),
     "ADMIN": ("🛡️ Admin", "#8E44AD"),
     "ADMIN_PRUEBA": ("🛡️ Admin en Prueba", "#7D3C98"),
-    "PREFECTO_OPERACIONES": ("🏛️ Prefecto de Operaciones Hospitalarias", "#2C3E50"),
+    # Cancillería (antes Prefecto)
+    "CANCILLER": ("🏛️ Canciller", "#2C3E50"),
+    "VICE_CANCILLER": ("🏛️ Vice Canciller", "#34495E"),
+    # Alias legado — mismo nombre de display se evita; key antigua apunta a Canciller en setup
+    "PREFECTO_OPERACIONES": ("🏛️ Canciller", "#2C3E50"),
     "DIR_GENERAL": ("🖥️ Director General", "#34495E"),
     "DIR_MEDICO": ("🩺 Director Médico", "#1ABC9C"),
     "DIR_ENFERMERIA": ("💉 Director de Enfermería", "#3498DB"),
@@ -54,7 +58,8 @@ ROLES_SISTEMA_KEYS = ["VISITANTE", "MIEMBRO", "COMUNIDAD", "INACTIVIDAD_JUSTIFIC
 
 JERARQUIA_KEYS: List[str] = [
     "FUNDADOR_OWNER", "CO_OWNER", "ADMIN_JEFE", "ADMIN", "ADMIN_PRUEBA",
-    "PREFECTO_OPERACIONES", "DIR_GENERAL", "DIR_MEDICO", "DIR_ENFERMERIA",
+    "CANCILLER", "VICE_CANCILLER",
+    "DIR_GENERAL", "DIR_MEDICO", "DIR_ENFERMERIA",
     "DIR_RRHH", "DIR_DOCENCIA", "DIR_LOGISTICA", "JEFE_DEPARTAMENTO",
     "JEFE_SERVICIO", "MEDICO_ESPECIALISTA", "MEDICO_GENERAL",
     "JEFE_GUIA_RESIDENTES", "RESIDENTE", "INTERNO",
@@ -70,7 +75,16 @@ JERARQUIA_KEYS: List[str] = [
 SECCIONES = {
     "autoridades": {"nombre": "Autoridades", "emoji": "👑", "keys": ["FUNDADOR_OWNER", "CO_OWNER"], "color": "#E74C3C"},
     "staff_server": {"nombre": "Staff", "emoji": "🛡️", "keys": ["ADMIN_JEFE", "ADMIN", "ADMIN_PRUEBA"], "color": "#9B59B6"},
-    "gerencia": {"nombre": "Gerencia", "emoji": "🏛️", "keys": ["PREFECTO_OPERACIONES", "DIR_GENERAL", "DIR_MEDICO", "DIR_ENFERMERIA", "DIR_RRHH", "DIR_DOCENCIA", "DIR_LOGISTICA"], "color": "#2C3E50"},
+    "gerencia": {
+        "nombre": "Gerencia",
+        "emoji": "🏛️",
+        "keys": [
+            "CANCILLER", "VICE_CANCILLER",
+            "DIR_GENERAL", "DIR_MEDICO", "DIR_ENFERMERIA",
+            "DIR_RRHH", "DIR_DOCENCIA", "DIR_LOGISTICA",
+        ],
+        "color": "#2C3E50",
+    },
     "jefatura": {"nombre": "Jefatura", "emoji": "⭐", "keys": ["JEFE_DEPARTAMENTO"], "color": "#2ECC71"},
     "area_medica": {"nombre": "Área Médica", "emoji": "🩺", "keys": ["JEFE_SERVICIO", "MEDICO_ESPECIALISTA", "MEDICO_GENERAL", "JEFE_GUIA_RESIDENTES", "RESIDENTE", "INTERNO"], "color": "#1ABC9C"},
     "area_enfermeria": {"nombre": "Enfermería", "emoji": "💉", "keys": ["JEFE_SERVICIO_ENF", "ENFERMERO_ESPECIALISTA", "ENFERMERO_GENERAL", "GUIA_AUXILIARES_ENF", "ENFERMERO_FORMACION", "AUXILIAR_ENFERMERIA"], "color": "#3498DB"},
@@ -164,9 +178,16 @@ CATEGORIAS_OTORGADAS_ORDEN = [
     ("sep_herramientas_pj", "Herramientas de PJ", HERRAMIENTAS_PJ),
 ]
 
-KEYS_APROBAR_INACTIVIDAD = ["FUNDADOR_OWNER", "CO_OWNER", "PREFECTO_OPERACIONES", "DIR_GENERAL", "DIR_RRHH"]
+KEYS_APROBAR_INACTIVIDAD = [
+    "FUNDADOR_OWNER", "CO_OWNER", "CANCILLER", "VICE_CANCILLER",
+    "PREFECTO_OPERACIONES", "DIR_GENERAL", "DIR_RRHH",
+]
 INACTIVIDAD = {"aviso_dias": 7, "inactivo_dias": 14, "sancion_dias": 30, "max_dias_solicitud": 10, "cooldown_dias": 14}
-CANALES_SETUP = ["bienvenida", "verificacion_roblox", "normativa_rp", "normativa_discord", "normativa_general", "solicitudes_inactividad", "log_staff"]
+CANALES_SETUP = [
+    "bienvenida", "verificacion_roblox",
+    "normativa_rp", "normativa_discord", "normativa_general",
+    "solicitudes_inactividad", "log_staff",
+]
 
 def nombre_key(key: str) -> str:
     return KEYS_NOMBRES.get(key, (key, ""))[0]
