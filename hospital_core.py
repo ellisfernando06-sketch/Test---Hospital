@@ -23,12 +23,12 @@ _URL = (
 )
 _GUILD_ID = 1381360019467014184
 
-# Módulos del organigrama (primero, siempre)
 _MODULOS_CRITICOS = (
     "roles_comandos",
     "setup_servidor",
     "limpiar_roles",
     "bienvenida",
+    "canales_direccion",
 )
 
 _MODULOS = (
@@ -43,6 +43,7 @@ _MODULOS = (
     "entrevista_ui",
     "tickets_cierre",
     "docencia",
+    "canales_direccion",
     "firmas",
     "capacitacion_cert_ui",
     "cert_flujo_interno",
@@ -70,6 +71,7 @@ _QUITAR_DEL_NUCLEO = (
 _CRITICOS_SLASH = (
     "configurar_roles", "ordenar_roles", "organigrama",
     "setup_servidor", "limpiar_roles_viejos",
+    "configurar_canal_direccion", "ver_canales_direccion",
 )
 
 
@@ -135,7 +137,6 @@ def _cargar_modulo(bot, name: str) -> bool:
 
 
 def _bot_minimo() -> commands.Bot:
-    """Fallback si el núcleo remoto no carga."""
     intents = discord.Intents.default()
     try:
         intents.message_content = True
@@ -239,7 +240,6 @@ def _instalar_sync(bot) -> None:
 
 def _cargar_nucleo(module_globals: dict):
     source = _descargar_nucleo()
-    # on_ready más estable
     on_ready_pattern = re.compile(
         r"@bot\.event\s*\nasync def on_ready\(\):\n(?:.*\n)*?(?=\n# -{5,}|\n@bot\.tree\.error|\n@bot\.tree\.command)",
         re.MULTILINE,
@@ -298,7 +298,6 @@ def _cargar(module_globals: dict):
     for cmd in _QUITAR_DEL_NUCLEO:
         _quitar_tree(bot, cmd)
 
-    # Siempre cargar organigrama + locales (nunca tumbar)
     for name in _MODULOS_CRITICOS:
         _cargar_modulo(bot, name)
     for name in _MODULOS:
@@ -313,7 +312,6 @@ def _cargar(module_globals: dict):
     return bot
 
 
-# ── Punto de carga (nunca SystemExit aquí) ──────────────────────────────
 try:
     bot = _cargar(globals())
 except Exception as e:
