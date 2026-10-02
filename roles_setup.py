@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""roles_setup.py — organigrama completo visible en /configurar_roles."""
+"""roles_setup.py — organigrama completo + sistema (Visitante/Miembro/Comunidad)."""
 from __future__ import annotations
 
 import asyncio
@@ -46,6 +46,9 @@ _NOMBRES_LEGADOS: Dict[str, str] = {
     "jefe de seguridad": "JEFE_SEGURIDAD",
     "supervisor de seguridad": "SUPERVISOR_SEGURIDAD",
     "guardia": "GUARDIA",
+    "visitante": "VISITANTE",
+    "miembro": "MIEMBRO",
+    "comunidad": "COMUNIDAD",
 }
 
 
@@ -104,6 +107,21 @@ def _buscar_rol_para_key(guild: discord.Guild, key: str) -> Optional[discord.Rol
             rn = _norm(r.name)
             if rn == nom or nom in rn:
                 return r
+    if key in ("VISITANTE", "MIEMBRO", "COMUNIDAD"):
+        try:
+            import roles_acceso
+
+            fn = {
+                "VISITANTE": roles_acceso.rol_visitante,
+                "MIEMBRO": roles_acceso.rol_miembro,
+                "COMUNIDAD": roles_acceso.rol_comunidad,
+            }.get(key)
+            if fn:
+                r = fn(guild)
+                if r:
+                    return r
+        except Exception:
+            pass
     return None
 
 
@@ -134,7 +152,6 @@ async def _asegurar_rol(
     es_separador: bool = False,
     rol_existente: Optional[discord.Role] = None,
 ) -> Tuple[Optional[discord.Role], str]:
-    """Devuelve (rol, estado) estado: ok | nuevo | renombrado | error."""
     existente = rol_existente or _buscar_rol_por_nombre(guild, nombre)
     if existente:
         if renombrar_si_antiguo and existente.name != nombre:
@@ -191,11 +208,7 @@ async def _asegurar_rol(
 
 
 def _linea_rol(nombre: str, estado: str, role_id: Optional[int] = None) -> str:
-    icon = {
-        "ok": "✅",
-        "nuevo": "🆕",
-        "renombrado": "🔄",
-    }.get(estado, "❌")
+    icon = {"ok": "✅", "nuevo": "🆕", "renombrado": "🔄"}.get(estado, "❌")
     id_txt = f" `{role_id}`" if role_id else ""
     if estado.startswith("error:"):
         return f"❌ **{nombre}** — {estado[6:40]}"
@@ -249,8 +262,13 @@ def _orden_deseado() -> List[Tuple[str, str]]:
     add_grupo(getattr(roles_config, "HERRAMIENTAS_PJ", {}))
 
     add_sep("sep_sistema")
-    if "INACTIVIDAD_JUSTIFICADA" in roles_config.KEYS_NOMBRES:
-        orden.append(("key", roles_config.KEYS_NOMBRES["INACTIVIDAD_JUSTIFICADA"][0]))
+    for sk in getattr(
+        roles_config,
+        "ROLES_SISTEMA_KEYS",
+        ["VISITANTE", "MIEMBRO", "COMUNIDAD", "INACTIVIDAD_JUSTIFICADA"],
+    ):
+        if sk in roles_config.KEYS_NOMBRES:
+            orden.append(("key", roles_config.KEYS_NOMBRES[sk][0]))
     return orden
 
 
@@ -286,19 +304,14 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
 
 
 async def configurar_organigrama(guild: discord.Guild) -> List[str]:
-    """
-    Crea/detecta TODOS los roles y devuelve listado COMPLETO por sección
-    (no solo los nuevos).
-    """
     lineas: List[str] = [
         "**Organigrama completo del hospital**",
-        "_Se listan **todos** los roles: existentes, creados y fallidos._",
+        "_Todos los roles: jerarquía, categorías, accesorios y sistema._",
         "",
     ]
-
     total_ok = total_nuevo = total_err = 0
+    seps = {s[0]: s[1] for s in roles_config.SEPARADORES_ROLES}
 
-    # ── Secciones de jerarquía ──────────────────────────────────────────
     bloques = [
         ("sep_autoridades", "autoridades"),
         ("sep_staff_server", "staff_server"),
@@ -310,32 +323,24 @@ async def configurar_organigrama(guild: discord.Guild) -> List[str]:
         ("sep_area_admin", "area_admin"),
         ("sep_seguridad", "seguridad"),
     ]
-    seps = {s[0]: s[1] for s in roles_config.SEPARADORES_ROLES}
 
     for sep_key, sec_key in bloques:
         sep_nombre = seps.get(sep_key, sec_key)
         lineas.append(f"**{sep_nombre}**")
-
-        # Separador visual
         existente_sep = _buscar_separador(guild, sep_nombre)
         rol_s, est_s = await _asegurar_rol(
             guild, sep_nombre, "",
-            es_separador=True,
-            renombrar_si_antiguo=True,
-            rol_existente=existente_sep,
+            es_separador=True, renombrar_si_antiguo=True, rol_existente=existente_sep,
         )
         if rol_s:
             roles_store.guardar_extra(sep_key, rol_s.id)
             lineas.append(_linea_rol("(separador)", est_s, rol_s.id))
-            if est_s == "nuevo":
-                total_nuevo += 1
-            else:
-                total_ok += 1
+            total_nuevo += 1 if est_s == "nuevo" else 0
+            total_ok += 0 if est_s == "nuevo" else 1
         else:
             lineas.append(_linea_rol("(separador)", est_s))
             total_err += 1
 
-        # Roles de la sección
         for key in roles_config.SECCIONES.get(sec_key, {}).get("keys", []):
             if key not in roles_config.KEYS_NOMBRES:
                 continue
@@ -349,43 +354,15 @@ async def configurar_organigrama(guild: discord.Guild) -> List[str]:
             if rol:
                 _guardar_key_con_aliases(key, rol.id)
                 lineas.append(_linea_rol(f"{nombre}  · `{key}`", est, rol.id))
-                if est == "nuevo":
-                    total_nuevo += 1
-                else:
-                    total_ok += 1
-            else:
-                lineas.append(_linea_rol(f"{nombre}  · `{key}`", est))
-                total_err += 1
-
-        lineas.append("")  # espacio entre bloques
-
-    # ── Especialidades (tras área médica en orden visual ya pasó; listamos igual) ─
-    if "sep_especialidades" in seps:
-        lineas.append(f"**{seps['sep_especialidades']}**")
-        existente_sep = _buscar_separador(guild, seps["sep_especialidades"])
-        rol_s, est_s = await _asegurar_rol(
-            guild, seps["sep_especialidades"], "",
-            es_separador=True, renombrar_si_antiguo=True, rol_existente=existente_sep,
-        )
-        if rol_s:
-            roles_store.guardar_extra("sep_especialidades", rol_s.id)
-            lineas.append(_linea_rol("(separador)", est_s, rol_s.id))
-        for clave, (nombre, color) in getattr(roles_config, "ESPECIALIDADES_MEDICAS", {}).items():
-            rol, est = await _asegurar_rol(guild, nombre, color)
-            if rol:
-                roles_store.guardar_extra(f"otorgado_{clave}", rol.id)
-                lineas.append(_linea_rol(nombre, est, rol.id))
                 total_nuevo += 1 if est == "nuevo" else 0
                 total_ok += 0 if est == "nuevo" else 1
             else:
-                lineas.append(_linea_rol(nombre, est))
+                lineas.append(_linea_rol(f"{nombre}  · `{key}`", est))
                 total_err += 1
         lineas.append("")
 
-    # ── Categorías otorgadas (certs, uniformes, herramientas) ───────────
+    # Categorías: especialidades, certs, uniformes, herramientas PJ
     for sep_key, titulo, grupo in getattr(roles_config, "CATEGORIAS_OTORGADAS_ORDEN", []):
-        if sep_key == "sep_especialidades":
-            continue  # ya listado arriba
         sep_nombre = seps.get(sep_key, titulo)
         lineas.append(f"**{sep_nombre}**")
         existente_sep = _buscar_separador(guild, sep_nombre)
@@ -401,16 +378,14 @@ async def configurar_organigrama(guild: discord.Guild) -> List[str]:
             if rol:
                 roles_store.guardar_extra(f"otorgado_{clave}", rol.id)
                 lineas.append(_linea_rol(nombre, est, rol.id))
-                if est == "nuevo":
-                    total_nuevo += 1
-                else:
-                    total_ok += 1
+                total_nuevo += 1 if est == "nuevo" else 0
+                total_ok += 0 if est == "nuevo" else 1
             else:
                 lineas.append(_linea_rol(nombre, est))
                 total_err += 1
         lineas.append("")
 
-    # ── Sistema ─────────────────────────────────────────────────────────
+    # Sistema: Visitante, Miembro, Comunidad, Inactividad
     if "sep_sistema" in seps:
         lineas.append(f"**{seps['sep_sistema']}**")
         existente_sep = _buscar_separador(guild, seps["sep_sistema"])
@@ -421,18 +396,28 @@ async def configurar_organigrama(guild: discord.Guild) -> List[str]:
         if rol_s:
             roles_store.guardar_extra("sep_sistema", rol_s.id)
             lineas.append(_linea_rol("(separador)", est_s, rol_s.id))
-    if "INACTIVIDAD_JUSTIFICADA" in roles_config.KEYS_NOMBRES:
-        nombre, color = roles_config.KEYS_NOMBRES["INACTIVIDAD_JUSTIFICADA"]
-        encontrado = _buscar_rol_para_key(guild, "INACTIVIDAD_JUSTIFICADA")
+
+    for sk in getattr(
+        roles_config,
+        "ROLES_SISTEMA_KEYS",
+        ["VISITANTE", "MIEMBRO", "COMUNIDAD", "INACTIVIDAD_JUSTIFICADA"],
+    ):
+        if sk not in roles_config.KEYS_NOMBRES:
+            continue
+        nombre, color = roles_config.KEYS_NOMBRES[sk]
+        encontrado = _buscar_rol_para_key(guild, sk)
         rol, est = await _asegurar_rol(
-            guild, nombre, color, rol_existente=encontrado
+            guild, nombre, color, renombrar_si_antiguo=True, rol_existente=encontrado
         )
         if rol:
-            _guardar_key_con_aliases("INACTIVIDAD_JUSTIFICADA", rol.id)
-            lineas.append(_linea_rol(f"{nombre}  · `INACTIVIDAD_JUSTIFICADA`", est, rol.id))
+            _guardar_key_con_aliases(sk, rol.id)
+            lineas.append(_linea_rol(f"{nombre}  · `{sk}`", est, rol.id))
+            total_nuevo += 1 if est == "nuevo" else 0
+            total_ok += 0 if est == "nuevo" else 1
         else:
-            lineas.append(_linea_rol(nombre, est))
-        lineas.append("")
+            lineas.append(_linea_rol(f"{nombre}  · `{sk}`", est))
+            total_err += 1
+    lineas.append("")
 
     lineas.append("━━━━━━━━━━━━━━━━━━━━")
     lineas.append(
