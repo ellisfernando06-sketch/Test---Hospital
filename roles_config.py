@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""roles_config.py — organigrama: Canciller / Vice Canciller + direcciones."""
+"""roles_config.py — organigrama + certificaciones ampliadas."""
 from __future__ import annotations
 from typing import Dict, List, Tuple
 
@@ -9,10 +9,8 @@ KEYS_NOMBRES: Dict[str, Tuple[str, str]] = {
     "ADMIN_JEFE": ("🛡️ Admin en Jefe", "#9B59B6"),
     "ADMIN": ("🛡️ Admin", "#8E44AD"),
     "ADMIN_PRUEBA": ("🛡️ Admin en Prueba", "#7D3C98"),
-    # Cancillería (antes Prefecto)
     "CANCILLER": ("🏛️ Canciller", "#2C3E50"),
     "VICE_CANCILLER": ("🏛️ Vice Canciller", "#34495E"),
-    # Alias legado — mismo nombre de display se evita; key antigua apunta a Canciller en setup
     "PREFECTO_OPERACIONES": ("🏛️ Canciller", "#2C3E50"),
     "DIR_GENERAL": ("🖥️ Director General", "#34495E"),
     "DIR_MEDICO": ("🩺 Director Médico", "#1ABC9C"),
@@ -76,13 +74,8 @@ SECCIONES = {
     "autoridades": {"nombre": "Autoridades", "emoji": "👑", "keys": ["FUNDADOR_OWNER", "CO_OWNER"], "color": "#E74C3C"},
     "staff_server": {"nombre": "Staff", "emoji": "🛡️", "keys": ["ADMIN_JEFE", "ADMIN", "ADMIN_PRUEBA"], "color": "#9B59B6"},
     "gerencia": {
-        "nombre": "Gerencia",
-        "emoji": "🏛️",
-        "keys": [
-            "CANCILLER", "VICE_CANCILLER",
-            "DIR_GENERAL", "DIR_MEDICO", "DIR_ENFERMERIA",
-            "DIR_RRHH", "DIR_DOCENCIA", "DIR_LOGISTICA",
-        ],
+        "nombre": "Gerencia", "emoji": "🏛️",
+        "keys": ["CANCILLER", "VICE_CANCILLER", "DIR_GENERAL", "DIR_MEDICO", "DIR_ENFERMERIA", "DIR_RRHH", "DIR_DOCENCIA", "DIR_LOGISTICA"],
         "color": "#2C3E50",
     },
     "jefatura": {"nombre": "Jefatura", "emoji": "⭐", "keys": ["JEFE_DEPARTAMENTO"], "color": "#2ECC71"},
@@ -128,14 +121,34 @@ ESPECIALIDADES_MEDICAS = {
 
 CERTIFICADOS = {
     "cert_rcp": ("🎓 Cert. RCP Básico", "#9B59B6"),
+    "cert_rcp_avanzado": ("🎓 Cert. RCP Avanzado / ACLS", "#8E44AD"),
     "cert_primeros_auxilios": ("🎓 Cert. Primeros auxilios", "#9B59B6"),
+    "cert_soporte_vital": ("🎓 Cert. Soporte vital básico (BLS)", "#7D3C98"),
+    "cert_trauma": ("🎓 Cert. Atención al trauma", "#C0392B"),
+    "cert_emergencias": ("🎓 Cert. Códigos de emergencia", "#E74C3C"),
     "cert_bioseguridad": ("🎓 Cert. Bioseguridad", "#9B59B6"),
     "cert_atencion_paciente": ("🎓 Cert. Atención al paciente", "#9B59B6"),
+    "cert_medicacion": ("🎓 Cert. Administración de medicamentos", "#3498DB"),
+    "cert_via_aerea": ("🎓 Cert. Manejo de vía aérea", "#1ABC9C"),
+    "cert_venopuncion": ("🎓 Cert. Venopunción / accesos vasculares", "#2980B9"),
+    "cert_electrocardiografia": ("🎓 Cert. Electrocardiografía básica", "#E67E22"),
+    "cert_quirurgico": ("🎓 Cert. Protocolo quirúrgico", "#16A085"),
+    "cert_uci": ("🎓 Cert. Cuidados intensivos básicos", "#C0392B"),
+    "cert_pediatria": ("🎓 Cert. Atención pediátrica básica", "#3498DB"),
+    "cert_obstetricia": ("🎓 Cert. Atención obstétrica básica", "#E91E63"),
+    "cert_cuidados_enf": ("🎓 Cert. Cuidados de enfermería", "#9B59B6"),
+    "cert_curaciones": ("🎓 Cert. Curaciones y heridas", "#1ABC9C"),
+    "cert_movilizacion": ("🎓 Cert. Movilización de pacientes", "#27AE60"),
+    "cert_toma_muestras": ("🎓 Cert. Toma de muestras / laboratorio", "#F39C12"),
     "cert_etica": ("🎓 Cert. Ética hospitalaria", "#9B59B6"),
     "cert_formador": ("🎓 Cert. Formador de formadores", "#9B59B6"),
     "cert_evaluacion": ("🎓 Cert. Evaluación de competencias", "#9B59B6"),
     "cert_investigacion": ("🎓 Cert. Investigación básica", "#9B59B6"),
-    "cert_cuidados_enf": ("🎓 Cert. Cuidados de enfermería", "#9B59B6"),
+    "cert_comunicacion": ("🎓 Cert. Comunicación clínica", "#5DADE2"),
+    "cert_trabajo_equipo": ("🎓 Cert. Trabajo en equipo hospitalario", "#48C9B0"),
+    "cert_evacuacion": ("🎓 Cert. Evacuación y seguridad", "#2C3E50"),
+    "cert_radioproteccion": ("🎓 Cert. Radioprotección básica", "#7F8C8D"),
+    "cert_triage": ("🎓 Cert. Triage hospitalario", "#E74C3C"),
 }
 
 UNIFORMES_CATEGORIA = {
