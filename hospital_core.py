@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 hospital_core.py — Arranque a prueba de fallos.
-Prioriza organigrama local. Si el núcleo remoto falla, no tumba el proceso:
-levanta bot mínimo + módulos locales críticos.
 """
 from __future__ import annotations
 
@@ -45,6 +43,7 @@ _MODULOS = (
     "docencia",
     "canales_direccion",
     "firmas",
+    "firmas_hook",
     "capacitacion_cert_ui",
     "cert_flujo_interno",
     "cert_dg_fix",
@@ -83,7 +82,7 @@ def _descargar_nucleo(intentos: int = 6) -> str:
             with urllib.request.urlopen(req, timeout=45) as r:
                 data = r.read().decode("utf-8", errors="replace")
             if len(data) < 500:
-                raise RuntimeError("núcleo vacío o incompleto")
+                raise RuntimeError("núcleo vacío")
             return data
         except Exception as e:
             ultimo = e
@@ -97,9 +96,7 @@ def _strip_comando(source: str, name: str) -> str:
             rf"@bot\.tree\.command\(name=\"{re.escape(name)}\"[^\n]*\n"
             r"(?:@[^\n]+\n)*"
             rf"async def \w+\([\s\S]*?\n(?=\n@|\n# |\nif |\nasync def |\ndef )",
-            "\n",
-            source,
-            count=1,
+            "\n", source, count=1,
         )
     except Exception:
         return source
@@ -156,8 +153,6 @@ def _bot_minimo() -> commands.Bot:
                 await fn("fallback_ready")
             except Exception as e:
                 print("[hospital_core] sync fallback:", e, flush=True)
-
-    print("[hospital_core] ⚠️ Bot mínimo (sin núcleo remoto)", flush=True)
     return bot
 
 
@@ -167,9 +162,7 @@ def _asegurar_criticos(bot) -> None:
     if not faltan:
         print("[hospital_core] ✅ críticos OK", flush=True)
         return
-    print(f"[hospital_core] ⚠️ faltan slash: {faltan} — reintento", flush=True)
-    for c in ("asignar_tarea", "marcar_asistencia", "carta_solicitud"):
-        _quitar_tree(bot, c)
+    print(f"[hospital_core] ⚠️ faltan: {faltan}", flush=True)
     for mod in _MODULOS_CRITICOS:
         if mod in sys.modules:
             try:
@@ -207,7 +200,6 @@ def _instalar_sync(bot) -> None:
         return result
 
     bot._hospital_sync_todo = _sync_todo
-
     try:
         bot.remove_command("forzar_sync")
     except Exception:
@@ -275,7 +267,6 @@ def _cargar_nucleo(module_globals: dict):
     idx = source.find(marker)
     if idx > 0:
         source = source[:idx]
-
     print("[hospital_core] Exec núcleo…", flush=True)
     exec(compile(source, "hospital_core_remote.py", "exec"), module_globals)
     bot = module_globals.get("bot")
@@ -297,17 +288,13 @@ def _cargar(module_globals: dict):
 
     for cmd in _QUITAR_DEL_NUCLEO:
         _quitar_tree(bot, cmd)
-
     for name in _MODULOS_CRITICOS:
         _cargar_modulo(bot, name)
     for name in _MODULOS:
         _cargar_modulo(bot, name)
-
     _asegurar_criticos(bot)
     _instalar_sync(bot)
-
-    names = _listar(bot)
-    print(f"[hospital_core] Comandos en tree: {len(names)}", flush=True)
+    print(f"[hospital_core] Comandos: {len(_listar(bot))}", flush=True)
     print("[hospital_core] LISTO", flush=True)
     return bot
 
@@ -315,7 +302,7 @@ def _cargar(module_globals: dict):
 try:
     bot = _cargar(globals())
 except Exception as e:
-    print(f"[hospital_core] FATAL recuperable: {type(e).__name__}: {e}", flush=True)
+    print(f"[hospital_core] FATAL: {e}", flush=True)
     traceback.print_exc()
     bot = _bot_minimo()
     try:
@@ -324,4 +311,3 @@ except Exception as e:
         _instalar_sync(bot)
     except Exception:
         traceback.print_exc()
-    print("[hospital_core] LISTO (modo emergencia)", flush=True)
