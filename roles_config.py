@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""roles_config.py — organigrama + categorías + separadores largos."""
+"""roles_config.py — organigrama + sistema (Visitante/Miembro/Comunidad) + categorías."""
 from __future__ import annotations
 from typing import Dict, List, Tuple
 
@@ -44,8 +44,13 @@ KEYS_NOMBRES: Dict[str, Tuple[str, str]] = {
     "JEFE_SEGURIDAD": ("🛡️ Jefe de Seguridad", "#1C2833"),
     "SUPERVISOR_SEGURIDAD": ("🛡️ Supervisor de Seguridad", "#2C3E50"),
     "GUARDIA": ("🛡️ Guardia", "#34495E"),
+    "VISITANTE": ("👤 Visitante", "#95A5A6"),
+    "MIEMBRO": ("👤 Miembro", "#2ECC71"),
+    "COMUNIDAD": ("🌐 Comunidad", "#3498DB"),
     "INACTIVIDAD_JUSTIFICADA": ("⏸️ Inactividad Justificada", "#95A5A6"),
 }
+
+ROLES_SISTEMA_KEYS = ["VISITANTE", "MIEMBRO", "COMUNIDAD", "INACTIVIDAD_JUSTIFICADA"]
 
 JERARQUIA_KEYS: List[str] = [
     "FUNDADOR_OWNER", "CO_OWNER", "ADMIN_JEFE", "ADMIN", "ADMIN_PRUEBA",
@@ -72,6 +77,7 @@ SECCIONES = {
     "apoyo_clinico": {"nombre": "Apoyo Clínico", "emoji": "🚑", "keys": ["JEFE_SERVICIO_APOYO", "PARAMEDICO_ESPECIALISTA", "PARAMEDICO", "GUIA_TECNICOS", "TECNICO_FORMACION", "TECNICO_SALUD"], "color": "#E74C3C"},
     "area_admin": {"nombre": "Administrativa", "emoji": "📋", "keys": ["JEFE_SERVICIO_ADMIN", "ADMINISTRATIVO_SENIOR", "ADMINISTRATIVO_GENERAL", "GUIA_ADMIN", "ADMIN_FORMACION", "ADMINISTRATIVO_JUNIOR"], "color": "#F39C12"},
     "seguridad": {"nombre": "Departamento de Seguridad", "emoji": "🛡️", "keys": ["JEFE_SEGURIDAD", "SUPERVISOR_SEGURIDAD", "GUARDIA"], "color": "#2C3E50"},
+    "sistema": {"nombre": "Sistema", "emoji": "⚙️", "keys": ["VISITANTE", "MIEMBRO", "COMUNIDAD", "INACTIVIDAD_JUSTIFICADA"], "color": "#95A5A6"},
 }
 
 SEPARADORES_ROLES = [
