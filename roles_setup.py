@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""roles_setup.py — organigrama + Canciller/Vice Canciller."""
+"""roles_setup.py — organigrama + separadores asignables a miembros."""
 from __future__ import annotations
 
 import asyncio
@@ -70,7 +70,6 @@ def _guardar_key_con_aliases(key: str, role_id: int) -> None:
     roles_store.guardar_key(key, role_id)
     for alias in _KEY_LEGACY_ALIASES.get(key, ()):
         roles_store.guardar_key(alias, role_id)
-    # Canciller también guarda PREFECTO
     if key == "CANCILLER":
         roles_store.guardar_key("PREFECTO_OPERACIONES", role_id)
 
@@ -117,6 +116,7 @@ def _buscar_rol_para_key(guild: discord.Guild, key: str) -> Optional[discord.Rol
     if key in ("VISITANTE", "MIEMBRO", "COMUNIDAD"):
         try:
             import roles_acceso
+
             fn = {
                 "VISITANTE": roles_acceso.rol_visitante,
                 "MIEMBRO": roles_acceso.rol_miembro,
@@ -128,11 +128,10 @@ def _buscar_rol_para_key(guild: discord.Guild, key: str) -> Optional[discord.Rol
                     return r
         except Exception:
             pass
-    # Prefecto legado → Canciller
     if key in ("CANCILLER", "PREFECTO_OPERACIONES"):
         for r in guild.roles:
             rn = _norm(r.name)
-            if "prefecto" in rn or "canciller" in rn and "vice" not in rn:
+            if "prefecto" in rn or ("canciller" in rn and "vice" not in rn):
                 return r
     return None
 
@@ -156,8 +155,12 @@ def _buscar_separador(guild: discord.Guild, nombre_nuevo: str) -> Optional[disco
 
 
 async def _asegurar_rol(
-    guild: discord.Guild, nombre: str, color_hex: str, *,
-    renombrar_si_antiguo: bool = False, es_separador: bool = False,
+    guild: discord.Guild,
+    nombre: str,
+    color_hex: str,
+    *,
+    renombrar_si_antiguo: bool = False,
+    es_separador: bool = False,
     rol_existente: Optional[discord.Role] = None,
 ) -> Tuple[Optional[discord.Role], str]:
     existente = rol_existente or _buscar_rol_por_nombre(guild, nombre)
@@ -166,7 +169,12 @@ async def _asegurar_rol(
             try:
                 kwargs = {"name": nombre, "reason": "Organigrama oficial"}
                 if es_separador:
-                    kwargs.update(colour=discord.Colour.default(), permissions=discord.Permissions.none(), hoist=False, mentionable=False)
+                    kwargs.update(
+                        colour=discord.Colour.default(),
+                        permissions=discord.Permissions.none(),
+                        hoist=False,
+                        mentionable=False,
+                    )
                 else:
                     kwargs["colour"] = _hex_to_colour(color_hex)
                 await existente.edit(**kwargs)
@@ -175,15 +183,34 @@ async def _asegurar_rol(
                 return existente, "ok"
         if es_separador:
             try:
-                await existente.edit(colour=discord.Colour.default(), permissions=discord.Permissions.none(), hoist=False, mentionable=False)
+                await existente.edit(
+                    colour=discord.Colour.default(),
+                    permissions=discord.Permissions.none(),
+                    hoist=False,
+                    mentionable=False,
+                )
             except Exception:
                 pass
         return existente, "ok"
     try:
         if es_separador:
-            rol = await guild.create_role(name=nombre, colour=discord.Colour.default(), permissions=discord.Permissions.none(), hoist=False, mentionable=False, reason="Separador")
+            rol = await guild.create_role(
+                name=nombre,
+                colour=discord.Colour.default(),
+                permissions=discord.Permissions.none(),
+                hoist=False,
+                mentionable=False,
+                reason="Separador organigrama",
+            )
         else:
-            rol = await guild.create_role(name=nombre, colour=_hex_to_colour(color_hex), permissions=discord.Permissions.none(), hoist=False, mentionable=False, reason="Organigrama")
+            rol = await guild.create_role(
+                name=nombre,
+                colour=_hex_to_colour(color_hex),
+                permissions=discord.Permissions.none(),
+                hoist=False,
+                mentionable=False,
+                reason="Organigrama oficial",
+            )
         await asyncio.sleep(0.35)
         return rol, "nuevo"
     except Exception as e:
@@ -208,7 +235,7 @@ def _orden_deseado() -> List[Tuple[str, str]]:
 
     def add_section(sec_key: str):
         for key in roles_config.SECCIONES.get(sec_key, {}).get("keys", []):
-            if key in roles_config.KEYS_NOMBRES:
+            if key in roles_config.KEYS_NOMBRES and key != "PREFECTO_OPERACIONES":
                 orden.append(("key", roles_config.KEYS_NOMBRES[key][0]))
 
     def add_grupo(grupo: dict):
@@ -216,16 +243,21 @@ def _orden_deseado() -> List[Tuple[str, str]]:
             orden.append(("otorgado", nombre))
 
     for sep_key, sec_key in [
-        ("sep_autoridades", "autoridades"), ("sep_staff_server", "staff_server"),
-        ("sep_gerencia", "gerencia"), ("sep_jefatura", "jefatura"), ("sep_area_medica", "area_medica"),
+        ("sep_autoridades", "autoridades"),
+        ("sep_staff_server", "staff_server"),
+        ("sep_gerencia", "gerencia"),
+        ("sep_jefatura", "jefatura"),
+        ("sep_area_medica", "area_medica"),
     ]:
         add_sep(sep_key)
         add_section(sec_key)
     add_sep("sep_especialidades")
     add_grupo(getattr(roles_config, "ESPECIALIDADES_MEDICAS", {}))
     for sep_key, sec_key in [
-        ("sep_area_enfermeria", "area_enfermeria"), ("sep_apoyo_clinico", "apoyo_clinico"),
-        ("sep_area_admin", "area_admin"), ("sep_seguridad", "seguridad"),
+        ("sep_area_enfermeria", "area_enfermeria"),
+        ("sep_apoyo_clinico", "apoyo_clinico"),
+        ("sep_area_admin", "area_admin"),
+        ("sep_seguridad", "seguridad"),
     ]:
         add_sep(sep_key)
         add_section(sec_key)
@@ -236,7 +268,11 @@ def _orden_deseado() -> List[Tuple[str, str]]:
     add_sep("sep_herramientas_pj")
     add_grupo(getattr(roles_config, "HERRAMIENTAS_PJ", {}))
     add_sep("sep_sistema")
-    for sk in getattr(roles_config, "ROLES_SISTEMA_KEYS", ["VISITANTE", "MIEMBRO", "COMUNIDAD", "INACTIVIDAD_JUSTIFICADA"]):
+    for sk in getattr(
+        roles_config,
+        "ROLES_SISTEMA_KEYS",
+        ["VISITANTE", "MIEMBRO", "COMUNIDAD", "INACTIVIDAD_JUSTIFICADA"],
+    ):
         if sk in roles_config.KEYS_NOMBRES:
             orden.append(("key", roles_config.KEYS_NOMBRES[sk][0]))
     return orden
@@ -263,40 +299,50 @@ async def ordenar_roles(guild: discord.Guild) -> List[str]:
     positions = {rol: base - i for i, rol in enumerate(roles_ordenados) if base - i >= 1}
     try:
         await guild.edit_role_positions(positions=positions, reason="Organigrama oficial")
-        resumen.append(f"✅ Reordenados **{len(positions)}** roles")
+        resumen.append(f"✅ Reordenados **{len(positions)}** roles (separadores aparte en jerarquía)")
     except Exception as e:
         resumen.append(f"❌ Reordenar: {e}")
     return resumen
 
 
 async def configurar_organigrama(guild: discord.Guild) -> List[str]:
-    lineas: List[str] = ["**Organigrama completo**", "_Incluye Canciller y Vice Canciller._", ""]
+    lineas: List[str] = [
+        "**Organigrama completo**",
+        "_Separadores sin color/permisos; se pueden colocar en miembros._",
+        "",
+    ]
     total_ok = total_nuevo = total_err = 0
     seps = {s[0]: s[1] for s in roles_config.SEPARADORES_ROLES}
     bloques = [
-        ("sep_autoridades", "autoridades"), ("sep_staff_server", "staff_server"),
-        ("sep_gerencia", "gerencia"), ("sep_jefatura", "jefatura"), ("sep_area_medica", "area_medica"),
-        ("sep_area_enfermeria", "area_enfermeria"), ("sep_apoyo_clinico", "apoyo_clinico"),
-        ("sep_area_admin", "area_admin"), ("sep_seguridad", "seguridad"),
+        ("sep_autoridades", "autoridades"),
+        ("sep_staff_server", "staff_server"),
+        ("sep_gerencia", "gerencia"),
+        ("sep_jefatura", "jefatura"),
+        ("sep_area_medica", "area_medica"),
+        ("sep_area_enfermeria", "area_enfermeria"),
+        ("sep_apoyo_clinico", "apoyo_clinico"),
+        ("sep_area_admin", "area_admin"),
+        ("sep_seguridad", "seguridad"),
     ]
     for sep_key, sec_key in bloques:
         sep_nombre = seps.get(sep_key, sec_key)
         lineas.append(f"**{sep_nombre}**")
         existente_sep = _buscar_separador(guild, sep_nombre)
-        rol_s, est_s = await _asegurar_rol(guild, sep_nombre, "", es_separador=True, renombrar_si_antiguo=True, rol_existente=existente_sep)
+        rol_s, est_s = await _asegurar_rol(
+            guild, sep_nombre, "",
+            es_separador=True, renombrar_si_antiguo=True, rol_existente=existente_sep,
+        )
         if rol_s:
             roles_store.guardar_extra(sep_key, rol_s.id)
             lineas.append(_linea_rol("(separador)", est_s, rol_s.id))
         for key in roles_config.SECCIONES.get(sec_key, {}).get("keys", []):
-            if key not in roles_config.KEYS_NOMBRES:
+            if key not in roles_config.KEYS_NOMBRES or key == "PREFECTO_OPERACIONES":
                 continue
-            if key == "PREFECTO_OPERACIONES":
-                continue  # usar CANCILLER
             nombre, color = roles_config.KEYS_NOMBRES[key]
             encontrado = _buscar_rol_para_key(guild, key)
             rol, est = await _asegurar_rol(
                 guild, nombre, color,
-                renombrar_si_antiguo=(key in ("FUNDADOR_OWNER", "DIR_DOCENCIA", "CANCILLER", "PREFECTO_OPERACIONES")),
+                renombrar_si_antiguo=(key in ("FUNDADOR_OWNER", "DIR_DOCENCIA", "CANCILLER")),
                 rol_existente=encontrado,
             )
             if rol:
@@ -312,7 +358,10 @@ async def configurar_organigrama(guild: discord.Guild) -> List[str]:
         sep_nombre = seps.get(sep_key, titulo)
         lineas.append(f"**{sep_nombre}**")
         existente_sep = _buscar_separador(guild, sep_nombre)
-        rol_s, est_s = await _asegurar_rol(guild, sep_nombre, "", es_separador=True, renombrar_si_antiguo=True, rol_existente=existente_sep)
+        rol_s, est_s = await _asegurar_rol(
+            guild, sep_nombre, "",
+            es_separador=True, renombrar_si_antiguo=True, rol_existente=existente_sep,
+        )
         if rol_s:
             roles_store.guardar_extra(sep_key, rol_s.id)
             lineas.append(_linea_rol("(separador)", est_s, rol_s.id))
@@ -330,16 +379,25 @@ async def configurar_organigrama(guild: discord.Guild) -> List[str]:
     if "sep_sistema" in seps:
         lineas.append(f"**{seps['sep_sistema']}**")
         existente_sep = _buscar_separador(guild, seps["sep_sistema"])
-        rol_s, est_s = await _asegurar_rol(guild, seps["sep_sistema"], "", es_separador=True, renombrar_si_antiguo=True, rol_existente=existente_sep)
+        rol_s, est_s = await _asegurar_rol(
+            guild, seps["sep_sistema"], "",
+            es_separador=True, renombrar_si_antiguo=True, rol_existente=existente_sep,
+        )
         if rol_s:
             roles_store.guardar_extra("sep_sistema", rol_s.id)
             lineas.append(_linea_rol("(separador)", est_s, rol_s.id))
-    for sk in getattr(roles_config, "ROLES_SISTEMA_KEYS", ["VISITANTE", "MIEMBRO", "COMUNIDAD", "INACTIVIDAD_JUSTIFICADA"]):
+    for sk in getattr(
+        roles_config,
+        "ROLES_SISTEMA_KEYS",
+        ["VISITANTE", "MIEMBRO", "COMUNIDAD", "INACTIVIDAD_JUSTIFICADA"],
+    ):
         if sk not in roles_config.KEYS_NOMBRES:
             continue
         nombre, color = roles_config.KEYS_NOMBRES[sk]
         encontrado = _buscar_rol_para_key(guild, sk)
-        rol, est = await _asegurar_rol(guild, nombre, color, renombrar_si_antiguo=True, rol_existente=encontrado)
+        rol, est = await _asegurar_rol(
+            guild, nombre, color, renombrar_si_antiguo=True, rol_existente=encontrado
+        )
         if rol:
             _guardar_key_con_aliases(sk, rol.id)
             lineas.append(_linea_rol(f"{nombre}  · `{sk}`", est, rol.id))
@@ -355,6 +413,48 @@ async def configurar_organigrama(guild: discord.Guild) -> List[str]:
     lineas.append("**Orden**")
     lineas.extend(await ordenar_roles(guild))
     return lineas
+
+
+def roles_separadores(guild: discord.Guild) -> List[discord.Role]:
+    """Separadores del organigrama (sin color, sin permisos). Visibles en miembros si se asignan."""
+    out: List[discord.Role] = []
+    vistos: Set[int] = set()
+    for sep_key, nombre, _col in getattr(roles_config, "SEPARADORES_ROLES", []) or []:
+        rol = None
+        try:
+            rid = roles_store.obtener_extra(sep_key)
+            if rid:
+                rol = guild.get_role(int(rid))
+        except Exception:
+            pass
+        if not rol:
+            rol = _buscar_rol_por_nombre(guild, nombre) or _buscar_separador(guild, nombre)
+        if rol and rol.id not in vistos and not rol.is_default() and not rol.managed:
+            out.append(rol)
+            vistos.add(rol.id)
+    return out
+
+
+async def asignar_separadores_miembro(member: discord.Member) -> int:
+    """Coloca todos los separadores en el miembro (clasificación visual de roles)."""
+    seps = roles_separadores(member.guild)
+    if not seps:
+        return 0
+    a_dar = [r for r in seps if r not in member.roles]
+    if not a_dar:
+        return 0
+    try:
+        await member.add_roles(*a_dar, reason="Separadores de organigrama (clasificación visual)")
+        return len(a_dar)
+    except Exception:
+        n = 0
+        for r in a_dar:
+            try:
+                await member.add_roles(r, reason="Separador organigrama")
+                n += 1
+            except Exception:
+                pass
+        return n
 
 
 def roles_uniforme(guild: discord.Guild) -> List[discord.Role]:
