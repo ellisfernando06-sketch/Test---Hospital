@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 bienvenida.py — Bienvenida automática al entrar.
-NO otorga roles de jerarquía, uniformes ni herramientas.
+NO otorga roles de jerarquía ni herramientas.
 Los roles de acceso se dan al firmar reglas (Miembro) y al verificarse (Comunidad).
-Los separadores del organigrama solo organizan la lista de roles (sin color/permisos).
+Los separadores SÍ se colocan en el miembro (sin color/permisos) para verse en su clasificación de roles.
 """
 from __future__ import annotations
 
@@ -70,21 +70,21 @@ def embed_bienvenida_dm(member: discord.Member) -> discord.Embed:
         description=desc,
         color=0x3498DB,
         timestamp=discord.utils.utcnow(),
-    ).set_footer(text=f"{hospital} · Mensaje automático")
+    ).set_footer(text=hospital)
 
 
 def _canal_bienvenida(guild: discord.Guild) -> Optional[discord.TextChannel]:
-    canales = getattr(config, "CANALES", {}) or {}
-    for key in ("bienvenida", "welcome", "entrada"):
-        cid = canales.get(key)
+    try:
+        import roles_store
+
+        cid = roles_store.obtener_extra("canal_bienvenida")
         if cid:
-            try:
-                ch = guild.get_channel(int(cid))
-                if isinstance(ch, discord.TextChannel):
-                    return ch
-            except Exception:
-                pass
-    keywords = ("bienvenida", "welcome", "entrada", "ingresos", "general", "inicio", "lobby")
+            ch = guild.get_channel(int(cid))
+            if isinstance(ch, discord.TextChannel):
+                return ch
+    except Exception:
+        pass
+    keywords = ("bienvenida", "welcome", "general", "inicio", "lobby")
     for kw in keywords:
         for ch in guild.text_channels:
             name = (ch.name or "").lower().replace("-", " ").replace("_", " ")
@@ -103,7 +103,17 @@ async def _on_member_join(member: discord.Member) -> None:
     if member.bot or not member.guild:
         return
 
-    # Solo mensaje de bienvenida (sin roles de categoría/uniformes)
+    # Separadores: se colocan en el miembro para verse en su lista de roles
+    # (sin color, sin permisos; solo clasificación visual, separados del resto)
+    try:
+        import roles_setup
+
+        n = await roles_setup.asignar_separadores_miembro(member)
+        if n:
+            print(f"[bienvenida] separadores +{n} → {member}", flush=True)
+    except Exception as e:
+        print(f"[bienvenida] separadores: {e}", flush=True)
+
     emb = embed_bienvenida(member)
     canal = _canal_bienvenida(member.guild)
     if canal:
@@ -120,4 +130,4 @@ async def _on_member_join(member: discord.Member) -> None:
 
 def registrar(bot: commands.Bot) -> None:
     bot.add_listener(_on_member_join, "on_member_join")
-    print("[bienvenida] OK — solo mensaje (Miembro/Comunidad se dan por reglas/verificación)", flush=True)
+    print("[bienvenida] OK — separadores al entrar + mensaje", flush=True)
