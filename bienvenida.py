@@ -3,7 +3,7 @@
 bienvenida.py — Bienvenida automática al entrar.
 NO otorga roles de jerarquía ni herramientas.
 Los roles de acceso se dan al firmar reglas (Miembro) y al verificarse (Comunidad).
-Los separadores SÍ se colocan en el miembro (sin color/permisos) para verse en su clasificación de roles.
+Los separadores SÍ se colocan TODOS en el miembro al entrar (sin color/permisos).
 """
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ def embed_bienvenida_dm(member: discord.Member) -> discord.Embed:
         description=desc,
         color=0x3498DB,
         timestamp=discord.utils.utcnow(),
-    ).set_footer(text=hospital)
+    )
 
 
 def _canal_bienvenida(guild: discord.Guild) -> Optional[discord.TextChannel]:
@@ -84,33 +84,28 @@ def _canal_bienvenida(guild: discord.Guild) -> Optional[discord.TextChannel]:
                 return ch
     except Exception:
         pass
-    keywords = ("bienvenida", "welcome", "general", "inicio", "lobby")
-    for kw in keywords:
+    for name in ("bienvenida", "welcome", "ingresos", "general"):
         for ch in guild.text_channels:
-            name = (ch.name or "").lower().replace("-", " ").replace("_", " ")
-            if kw in name:
+            if name in (ch.name or "").lower():
                 return ch
-    try:
-        sys_ch = guild.system_channel
-        if isinstance(sys_ch, discord.TextChannel):
-            return sys_ch
-    except Exception:
-        pass
-    return None
+    return guild.system_channel
 
 
 async def _on_member_join(member: discord.Member) -> None:
     if member.bot or not member.guild:
         return
 
-    # Separadores: se colocan en el miembro para verse en su lista de roles
-    # (sin color, sin permisos; solo clasificación visual, separados del resto)
+    # Separadores: TODOS los del organigrama, en automático al entrar
     try:
+        import asyncio
         import roles_setup
 
+        await asyncio.sleep(1.2)
         n = await roles_setup.asignar_separadores_miembro(member)
-        if n:
-            print(f"[bienvenida] separadores +{n} → {member}", flush=True)
+        if n == 0:
+            await asyncio.sleep(1.5)
+            n = await roles_setup.asignar_separadores_miembro(member)
+        print(f"[bienvenida] separadores +{n} → {member}", flush=True)
     except Exception as e:
         print(f"[bienvenida] separadores: {e}", flush=True)
 
@@ -130,4 +125,4 @@ async def _on_member_join(member: discord.Member) -> None:
 
 def registrar(bot: commands.Bot) -> None:
     bot.add_listener(_on_member_join, "on_member_join")
-    print("[bienvenida] OK — separadores al entrar + mensaje", flush=True)
+    print("[bienvenida] OK — todos los separadores al entrar + mensaje", flush=True)
