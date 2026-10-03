@@ -44,6 +44,7 @@ _MODULOS = (
     "firmas_hook",
     "cert_roles",
     "cert_roles_hook",
+    "cert_plantilla_install",
     "certificado_oficial_ui",
     "cert_postulacion",
     "capacitacion_cert_ui",
