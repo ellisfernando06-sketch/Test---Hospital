@@ -45,6 +45,7 @@ _MODULOS = (
     "cert_roles",
     "cert_roles_hook",
     "certificado_oficial_ui",
+    "cert_postulacion",
     "capacitacion_cert_ui",
     "cert_flujo_interno",
     "cert_dg_fix",
@@ -72,7 +73,7 @@ _CRITICOS_SLASH = (
     "configurar_roles", "ordenar_roles", "organigrama",
     "setup_servidor", "limpiar_roles_viejos",
     "configurar_canal_direccion", "ver_canales_direccion",
-    "otorgar_rol_certificado", "certificado_oficial",
+    "otorgar_rol_certificado", "certificado_oficial", "postular_certificacion",
 )
 
 
