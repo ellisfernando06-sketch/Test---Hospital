@@ -1,44 +1,42 @@
 # -*- coding: utf-8 -*-
 """
 certificado_oficial_gen.py
-Diploma institucional: plantilla oficial + firmas registradas SOBRE las rayas.
+Diploma institucional Hospital General.
+- Diseño profesional integrado (no hace falta subir JPG a mano).
+- Si existe assets/certificado_plantilla.jpg, se usa como base.
+- Firmas registradas se colocan SOBRE cada raya.
 """
 from __future__ import annotations
 
 import io
+import math
 import os
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple, Union
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 W, H = 1536, 1024
 
 NAVY = (18, 38, 78)
-NAVY_DEEP = (10, 24, 52)
-GOLD = (176, 140, 52)
-CREAM = (250, 246, 236)
-INK = (24, 42, 72)
-INK_SOFT = (72, 88, 112)
-SIDE_BG = (253, 251, 246)
+NAVY_DEEP = (12, 28, 58)
+GOLD = (184, 148, 58)
+GOLD_SOFT = (210, 180, 100)
+CREAM = (252, 248, 238)
+CREAM2 = (248, 244, 232)
+INK = (28, 48, 78)
+INK_SOFT = (90, 105, 130)
+SIDE_BG = (255, 252, 246)
 
 _ROOT = Path(__file__).resolve().parent
 _PLANTILLAS = [
     _ROOT / "assets" / "certificado_plantilla.jpg",
     _ROOT / "assets" / "certificado_plantilla.png",
-    _ROOT / "certificado_plantilla.jpg",
-    _ROOT / "certificado_plantilla.png",
 ]
 
-# Centros de las 3 rayas de firma (plantilla 1536×1024)
-# (centro_x, y_linea) — la imagen de firma se coloca ENCIMA de la raya
-_FIRMAS_SLOTS = (
-    (255, 868),   # Director de Docencia
-    (620, 868),   # Director del Ala / Departamento
-    (985, 868),   # Encargado de Otorgamiento
-)
-_FIRMA_MAX_W = 220
-_FIRMA_MAX_H = 70
+# Centros de las 3 rayas (x, y_linea)
+_FIRMAS_SLOTS = ((280, 875), (640, 875), (1000, 875))
+_FIRMA_MAX_W, _FIRMA_MAX_H = 230, 72
 
 
 def _ensure_assets() -> None:
@@ -111,6 +109,10 @@ def _wrap(draw, text, font, max_w) -> List[str]:
     return lines
 
 
+def _center_text(draw, text, cx, y, font, fill):
+    draw.text((cx - _tw(draw, text, font) // 2, y), text, font=font, fill=fill)
+
+
 def _center_in_box(draw, text, box, font, fill, line_gap=6) -> int:
     x0, y0, x1, y1 = box
     max_w = x1 - x0
@@ -129,16 +131,13 @@ def _center_in_box(draw, text, box, font, fill, line_gap=6) -> int:
 
 def _limpiar_nombre(s: str) -> str:
     s = (s or "").strip()
-    prohibido = (
+    for p in (
         "nombre completo",
         "nombres de los beneficiarios",
         "[nombre]",
-        "nombre del director",
         "________________",
-    )
-    low = s.lower()
-    for p in prohibido:
-        if p in low:
+    ):
+        if p in s.lower():
             return ""
     return s
 
@@ -146,7 +145,7 @@ def _limpiar_nombre(s: str) -> str:
 def _cargar_plantilla() -> Optional[Image.Image]:
     for p in _PLANTILLAS:
         try:
-            if p.is_file():
+            if p.is_file() and p.stat().st_size > 20000:
                 im = Image.open(p).convert("RGB")
                 if im.size != (W, H):
                     im = im.resize((W, H), Image.Resampling.LANCZOS)
@@ -156,8 +155,87 @@ def _cargar_plantilla() -> Optional[Image.Image]:
     return None
 
 
+def _escudo(draw, cx, cy, r=38):
+    """Escudo médico simple."""
+    draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=GOLD, width=3)
+    draw.ellipse([cx - r + 5, cy - r + 5, cx + r - 5, cy + r - 5], outline=NAVY, width=2)
+    # cruz
+    w, h = 8, 22
+    draw.rectangle([cx - w // 2, cy - h // 2, cx + w // 2, cy + h // 2], fill=NAVY)
+    draw.rectangle([cx - h // 2, cy - w // 2, cx + h // 2, cy + w // 2], fill=NAVY)
+
+
+def _dibujar_diploma_profesional() -> Image.Image:
+    """Diploma completo estilo institucional (reemplaza la plantilla si no está)."""
+    img = Image.new("RGB", (W, H), CREAM)
+    draw = ImageDraw.Draw(img)
+
+    # Marcos dobles elegantes
+    for i, col, wd in ((10, NAVY_DEEP, 6), (20, GOLD, 3), (28, NAVY, 1)):
+        draw.rectangle([i, i, W - i - 1, H - i - 1], outline=col, width=wd)
+
+    # Franja superior e inferior navy
+    draw.rectangle([28, 28, W - 29, 48], fill=NAVY_DEEP)
+    draw.rectangle([28, H - 48, W - 29, H - 29], fill=NAVY_DEEP)
+
+    main_right = W - 310
+    cx_main = main_right // 2 + 20
+
+    # Escudo
+    _escudo(draw, cx_main, 95, 36)
+
+    # Encabezado
+    _center_text(draw, "HOSPITAL GENERAL", cx_main, 140, _font(36, True), NAVY)
+    _center_text(draw, "SALUD  ·  DISCIPLINA  ·  SERVICIO", cx_main, 185, _font(13), GOLD)
+
+    # Ornamento
+    y = 215
+    draw.line([(cx_main - 160, y), (cx_main - 16, y)], fill=GOLD, width=2)
+    draw.ellipse([cx_main - 5, y - 5, cx_main + 5, y + 5], outline=GOLD, width=2)
+    draw.line([(cx_main + 16, y), (cx_main + 160, y)], fill=GOLD, width=2)
+
+    _center_text(draw, "CERTIFICADO OFICIAL", cx_main, 235, _font(30, True), NAVY)
+    _center_text(draw, "DE RECONOCIMIENTO", cx_main, 275, _font(20, True), GOLD)
+
+    # Intro
+    intro = "El Hospital General, por medio de su autoridad institucional, hace constar que:"
+    _center_in_box(draw, intro, (70, 320, main_right - 20, 355), _font(14), INK_SOFT, 4)
+
+    # Cuerpo (se rellena después con nombres)
+    # Panel lateral
+    px0, py0, px1, py1 = W - 290, 120, W - 40, 500
+    draw.rounded_rectangle([px0, py0, px1, py1], radius=10, outline=GOLD, width=2, fill=SIDE_BG)
+    st = "DATOS DEL CERTIFICADO"
+    f_st = _font(11, True)
+    draw.text((px0 + (px1 - px0 - _tw(draw, st, f_st)) // 2, py0 + 14), st, font=f_st, fill=NAVY)
+    draw.line([(px0 + 16, py0 + 38), (px1 - 16, py0 + 38)], fill=GOLD, width=1)
+
+    # Rayas de firma + cargos
+    f_lab = _font(9)
+    cargos = (
+        "DIRECTOR DE DOCENCIA",
+        "DIRECTOR DEL ALA / DEPARTAMENTO",
+        "ENCARGADO DE OTORGAMIENTO",
+    )
+    for (cx, yl), lab in zip(_FIRMAS_SLOTS, cargos):
+        draw.line([(cx - 115, yl), (cx + 115, yl)], fill=NAVY, width=1)
+        _center_text(draw, lab, cx, yl + 10, f_lab, INK_SOFT)
+
+    # Sello circular
+    sx, sy, r = W - 120, H - 120, 62
+    draw.ellipse([sx - r, sy - r, sx + r, sy + r], outline=GOLD, width=3)
+    draw.ellipse([sx - r + 6, sy - r + 6, sx + r - 6, sy + r - 6], outline=NAVY, width=2)
+    f_s = _font(10, True)
+    _center_text(draw, "HOSPITAL", sx, sy - 12, f_s, NAVY)
+    _center_text(draw, "GENERAL", sx, sy + 4, f_s, NAVY)
+
+    pie = "HOSPITAL GENERAL  ·  DIRECCIÓN INSTITUCIONAL  ·  ADMINISTRACIÓN SUPERIOR"
+    _center_text(draw, pie, cx_main, H - 70, _font(10), INK_SOFT)
+
+    return img
+
+
 def _abrir_firma(src: Optional[Union[str, Path, bytes, Image.Image]]) -> Optional[Image.Image]:
-    """Carga una firma registrada (archivo, bytes o imagen)."""
     if src is None:
         return None
     try:
@@ -170,91 +248,26 @@ def _abrir_firma(src: Optional[Union[str, Path, bytes, Image.Image]]) -> Optiona
             if not p.is_file():
                 return None
             im = Image.open(p).convert("RGBA")
-        # eliminar fondo casi blanco para que se vea como firma real sobre el diploma
-        pixels = im.load()
+        px = im.load()
         w, h = im.size
         for y in range(h):
             for x in range(w):
-                r, g, b, a = pixels[x, y]
-                if r > 245 and g > 245 and b > 245:
-                    pixels[x, y] = (r, g, b, 0)
-        # escalar manteniendo proporción
+                r, g, b, a = px[x, y]
+                if r > 242 and g > 242 and b > 242:
+                    px[x, y] = (r, g, b, 0)
         im.thumbnail((_FIRMA_MAX_W, _FIRMA_MAX_H), Image.Resampling.LANCZOS)
         return im
     except Exception:
         return None
 
 
-def _pegar_firma(base: Image.Image, firma: Image.Image, cx: int, y_linea: int) -> None:
-    """Coloca la firma centrada SOBRE la raya (no el nombre debajo)."""
+def _pegar_firma(base: Image.Image, firma: Image.Image, cx: int, y_linea: int) -> Image.Image:
     fw, fh = firma.size
     x = int(cx - fw / 2)
-    y = int(y_linea - fh - 4)  # justo encima de la línea
-    if base.mode != "RGBA":
-        base_rgba = base.convert("RGBA")
-        base_rgba.paste(firma, (x, y), firma)
-        base.paste(base_rgba.convert("RGB"))
-    else:
-        base.paste(firma, (x, y), firma)
-
-
-def _dibujar_base_limpia() -> Image.Image:
-    img = Image.new("RGB", (W, H), CREAM)
-    draw = ImageDraw.Draw(img)
-    for i, col, w in ((12, NAVY_DEEP, 5), (22, GOLD, 3), (30, NAVY, 2)):
-        draw.rectangle([i, i, W - i, H - i], outline=col, width=w)
-
-    main_right = W - 320
-    f_h = _font(42, bold=True)
-    t = "HOSPITAL GENERAL"
-    draw.text(((main_right - _tw(draw, t, f_h)) // 2 + 40, 55), t, font=f_h, fill=NAVY)
-    f_lema = _font(14)
-    lema = "SALUD  ·  DISCIPLINA  ·  SERVICIO"
-    draw.text(((main_right - _tw(draw, lema, f_lema)) // 2 + 40, 108), lema, font=f_lema, fill=GOLD)
-    f_co = _font(32, bold=True)
-    t1 = "CERTIFICADO OFICIAL"
-    draw.text(((main_right - _tw(draw, t1, f_co)) // 2 + 40, 150), t1, font=f_co, fill=NAVY)
-    f_rec = _font(22, bold=True)
-    t2 = "DE RECONOCIMIENTO"
-    draw.text(((main_right - _tw(draw, t2, f_rec)) // 2 + 40, 195), t2, font=f_rec, fill=GOLD)
-
-    cx = main_right // 2 + 40
-    y = 240
-    draw.line([(cx - 150, y), (cx - 14, y)], fill=GOLD, width=2)
-    draw.ellipse([cx - 5, y - 5, cx + 5, y + 5], outline=GOLD, width=2)
-    draw.line([(cx + 14, y), (cx + 150, y)], fill=GOLD, width=2)
-
-    # panel lateral
-    px0, py0, px1, py1 = W - 295, 130, W - 38, 490
-    draw.rounded_rectangle([px0, py0, px1, py1], radius=8, outline=GOLD, width=2, fill=SIDE_BG)
-    f_st = _font(11, bold=True)
-    st = "DATOS DEL CERTIFICADO"
-    draw.text((px0 + (px1 - px0 - _tw(draw, st, f_st)) // 2, py0 + 14), st, font=f_st, fill=NAVY)
-    draw.line([(px0 + 14, py0 + 36), (px1 - 14, py0 + 36)], fill=GOLD, width=1)
-
-    # rayas de firma
-    f_lab = _font(9)
-    cargos = (
-        "DIRECTOR DE DOCENCIA",
-        "DIRECTOR DEL ALA / DEPARTAMENTO",
-        "ENCARGADO DE OTORGAMIENTO",
-    )
-    for (cx, yl), lab in zip(_FIRMAS_SLOTS, cargos):
-        draw.line([(cx - 110, yl), (cx + 110, yl)], fill=NAVY, width=1)
-        draw.text((cx - _tw(draw, lab, f_lab) // 2, yl + 8), lab, font=f_lab, fill=INK_SOFT)
-
-    # sello
-    sx, sy, r = W - 115, H - 115, 58
-    draw.ellipse([sx - r, sy - r, sx + r, sy + r], outline=GOLD, width=3)
-    draw.ellipse([sx - r + 5, sy - r + 5, sx + r - 5, sy + r - 5], outline=NAVY, width=2)
-    f_s = _font(9, bold=True)
-    for i, line in enumerate(("HOSPITAL", "GENERAL")):
-        draw.text((sx - _tw(draw, line, f_s) // 2, sy - 6 + i * 13), line, font=f_s, fill=NAVY)
-
-    pie = "HOSPITAL GENERAL  ·  DIRECCIÓN INSTITUCIONAL  ·  ADMINISTRACIÓN SUPERIOR"
-    fp = _font(10)
-    draw.text(((W - 320 - _tw(draw, pie, fp)) // 2 + 40, H - 36), pie, font=fp, fill=INK_SOFT)
-    return img
+    y = int(y_linea - fh - 6)
+    base = base.convert("RGBA")
+    base.paste(firma, (x, y), firma)
+    return base.convert("RGB")
 
 
 def generar_certificado_oficial(
@@ -269,105 +282,94 @@ def generar_certificado_oficial(
     codigo_certificado: str = "",
     fecha_expedicion: str = "",
     hospital: str = "HOSPITAL GENERAL",
-    firma_docencia: Optional[Union[str, Path, bytes, Image.Image]] = None,
-    firma_departamento: Optional[Union[str, Path, bytes, Image.Image]] = None,
-    firma_encargado: Optional[Union[str, Path, bytes, Image.Image]] = None,
+    firma_docencia=None,
+    firma_departamento=None,
+    firma_encargado=None,
 ) -> io.BytesIO:
-    """
-    Genera el diploma.
-    Las firmas registradas se dibujan SOBRE cada raya (no el nombre debajo).
-    """
     _ensure_assets()
     plantilla = _cargar_plantilla()
-    usar = plantilla is not None
-    img = plantilla.copy() if usar else _dibujar_base_limpia()
+    if plantilla is not None:
+        img = plantilla.copy()
+        usar = True
+    else:
+        img = _dibujar_diploma_profesional()
+        usar = False
+
     draw = ImageDraw.Draw(img)
+    main_right = W - 310
 
     # Beneficiarios
     names = [_limpiar_nombre(n) for n in (beneficiarios or [])]
     names = [n for n in names if n]
     bloque = names[0] if len(names) == 1 else ("  ·  ".join(names) if names else "")
-    name_box = (90, 295, W - 340, 395)
-    if bloque:
-        if usar:
-            # cubrir zona de placeholder de la plantilla
-            draw.rectangle(
-                [name_box[0], name_box[1] - 6, name_box[2], name_box[3] + 6],
-                fill=(250, 246, 236),
-            )
-        f_names = _fit_font(draw, bloque, name_box[2] - name_box[0] - 16, 34, 13, bold=True)
-        _center_in_box(draw, bloque, name_box, f_names, NAVY, line_gap=8)
 
-    if not usar:
-        intro = "El Hospital General, por medio de su autoridad institucional, hace constar que:"
-        _center_in_box(draw, intro, (90, 255, W - 340, 290), _font(14), INK_SOFT, line_gap=4)
-        if names:
-            cuerpo = (
-                "ha sido reconocido(a) oficialmente por su participación, compromiso, desempeño "
+    name_box = (80, 360, main_right - 30, 430)
+    if bloque:
+        draw.rectangle(
+            [name_box[0], name_box[1] - 4, name_box[2], name_box[3] + 4],
+            fill=CREAM2,
+        )
+        f_n = _fit_font(draw, bloque, name_box[2] - name_box[0] - 20, 32, 14, bold=True)
+        _center_in_box(draw, bloque, name_box, f_n, NAVY, 8)
+
+    # Texto cuerpo
+    if names:
+        cuerpo = (
+            "ha sido reconocido(a) oficialmente por su participación, compromiso, desempeño "
+            "y contribución dentro de la institución, demostrando responsabilidad, disciplina "
+            "y vocación de servicio en el cumplimiento de los objetivos del Hospital General."
+            if len(names) == 1
+            else (
+                "han sido reconocidos oficialmente por su participación, compromiso, desempeño "
                 "y contribución dentro de la institución, demostrando responsabilidad, disciplina "
                 "y vocación de servicio en el cumplimiento de los objetivos del Hospital General."
-                if len(names) == 1
-                else (
-                    "han sido reconocidos oficialmente por su participación, compromiso, desempeño "
-                    "y contribución dentro de la institución, demostrando responsabilidad, disciplina "
-                    "y vocación de servicio en el cumplimiento de los objetivos del Hospital General."
-                )
             )
-            _center_in_box(draw, cuerpo, (90, 405, W - 340, 510), _font(14), INK, line_gap=5)
-        cierre = (
-            "El presente certificado se expide como constancia oficial de reconocimiento "
-            "institucional, para los fines que correspondan dentro de la organización."
         )
-        _center_in_box(draw, cierre, (90, 520, W - 340, 575), _font(13), INK_SOFT, line_gap=4)
+        if not usar:
+            _center_in_box(
+                draw, cuerpo, (80, 445, main_right - 30, 545), _font(14), INK, 5
+            )
+            cierre = (
+                "El presente certificado se expide como constancia oficial de reconocimiento "
+                "institucional, para los fines que correspondan dentro de la organización."
+            )
+            _center_in_box(
+                draw, cierre, (80, 555, main_right - 30, 610), _font(13), INK_SOFT, 4
+            )
 
-    # Panel lateral (valores)
-    side_x0, side_x1 = W - 285, W - 48
+    # Panel lateral valores
+    side_x0, side_x1 = W - 275, W - 50
+    f_lab = _font(10, True)
     f_val = _font(13)
-    slots = [
-        (188, codigo_certificado),
-        (248, fecha_expedicion),
-        (308, departamento),
-        (368, cargo),
-        (428, motivo),
+    campos = [
+        ("Código del certificado", codigo_certificado),
+        ("Fecha de expedición", fecha_expedicion),
+        ("Departamento / Ala", departamento),
+        ("Cargo / Rango", cargo),
+        ("Motivo del reconocimiento", motivo),
     ]
-    if usar:
-        for sy, val in slots:
-            val = (val or "").strip()
-            draw.rectangle([side_x0 - 2, sy, side_x1, sy + 34], fill=SIDE_BG)
-            if val:
-                fv = _fit_font(draw, val, side_x1 - side_x0 - 6, 14, 10, bold=False)
-                for i, ln in enumerate(_wrap(draw, val, fv, side_x1 - side_x0 - 6)[:2]):
-                    draw.text((side_x0, sy + 4 + i * 15), ln, font=fv, fill=NAVY)
-    else:
-        labels = (
-            "Código del certificado",
-            "Fecha de expedición",
-            "Departamento / Ala",
-            "Cargo / Rango",
-            "Motivo del reconocimiento",
-        )
-        f_lab = _font(10, bold=True)
-        y = 180
-        for lab, (_, val) in zip(labels, slots):
-            draw.text((side_x0, y), lab, font=f_lab, fill=INK_SOFT)
-            val = (val or "").strip()
-            if val:
-                for i, ln in enumerate(_wrap(draw, val, f_val, side_x1 - side_x0)[:2]):
-                    draw.text((side_x0, y + 16 + i * 15), ln, font=f_val, fill=NAVY)
-            y += 55
+    y = 175
+    for lab, val in campos:
+        draw.rectangle([side_x0 - 4, y - 2, side_x1 + 4, y + 48], fill=SIDE_BG)
+        draw.text((side_x0, y), lab, font=f_lab, fill=INK_SOFT)
+        val = (val or "").strip()
+        if val:
+            fv = _fit_font(draw, val, side_x1 - side_x0, 14, 10, bold=False)
+            for i, ln in enumerate(_wrap(draw, val, fv, side_x1 - side_x0)[:2]):
+                draw.text((side_x0, y + 16 + i * 15), ln, font=fv, fill=NAVY)
+        y += 58
 
-    # Firmas registradas SOBRE las rayas
-    firmas_src = (firma_docencia, firma_departamento, firma_encargado)
-    # si no hay imagen, no escribimos el nombre en la raya (queda lista para firmar)
-    for (cx, yl), src in zip(_FIRMAS_SLOTS, firmas_src):
+    # Firmas SOBRE las rayas
+    for (cx, yl), src in zip(
+        _FIRMAS_SLOTS, (firma_docencia, firma_departamento, firma_encargado)
+    ):
         im_f = _abrir_firma(src)
         if im_f is not None:
-            # cubrir zona por encima de la raya para no superponer texto de plantilla
             draw.rectangle(
-                [cx - 115, yl - _FIRMA_MAX_H - 6, cx + 115, yl - 2],
-                fill=CREAM if not usar else (248, 244, 232),
+                [cx - 120, yl - _FIRMA_MAX_H - 8, cx + 120, yl - 2],
+                fill=CREAM2,
             )
-            _pegar_firma(img, im_f, cx, yl)
+            img = _pegar_firma(img, im_f, cx, yl)
             draw = ImageDraw.Draw(img)
 
     buf = io.BytesIO()
@@ -377,7 +379,6 @@ def generar_certificado_oficial(
 
 
 def resolver_ruta_firma_usuario(uid: int) -> Optional[str]:
-    """Obtiene la ruta de la firma registrada de un usuario (módulo firmas)."""
     try:
         import firmas
 
