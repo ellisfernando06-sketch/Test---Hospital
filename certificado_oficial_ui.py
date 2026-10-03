@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-certificado_oficial_ui.py — Certificado oficial enlazado a roles CERTIFICADOS y docencia.
-
-- Beneficiarios y firmantes: solo menús User Select (sin nombres en código).
-- Tipo de certificado: menú de roles CERTIFICADOS del organigrama.
-- Al generar: otorga el rol + registra en docencia si está disponible.
+certificado_oficial_ui.py — Flujo silencioso (todo interno).
+Un solo panel; sin mensajes por cada selección; resultado ephemeral.
 """
 from __future__ import annotations
 
@@ -64,18 +61,39 @@ def _opciones_certificados() -> List[discord.SelectOption]:
 
         for clave, (nombre, _col) in (getattr(roles_config, "CERTIFICADOS", {}) or {}).items():
             label = nombre if len(nombre) <= 100 else nombre[:97] + "…"
-            opts.append(discord.SelectOption(label=label, value=clave, description=clave[:50]))
+            opts.append(discord.SelectOption(label=label, value=clave))
     except Exception:
         pass
     if not opts:
-        opts.append(
-            discord.SelectOption(
-                label="Certificado genérico",
-                value="_generico",
-                description="Sin rol de organigrama",
-            )
-        )
+        opts.append(discord.SelectOption(label="Certificado genérico", value="_generico"))
     return opts[:25]
+
+
+def _panel_embed(view: "CertificadoBuilderView") -> discord.Embed:
+    ben = ", ".join(_display(m) for m in view.beneficiarios) if view.beneficiarios else "—"
+    if len(ben) > 200:
+        ben = ben[:197] + "…"
+    emb = discord.Embed(
+        title="📜 Certificado oficial",
+        description=(
+            "Completa los menús y pulsa **Generar**.\n"
+            "_Todo el proceso es interno; no se publican avisos intermedios._"
+        ),
+        color=0x1A2A52,
+    )
+    emb.add_field(
+        name="Estado",
+        value=(
+            f"**Tipo:** {view.nombre_cert or '—'}\n"
+            f"**Beneficiarios:** {ben}\n"
+            f"**Dir. Docencia:** {_display(view.director_docencia) if view.director_docencia else '—'}\n"
+            f"**Dir. Ala:** {_display(view.director_departamento) if view.director_departamento else '—'}\n"
+            f"**Encargado:** {_display(view.encargado) if view.encargado else '—'}\n"
+            f"**Datos:** {'sí' if (view.motivo or '').strip() else 'pendiente'}"
+        ),
+        inline=False,
+    )
+    return emb
 
 
 class DatosModal(ui.Modal, title="Datos del certificado"):
@@ -107,10 +125,13 @@ class DatosModal(ui.Modal, title="Datos del certificado"):
         self.parent.departamento = str(self.departamento).strip()
         self.parent.cargo = str(self.cargo).strip()
         self.parent.motivo = str(self.motivo).strip()
-        await interaction.response.send_message(
-            "✅ Datos guardados. Pulsa **Generar certificado**.",
-            ephemeral=True,
-        )
+        # actualizar panel sin mensaje extra
+        try:
+            await interaction.response.edit_message(
+                embed=_panel_embed(self.parent), view=self.parent
+            )
+        except Exception:
+            await interaction.response.defer()
 
 
 class CertificadoBuilderView(ui.View):
@@ -126,23 +147,22 @@ class CertificadoBuilderView(ui.View):
         self.departamento = ""
         self.cargo = ""
         self.motivo = ""
+        self.message: Optional[discord.Message] = None
 
         self.sel_cert = ui.Select(
-            placeholder="Tipo de certificado (rol del organigrama)",
+            placeholder="Tipo de certificado",
             min_values=1,
             max_values=1,
             options=_opciones_certificados(),
-            custom_id="cert_tipo",
             row=0,
         )
         self.sel_cert.callback = self._on_cert
         self.add_item(self.sel_cert)
 
         self.sel_ben = ui.UserSelect(
-            placeholder="Beneficiarios (uno o varios)",
+            placeholder="Beneficiarios",
             min_values=1,
             max_values=10,
-            custom_id="cert_ben",
             row=1,
         )
         self.sel_ben.callback = self._on_ben
@@ -152,7 +172,6 @@ class CertificadoBuilderView(ui.View):
             placeholder="Director de Docencia",
             min_values=0,
             max_values=1,
-            custom_id="cert_doc",
             row=2,
         )
         self.sel_doc.callback = self._on_doc
@@ -162,26 +181,37 @@ class CertificadoBuilderView(ui.View):
             placeholder="Director del Ala / Departamento",
             min_values=0,
             max_values=1,
-            custom_id="cert_dep",
             row=3,
         )
         self.sel_dep.callback = self._on_dep
         self.add_item(self.sel_dep)
 
-        # Encargado en row 4 con botones no cabe — usar segundo view step
-        # Discord: max 5 rows. Rows 0-3 used. Row 4 = botones.
-        # Encargado se elige en modal de datos extra o en select que reemplazamos:
-        # Movemos encargado a un select que se muestra tras el tipo... 
-        # Solución: row 4 tiene botones; encargado se pide en un UserSelect
-        # sustituyendo temporalmente — mejor segundo panel al generar check.
-
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
             await interaction.response.send_message(
-                "❌ Solo quien inició el comando.", ephemeral=True
+                "❌ Solo quien ejecutó el comando.", ephemeral=True
             )
             return False
         return True
+
+    async def _refresh(self, interaction: discord.Interaction) -> None:
+        """Actualiza el mismo mensaje; no crea otros."""
+        try:
+            await interaction.response.edit_message(
+                embed=_panel_embed(self), view=self
+            )
+        except discord.InteractionResponded:
+            try:
+                await interaction.edit_original_response(
+                    embed=_panel_embed(self), view=self
+                )
+            except Exception:
+                pass
+        except Exception:
+            try:
+                await interaction.response.defer()
+            except Exception:
+                pass
 
     async def _on_cert(self, interaction: discord.Interaction):
         self.clave_cert = self.sel_cert.values[0]
@@ -192,117 +222,98 @@ class CertificadoBuilderView(ui.View):
         self.nombre_cert = label
         if self.clave_cert == "_generico":
             self.clave_cert = None
-        await interaction.response.send_message(
-            f"✅ Tipo de certificado: **{label}**\n"
-            f"Al generar se otorgará el **rol** de este certificado.",
-            ephemeral=True,
-        )
+        await self._refresh(interaction)
 
     async def _on_ben(self, interaction: discord.Interaction):
         self.beneficiarios = [
             u for u in self.sel_ben.values if isinstance(u, discord.Member) and not u.bot
         ]
-        await interaction.response.send_message(
-            f"✅ Beneficiarios: **{len(self.beneficiarios)}**",
-            ephemeral=True,
-        )
+        await self._refresh(interaction)
 
     async def _on_doc(self, interaction: discord.Interaction):
         vals = [u for u in self.sel_doc.values if isinstance(u, discord.Member)]
         self.director_docencia = vals[0] if vals else None
-        await interaction.response.send_message(
-            "✅ Director de Docencia seleccionado." if self.director_docencia else "—",
-            ephemeral=True,
-        )
+        await self._refresh(interaction)
 
     async def _on_dep(self, interaction: discord.Interaction):
         vals = [u for u in self.sel_dep.values if isinstance(u, discord.Member)]
         self.director_departamento = vals[0] if vals else None
-        await interaction.response.send_message(
-            "✅ Director del Ala seleccionado." if self.director_departamento else "—",
-            ephemeral=True,
-        )
+        await self._refresh(interaction)
 
-    @ui.button(
-        label="Encargado de otorgamiento",
-        style=discord.ButtonStyle.secondary,
-        row=4,
-    )
+    @ui.button(label="Encargado", style=discord.ButtonStyle.secondary, row=4)
     async def btn_enc(self, interaction: discord.Interaction, button: ui.Button):
         view = EncargadoPickView(self)
         await interaction.response.send_message(
-            "Selecciona el **Encargado de Otorgamiento de Certificados**:",
             view=view,
             ephemeral=True,
         )
 
-    @ui.button(label="Completar datos", style=discord.ButtonStyle.primary, row=4)
+    @ui.button(label="Datos", style=discord.ButtonStyle.primary, row=4)
     async def btn_datos(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.send_modal(DatosModal(self))
 
-    @ui.button(label="Generar certificado", style=discord.ButtonStyle.success, row=4)
+    @ui.button(label="Generar", style=discord.ButtonStyle.success, row=4)
     async def btn_gen(self, interaction: discord.Interaction, button: ui.Button):
         if not self.beneficiarios:
             return await interaction.response.send_message(
-                "❌ Selecciona **beneficiarios**.", ephemeral=True
+                "❌ Faltan beneficiarios.", ephemeral=True
             )
         if not (self.motivo or "").strip():
             return await interaction.response.send_message(
-                "❌ Completa los **datos** (motivo).", ephemeral=True
-            )
-        if not self.clave_cert and not self.nombre_cert:
-            return await interaction.response.send_message(
-                "❌ Selecciona el **tipo de certificado** (rol del organigrama).",
-                ephemeral=True,
+                "❌ Completa **Datos** (motivo).", ephemeral=True
             )
 
         await interaction.response.defer(ephemeral=True)
-        from certificado_oficial_gen import generar_certificado_oficial
+
+        try:
+            from certificado_oficial_gen import generar_certificado_oficial
+        except Exception as e:
+            return await interaction.followup.send(
+                f"❌ Error al cargar generador: {e}", ephemeral=True
+            )
 
         codigo = _codigo_auto()
         fecha = datetime.utcnow().strftime("%d / %m / %Y")
         names = [_display(m) for m in self.beneficiarios]
-
-        # Motivo en panel: si vacío de más detalle, usar nombre del cert
-        motivo_final = self.motivo
-        if self.nombre_cert and self.nombre_cert not in motivo_final:
+        motivo_panel = self.motivo
+        if self.nombre_cert and self.nombre_cert not in motivo_panel:
             motivo_panel = self.nombre_cert
-        else:
-            motivo_panel = motivo_final
 
-        buf = generar_certificado_oficial(
-            beneficiarios=names,
-            director_docencia=_display(self.director_docencia) if self.director_docencia else "",
-            director_departamento=_display(self.director_departamento)
-            if self.director_departamento
-            else "",
-            encargado_certificados=_display(self.encargado) if self.encargado else "",
-            departamento=self.departamento,
-            cargo=self.cargo or self.nombre_cert,
-            motivo=motivo_panel,
-            codigo_certificado=codigo,
-            fecha_expedicion=fecha,
-            hospital=_hospital(),
-        )
+        try:
+            buf = generar_certificado_oficial(
+                beneficiarios=names,
+                director_docencia=_display(self.director_docencia)
+                if self.director_docencia
+                else "",
+                director_departamento=_display(self.director_departamento)
+                if self.director_departamento
+                else "",
+                encargado_certificados=_display(self.encargado) if self.encargado else "",
+                departamento=self.departamento,
+                cargo=self.cargo or self.nombre_cert,
+                motivo=motivo_panel,
+                codigo_certificado=codigo,
+                fecha_expedicion=fecha,
+                hospital=_hospital(),
+            )
+        except Exception as e:
+            return await interaction.followup.send(
+                f"❌ Error al generar imagen: {e}", ephemeral=True
+            )
 
-        # ── Otorgar roles CERTIFICADOS ──
-        roles_msg = []
+        # roles (interno, sin spam)
         if self.clave_cert:
             try:
                 import cert_roles
 
                 for m in self.beneficiarios:
-                    ok, msg = await cert_roles.otorgar_rol_certificado(
-                        m,
-                        self.clave_cert,
-                        reason=f"Certificado oficial {codigo}",
+                    await cert_roles.otorgar_rol_certificado(
+                        m, self.clave_cert, reason=f"Certificado oficial {codigo}"
                     )
-                    roles_msg.append(f"{m.mention}: {msg}")
-            except Exception as e:
-                roles_msg.append(f"Error roles: {e}")
+            except Exception:
+                pass
 
-        # ── Registrar en docencia / capacitaciones ──
-        reg_msg = []
+        # registro docencia (silencioso)
         titulo = self.nombre_cert or self.motivo or "Certificado oficial"
         for m in self.beneficiarios:
             try:
@@ -318,58 +329,30 @@ class CertificadoBuilderView(ui.View):
                         notas=f"oficial {codigo}",
                         departamento=self.departamento,
                     )
-                    reg_msg.append(f"docencia ✓ {m.display_name}")
             except Exception:
                 pass
             try:
                 import capacitaciones
 
                 capacitaciones.certificar(m.id, titulo, interaction.user.id)
-                reg_msg.append(f"cap ✓ {m.display_name}")
             except Exception:
                 pass
 
         file = discord.File(buf, filename=f"certificado_{codigo.replace('-', '_')}.png")
         emb = discord.Embed(
-            title="📜 Certificado oficial generado",
-            description=(
-                f"**Código:** `{codigo}`\n"
-                f"**Tipo / rol:** {self.nombre_cert or '—'}\n"
-                f"**Clave:** `{self.clave_cert or '—'}`\n"
-                f"**Beneficiarios:** {len(names)}\n"
-                f"**Fecha:** {fecha}\n\n"
-                f"**Roles otorgados:**\n"
-                + ("\n".join(roles_msg) if roles_msg else "_ninguno_")
-                + "\n\n**Registro:**\n"
-                + (", ".join(reg_msg) if reg_msg else "_sin módulo docencia_")
-            ),
+            title="📜 Certificado generado",
+            description=f"`{codigo}` · {fecha}",
             color=0x1A2A52,
-            timestamp=discord.utils.utcnow(),
         )
         await interaction.followup.send(embed=emb, file=file, ephemeral=True)
 
+        # cerrar panel original sin más texto
         try:
-            buf2 = generar_certificado_oficial(
-                beneficiarios=names,
-                director_docencia=_display(self.director_docencia) if self.director_docencia else "",
-                director_departamento=_display(self.director_departamento)
-                if self.director_departamento
-                else "",
-                encargado_certificados=_display(self.encargado) if self.encargado else "",
-                departamento=self.departamento,
-                cargo=self.cargo or self.nombre_cert,
-                motivo=motivo_panel,
-                codigo_certificado=codigo,
-                fecha_expedicion=fecha,
-                hospital=_hospital(),
-            )
-            if interaction.channel and isinstance(interaction.channel, discord.TextChannel):
-                mentions = ", ".join(m.mention for m in self.beneficiarios)
-                await interaction.channel.send(
-                    content=f"🎓 **`{codigo}`** · {self.nombre_cert or 'Certificado'} · {mentions}",
-                    file=discord.File(
-                        buf2, filename=f"certificado_{codigo.replace('-', '_')}.png"
-                    ),
+            if interaction.message:
+                await interaction.message.edit(
+                    content="✅ Listo (ver mensaje interno).",
+                    embed=None,
+                    view=None,
                 )
         except Exception:
             pass
@@ -380,7 +363,7 @@ class EncargadoPickView(ui.View):
         super().__init__(timeout=300)
         self.parent = parent
         sel = ui.UserSelect(
-            placeholder="Encargado de Otorgamiento de Certificados",
+            placeholder="Encargado de otorgamiento",
             min_values=1,
             max_values=1,
         )
@@ -391,9 +374,22 @@ class EncargadoPickView(ui.View):
     async def _picked(self, interaction: discord.Interaction):
         vals = [u for u in self.sel.values if isinstance(u, discord.Member)]
         self.parent.encargado = vals[0] if vals else None
-        await interaction.response.send_message(
-            "✅ Encargado de otorgamiento seleccionado.", ephemeral=True
-        )
+        # editar panel padre si es posible; cerrar este mensaje
+        try:
+            await interaction.response.edit_message(content="✅", view=None)
+        except Exception:
+            try:
+                await interaction.response.defer()
+            except Exception:
+                pass
+        # refrescar panel principal
+        try:
+            if interaction.message and self.parent.message:
+                await self.parent.message.edit(
+                    embed=_panel_embed(self.parent), view=self.parent
+                )
+        except Exception:
+            pass
         self.stop()
 
 
@@ -406,7 +402,7 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="certificado_oficial",
-        description="[Docencia] Certificado oficial + rol CERTIFICADOS + registro",
+        description="[Docencia] Certificado oficial (proceso interno)",
     )
     async def certificado_oficial_cmd(inter: discord.Interaction):
         if not inter.guild or not isinstance(inter.user, discord.Member):
@@ -419,21 +415,12 @@ def registrar(bot: commands.Bot) -> None:
             )
 
         view = CertificadoBuilderView(inter.user.id)
-        emb = discord.Embed(
-            title="📜 Certificado oficial de reconocimiento",
-            description=(
-                "**Enlazado al organigrama de certificados**\n\n"
-                "1. **Tipo de certificado** → rol que se otorgará\n"
-                "2. **Beneficiarios** (menú de miembros)\n"
-                "3. **Director de Docencia**\n"
-                "4. **Director del Ala / Departamento**\n"
-                "5. **Encargado de otorgamiento**\n"
-                "6. **Completar datos** (depto, cargo, motivo)\n"
-                "7. **Generar** → imagen + rol + registro en docencia\n\n"
-                "_Ningún nombre va en la plantilla hasta que elijas en los menús._"
-            ),
-            color=0x1A2A52,
+        await inter.response.send_message(
+            embed=_panel_embed(view), view=view, ephemeral=True
         )
-        await inter.response.send_message(embed=emb, view=view, ephemeral=True)
+        try:
+            view.message = await inter.original_response()
+        except Exception:
+            view.message = None
 
-    print("[certificado_oficial_ui] OK — enlazado a CERTIFICADOS + docencia")
+    print("[certificado_oficial_ui] OK — flujo silencioso / interno")
