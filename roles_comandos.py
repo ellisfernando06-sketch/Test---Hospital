@@ -4,7 +4,7 @@ roles_comandos.py — organigrama + separadores en miembros.
 """
 from __future__ import annotations
 
-from typing import List
+from typing import List, Optional
 
 import discord
 from discord import app_commands
@@ -165,12 +165,12 @@ def registrar(bot: commands.Bot) -> None:
         description="Coloca los separadores del organigrama en un miembro (o en todos)",
     )
     @app_commands.describe(
-        miembro="Miembro concreto (omite para aplicar a todos los miembros humanos)",
-        todos="Si es true, asigna separadores a todos los miembros del servidor",
+        miembro="Miembro concreto (omite para aplicarte a ti)",
+        todos="Si es true, asigna separadores a todos los miembros humanos",
     )
     async def asignar_separadores_cmd(
         inter: discord.Interaction,
-        miembro: discord.Member | None = None,
+        miembro: Optional[discord.Member] = None,
         todos: bool = False,
     ):
         if not inter.guild or not isinstance(inter.user, discord.Member):
@@ -193,13 +193,12 @@ def registrar(bot: commands.Bot) -> None:
 
         if todos and miembro is None:
             ok = fail = 0
-            for m in inter.guild.members:
+            for m in list(inter.guild.members):
                 if m.bot:
                     continue
                 try:
-                    n = await roles_setup.asignar_separadores_miembro(m)
-                    if n >= 0:
-                        ok += 1
+                    await roles_setup.asignar_separadores_miembro(m)
+                    ok += 1
                 except Exception:
                     fail += 1
             return await inter.followup.send(
@@ -209,14 +208,14 @@ def registrar(bot: commands.Bot) -> None:
                     f"**Separadores:** {len(seps)}\n"
                     f"**Miembros actualizados:** {ok}\n"
                     f"**Fallos:** {fail}\n\n"
-                    f"Se ven en el perfil del miembro, separados del resto de roles "
+                    f"Se ven en el perfil del miembro, separados del resto "
                     f"(sin color ni permisos).",
                 ),
                 ephemeral=True,
             )
 
         target = miembro or inter.user
-        if target.bot:
+        if getattr(target, "bot", False):
             return await inter.followup.send("❌ No aplica a bots.", ephemeral=True)
 
         n = await roles_setup.asignar_separadores_miembro(target)
