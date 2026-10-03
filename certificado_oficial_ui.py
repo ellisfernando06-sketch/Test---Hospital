@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-certificado_oficial_ui.py — Flujo silencioso (todo interno).
-Un solo panel; sin mensajes por cada selección; resultado ephemeral.
+certificado_oficial_ui.py — Flujo interno; firmas registradas en el diploma.
 """
 from __future__ import annotations
 
@@ -69,15 +68,42 @@ def _opciones_certificados() -> List[discord.SelectOption]:
     return opts[:25]
 
 
+def _ruta_firma(member: Optional[discord.Member]) -> Optional[str]:
+    if not member:
+        return None
+    try:
+        from certificado_oficial_gen import resolver_ruta_firma_usuario
+
+        return resolver_ruta_firma_usuario(member.id)
+    except Exception:
+        try:
+            import firmas
+
+            info = firmas.obtener_firma_usuario(member.id)
+            if info and info.get("file"):
+                p = firmas.ruta_firma(info["file"])
+                return p if p else None
+        except Exception:
+            return None
+    return None
+
+
 def _panel_embed(view: "CertificadoBuilderView") -> discord.Embed:
     ben = ", ".join(_display(m) for m in view.beneficiarios) if view.beneficiarios else "—"
     if len(ben) > 200:
         ben = ben[:197] + "…"
+
+    def _firma_estado(m: Optional[discord.Member]) -> str:
+        if not m:
+            return "—"
+        return f"{_display(m)} · {'✍️ firma OK' if _ruta_firma(m) else '⚠️ sin firma registrada'}"
+
     emb = discord.Embed(
         title="📜 Certificado oficial",
         description=(
             "Completa los menús y pulsa **Generar**.\n"
-            "_Todo el proceso es interno; no se publican avisos intermedios._"
+            "Las **firmas registradas** (`/registrar_firma`) se colocan **sobre cada raya**.\n"
+            "_Proceso interno: sin avisos intermedios._"
         ),
         color=0x1A2A52,
     )
@@ -86,9 +112,9 @@ def _panel_embed(view: "CertificadoBuilderView") -> discord.Embed:
         value=(
             f"**Tipo:** {view.nombre_cert or '—'}\n"
             f"**Beneficiarios:** {ben}\n"
-            f"**Dir. Docencia:** {_display(view.director_docencia) if view.director_docencia else '—'}\n"
-            f"**Dir. Ala:** {_display(view.director_departamento) if view.director_departamento else '—'}\n"
-            f"**Encargado:** {_display(view.encargado) if view.encargado else '—'}\n"
+            f"**Dir. Docencia:** {_firma_estado(view.director_docencia)}\n"
+            f"**Dir. Ala:** {_firma_estado(view.director_departamento)}\n"
+            f"**Encargado:** {_firma_estado(view.encargado)}\n"
             f"**Datos:** {'sí' if (view.motivo or '').strip() else 'pendiente'}"
         ),
         inline=False,
@@ -125,7 +151,6 @@ class DatosModal(ui.Modal, title="Datos del certificado"):
         self.parent.departamento = str(self.departamento).strip()
         self.parent.cargo = str(self.cargo).strip()
         self.parent.motivo = str(self.motivo).strip()
-        # actualizar panel sin mensaje extra
         try:
             await interaction.response.edit_message(
                 embed=_panel_embed(self.parent), view=self.parent
@@ -195,7 +220,6 @@ class CertificadoBuilderView(ui.View):
         return True
 
     async def _refresh(self, interaction: discord.Interaction) -> None:
-        """Actualiza el mismo mensaje; no crea otros."""
         try:
             await interaction.response.edit_message(
                 embed=_panel_embed(self), view=self
@@ -243,10 +267,7 @@ class CertificadoBuilderView(ui.View):
     @ui.button(label="Encargado", style=discord.ButtonStyle.secondary, row=4)
     async def btn_enc(self, interaction: discord.Interaction, button: ui.Button):
         view = EncargadoPickView(self)
-        await interaction.response.send_message(
-            view=view,
-            ephemeral=True,
-        )
+        await interaction.response.send_message(view=view, ephemeral=True)
 
     @ui.button(label="Datos", style=discord.ButtonStyle.primary, row=4)
     async def btn_datos(self, interaction: discord.Interaction, button: ui.Button):
@@ -279,6 +300,19 @@ class CertificadoBuilderView(ui.View):
         if self.nombre_cert and self.nombre_cert not in motivo_panel:
             motivo_panel = self.nombre_cert
 
+        # Firmas registradas (imagen sobre cada raya)
+        f_doc = _ruta_firma(self.director_docencia)
+        f_dep = _ruta_firma(self.director_departamento)
+        f_enc = _ruta_firma(self.encargado)
+
+        avisos = []
+        if self.director_docencia and not f_doc:
+            avisos.append("Dir. Docencia sin `/registrar_firma`")
+        if self.director_departamento and not f_dep:
+            avisos.append("Dir. Ala sin `/registrar_firma`")
+        if self.encargado and not f_enc:
+            avisos.append("Encargado sin `/registrar_firma`")
+
         try:
             buf = generar_certificado_oficial(
                 beneficiarios=names,
@@ -295,13 +329,15 @@ class CertificadoBuilderView(ui.View):
                 codigo_certificado=codigo,
                 fecha_expedicion=fecha,
                 hospital=_hospital(),
+                firma_docencia=f_doc,
+                firma_departamento=f_dep,
+                firma_encargado=f_enc,
             )
         except Exception as e:
             return await interaction.followup.send(
                 f"❌ Error al generar imagen: {e}", ephemeral=True
             )
 
-        # roles (interno, sin spam)
         if self.clave_cert:
             try:
                 import cert_roles
@@ -313,7 +349,6 @@ class CertificadoBuilderView(ui.View):
             except Exception:
                 pass
 
-        # registro docencia (silencioso)
         titulo = self.nombre_cert or self.motivo or "Certificado oficial"
         for m in self.beneficiarios:
             try:
@@ -339,20 +374,20 @@ class CertificadoBuilderView(ui.View):
                 pass
 
         file = discord.File(buf, filename=f"certificado_{codigo.replace('-', '_')}.png")
+        desc = f"`{codigo}` · {fecha}"
+        if avisos:
+            desc += "\n⚠️ " + " · ".join(avisos)
         emb = discord.Embed(
             title="📜 Certificado generado",
-            description=f"`{codigo}` · {fecha}",
+            description=desc,
             color=0x1A2A52,
         )
         await interaction.followup.send(embed=emb, file=file, ephemeral=True)
 
-        # cerrar panel original sin más texto
         try:
             if interaction.message:
                 await interaction.message.edit(
-                    content="✅ Listo (ver mensaje interno).",
-                    embed=None,
-                    view=None,
+                    content="✅ Listo.", embed=None, view=None
                 )
         except Exception:
             pass
@@ -374,7 +409,6 @@ class EncargadoPickView(ui.View):
     async def _picked(self, interaction: discord.Interaction):
         vals = [u for u in self.sel.values if isinstance(u, discord.Member)]
         self.parent.encargado = vals[0] if vals else None
-        # editar panel padre si es posible; cerrar este mensaje
         try:
             await interaction.response.edit_message(content="✅", view=None)
         except Exception:
@@ -382,9 +416,8 @@ class EncargadoPickView(ui.View):
                 await interaction.response.defer()
             except Exception:
                 pass
-        # refrescar panel principal
         try:
-            if interaction.message and self.parent.message:
+            if self.parent.message:
                 await self.parent.message.edit(
                     embed=_panel_embed(self.parent), view=self.parent
                 )
@@ -402,7 +435,7 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="certificado_oficial",
-        description="[Docencia] Certificado oficial (proceso interno)",
+        description="[Docencia] Certificado oficial (firmas sobre las rayas)",
     )
     async def certificado_oficial_cmd(inter: discord.Interaction):
         if not inter.guild or not isinstance(inter.user, discord.Member):
@@ -423,4 +456,4 @@ def registrar(bot: commands.Bot) -> None:
         except Exception:
             view.message = None
 
-    print("[certificado_oficial_ui] OK — flujo silencioso / interno")
+    print("[certificado_oficial_ui] OK — firmas registradas sobre las rayas")
