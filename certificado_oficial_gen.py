@@ -1,55 +1,66 @@
 # -*- coding: utf-8 -*-
 """
-certificado_oficial_gen.py — Genera el certificado institucional (plantilla Hospital General).
-Todos los campos variables llegan vacíos salvo que se pasen desde el bot (menús Discord).
-NO incluye nombres de ejemplo ni placeholders de persona en la imagen final.
+certificado_oficial_gen.py
+Certificado institucional Hospital General — texto en español correcto,
+sin placeholders de nombres y sin trazos defectuosos.
+
+Prioridad: usar plantilla oficial (assets/certificado_plantilla.jpg|png).
+Si no existe, dibuja un diploma limpio con la misma estructura.
 """
 from __future__ import annotations
 
 import io
-import math
-from datetime import datetime
-from typing import List, Optional, Sequence
+import os
+from pathlib import Path
+from typing import List, Optional, Sequence, Tuple
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 W, H = 1536, 1024
 
-# Paleta institucional (plantilla)
-NAVY = (20, 42, 82)
-NAVY_DEEP = (12, 28, 58)
-GOLD = (184, 148, 58)
-GOLD_SOFT = (210, 180, 100)
-CREAM = (248, 244, 232)
-CREAM_DARK = (238, 230, 210)
-INK = (28, 48, 78)
-INK_SOFT = (70, 90, 120)
-WHITE = (255, 255, 255)
-SIDE_BG = (252, 250, 244)
+NAVY = (18, 38, 78)
+NAVY_DEEP = (10, 24, 52)
+GOLD = (176, 140, 52)
+GOLD_SOFT = (198, 168, 90)
+CREAM = (250, 246, 236)
+INK = (24, 42, 72)
+INK_SOFT = (72, 88, 112)
+SIDE_BG = (253, 251, 246)
+
+_ROOT = Path(__file__).resolve().parent
+_PLANTILLAS = [
+    _ROOT / "assets" / "certificado_plantilla.jpg",
+    _ROOT / "assets" / "certificado_plantilla.png",
+    _ROOT / "certificado_plantilla.jpg",
+    _ROOT / "certificado_plantilla.png",
+    Path("/home/workdir/attachments/image.png"),
+    Path("/home/workdir/artifacts/certificado_plantilla.jpg"),
+]
 
 
-def _font(size: int, bold: bool = False):
-    import os
-
-    cands = []
+def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     if bold:
-        cands += [
+        paths = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "C:/Windows/Fonts/timesbd.ttf",
+            "C:/Windows/Fonts/georgia.ttf",
         ]
     else:
-        cands += [
+        paths = [
             "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "C:/Windows/Fonts/times.ttf",
+            "C:/Windows/Fonts/georgia.ttf",
         ]
-    for p in cands:
+    for p in paths:
         if os.path.isfile(p):
             try:
                 return ImageFont.truetype(p, size)
             except Exception:
-                pass
+                continue
     return ImageFont.load_default()
 
 
@@ -58,7 +69,19 @@ def _tw(draw: ImageDraw.ImageDraw, text: str, font) -> int:
     return max(0, b[2] - b[0])
 
 
-def _fit_font(draw, text: str, max_w: int, max_size: int, min_size: int = 14, bold: bool = True):
+def _th(draw: ImageDraw.ImageDraw, text: str, font) -> int:
+    b = draw.textbbox((0, 0), text or "", font=font)
+    return max(0, b[3] - b[1])
+
+
+def _fit_font(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    max_w: int,
+    max_size: int,
+    min_size: int = 12,
+    bold: bool = True,
+):
     size = max_size
     while size >= min_size:
         f = _font(size, bold=bold)
@@ -68,13 +91,13 @@ def _fit_font(draw, text: str, max_w: int, max_size: int, min_size: int = 14, bo
     return _font(min_size, bold=bold)
 
 
-def _center_text(draw, text: str, y: int, font, fill, max_w: Optional[int] = None):
-    text = text or ""
-    if not text.strip():
-        return 0
-    max_w = max_w or int(W * 0.58)
+def _wrap(draw, text: str, font, max_w: int) -> List[str]:
+    text = (text or "").strip()
+    if not text:
+        return []
     words = text.split()
-    lines, cur = [], ""
+    lines: List[str] = []
+    cur = ""
     for w in words:
         t = (cur + " " + w).strip()
         if _tw(draw, t, font) <= max_w:
@@ -85,73 +108,126 @@ def _center_text(draw, text: str, y: int, font, fill, max_w: Optional[int] = Non
             cur = w
     if cur:
         lines.append(cur)
-    lh = getattr(font, "size", 18) + 8
-    for i, line in enumerate(lines):
-        x = (W - _tw(draw, line, font)) // 2 - 80  # dejar espacio al panel lateral
-        # centrar en zona principal (sin panel derecho ~320px)
-        main_w = W - 340
-        x = (main_w - _tw(draw, line, font)) // 2 + 40
-        draw.text((x, y + i * lh), line, font=font, fill=fill)
-    return len(lines) * lh
+    return lines
 
 
-def _draw_ornament_line(draw, y: int, cx: int, half: int = 180):
-    draw.line([(cx - half, y), (cx - 18, y)], fill=GOLD, width=2)
-    draw.ellipse([cx - 6, y - 6, cx + 6, y + 6], outline=GOLD, width=2)
-    draw.line([(cx + 18, y), (cx + half, y)], fill=GOLD, width=2)
+def _center_in_box(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    box: Tuple[int, int, int, int],
+    font,
+    fill,
+    line_gap: int = 6,
+) -> int:
+    """Dibuja texto centrado en caja (x0,y0,x1,y1). Devuelve altura usada."""
+    x0, y0, x1, y1 = box
+    max_w = x1 - x0
+    lines = _wrap(draw, text, font, max_w)
+    if not lines:
+        return 0
+    lh = _th(draw, "Áy", font) + line_gap
+    total_h = len(lines) * lh - line_gap
+    y = y0 + max(0, (y1 - y0 - total_h) // 2)
+    for line in lines:
+        x = x0 + (max_w - _tw(draw, line, font)) // 2
+        draw.text((x, y), line, font=font, fill=fill)
+        y += lh
+    return total_h
 
 
-def _draw_caduceus(draw, cx: int, cy: int, scale: float = 1.0):
-    """Escudo simplificado caduceo + laureles."""
-    s = scale
-    # círculo exterior dorado
-    r = int(42 * s)
-    draw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=GOLD, width=3)
-    draw.ellipse([cx - r + 5, cy - r + 5, cx + r - 5, cy + r - 5], outline=NAVY, width=2)
-    # asta
-    draw.line([(cx, cy - int(28 * s)), (cx, cy + int(30 * s))], fill=GOLD, width=3)
-    # serpientes (arcos)
-    draw.arc(
-        [cx - int(22 * s), cy - int(18 * s), cx + int(8 * s), cy + int(18 * s)],
-        200, 340, fill=GOLD, width=2,
+def _limpiar_nombre(s: str) -> str:
+    """Quita artefactos; no inventa nombres."""
+    s = (s or "").strip()
+    # evitar restos de plantilla
+    prohibido = (
+        "nombre completo",
+        "nombres de los beneficiarios",
+        "[nombre]",
+        "nombre del director",
+        "nombre del encargado",
+        "beneficiario",
+        "________________",
     )
-    draw.arc(
-        [cx - int(8 * s), cy - int(18 * s), cx + int(22 * s), cy + int(18 * s)],
-        20, 160, fill=GOLD, width=2,
-    )
-    # alas
-    draw.polygon(
-        [
-            (cx - int(28 * s), cy - int(8 * s)),
-            (cx - int(8 * s), cy - int(22 * s)),
-            (cx - int(4 * s), cy - int(10 * s)),
-        ],
-        outline=GOLD,
-    )
-    draw.polygon(
-        [
-            (cx + int(28 * s), cy - int(8 * s)),
-            (cx + int(8 * s), cy - int(22 * s)),
-            (cx + int(4 * s), cy - int(10 * s)),
-        ],
-        outline=GOLD,
-    )
-    # estrella
-    draw.ellipse([cx - 4, cy - int(32 * s) - 4, cx + 4, cy - int(32 * s) + 4], fill=GOLD)
+    low = s.lower()
+    for p in prohibido:
+        if p in low:
+            return ""
+    return s
 
 
-def _draw_seal(draw, cx: int, cy: int, r: int = 78):
-    draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=NAVY_DEEP, outline=GOLD, width=4)
-    draw.ellipse([cx - r + 8, cy - r + 8, cx + r - 8, cy + r - 8], outline=GOLD, width=2)
-    _draw_caduceus(draw, cx, cy - 6, scale=0.85)
-    f = _font(11, bold=True)
+def _cargar_plantilla() -> Optional[Image.Image]:
+    for p in _PLANTILLAS:
+        try:
+            if p and Path(p).is_file():
+                im = Image.open(p).convert("RGB")
+                if im.size != (W, H):
+                    im = im.resize((W, H), Image.Resampling.LANCZOS)
+                return im
+        except Exception:
+            continue
+    return None
+
+
+def _dibujar_base_limpia() -> Image.Image:
+    """Diploma limpio si no hay plantilla (sin rayones)."""
+    img = Image.new("RGB", (W, H), CREAM)
+    draw = ImageDraw.Draw(img)
+
+    # marcos limpios (líneas rectas, sin ruido)
+    for i, col, w in (
+        (14, NAVY_DEEP, 6),
+        (26, GOLD, 3),
+        (34, NAVY, 2),
+    ):
+        draw.rectangle([i, i, W - i, H - i], outline=col, width=w)
+
+    # bandas laterales
+    draw.rectangle([0, 0, 22, H], fill=NAVY_DEEP)
+    draw.rectangle([W - 22, 0, W, H], fill=NAVY_DEEP)
+    draw.rectangle([0, 0, W, 16], fill=NAVY_DEEP)
+    draw.rectangle([0, H - 16, W, H], fill=NAVY_DEEP)
+
+    main_right = W - 320
+
+    # encabezado
+    f_h = _font(40, bold=True)
     t = "HOSPITAL GENERAL"
-    tw = _tw(draw, t, f)
-    draw.text((cx - tw // 2, cy + 28), t, font=f, fill=GOLD)
-    f2 = _font(9)
-    t2 = "SALUD · DISCIPLINA · SERVICIO"
-    tw2 = _tw(draw, t2, f2)
-    draw.text((cx - tw2 // 2, cy + 44), t2, font=f2, fill=GOLD_SOFT)
+    draw.text(((main_right - _tw(draw, t, f_h)) // 2 + 30, 58), t, font=f_h, fill=NAVY)
+    f_lema = _font(13)
+    lema = "SALUD  ·  DISCIPLINA  ·  SERVICIO"
+    draw.text(((main_right - _tw(draw, lema, f_lema)) // 2 + 30, 108), lema, font=f_lema, fill=GOLD)
+
+    f_co = _font(34, bold=True)
+    t1 = "CERTIFICADO OFICIAL"
+    draw.text(((main_right - _tw(draw, t1, f_co)) // 2 + 30, 155), t1, font=f_co, fill=NAVY)
+    f_rec = _font(24, bold=True)
+    t2 = "DE RECONOCIMIENTO"
+    draw.text(((main_right - _tw(draw, t2, f_rec)) // 2 + 30, 200), t2, font=f_rec, fill=GOLD)
+
+    # línea ornamental limpia
+    cx = main_right // 2 + 30
+    y = 245
+    draw.line([(cx - 160, y), (cx - 16, y)], fill=GOLD, width=2)
+    draw.ellipse([cx - 5, y - 5, cx + 5, y + 5], outline=GOLD, width=2)
+    draw.line([(cx + 16, y), (cx + 160, y)], fill=GOLD, width=2)
+
+    # panel lateral
+    px0, py0, px1, py1 = W - 300, 140, W - 40, 500
+    draw.rounded_rectangle([px0, py0, px1, py1], radius=10, outline=GOLD, width=2, fill=SIDE_BG)
+    f_st = _font(12, bold=True)
+    st = "DATOS DEL CERTIFICADO"
+    draw.text((px0 + (px1 - px0 - _tw(draw, st, f_st)) // 2, py0 + 12), st, font=f_st, fill=NAVY)
+    draw.line([(px0 + 16, py0 + 34), (px1 - 16, py0 + 34)], fill=GOLD, width=1)
+
+    # sello circular simple
+    sx, sy, r = W - 120, H - 120, 70
+    draw.ellipse([sx - r, sy - r, sx + r, sy + r], outline=GOLD, width=3)
+    draw.ellipse([sx - r + 6, sy - r + 6, sx + r - 6, sy + r - 6], outline=NAVY, width=2)
+    f_s = _font(10, bold=True)
+    for i, line in enumerate(("HOSPITAL", "GENERAL")):
+        draw.text((sx - _tw(draw, line, f_s) // 2, sy - 8 + i * 14), line, font=f_s, fill=NAVY)
+
+    return img
 
 
 def generar_certificado_oficial(
@@ -169,178 +245,143 @@ def generar_certificado_oficial(
 ) -> io.BytesIO:
     """
     Genera PNG del certificado.
-    Los strings de personas deben venir del bot (menús). Si están vacíos, la zona queda en blanco
-    (sin texto de ejemplo).
+    Los nombres solo se imprimen si vienen del bot (menús); si faltan, la zona queda en blanco.
+    Todo el texto fijo está en español correcto.
     """
-    img = Image.new("RGB", (W, H), CREAM)
+    plantilla = _cargar_plantilla()
+    if plantilla is not None:
+        img = plantilla.copy()
+        usar_plantilla = True
+    else:
+        img = _dibujar_base_limpia()
+        usar_plantilla = False
+
     draw = ImageDraw.Draw(img)
 
-    # Marcos ornamentales
-    for i, col in enumerate([NAVY, GOLD, NAVY]):
-        m = 18 + i * 5
-        draw.rectangle([m, m, W - m, H - m], outline=col, width=2 if i < 2 else 3)
-    # esquinas decorativas
-    for (x0, y0, x1, y1) in [
-        (40, 40, 120, 50), (40, 40, 50, 120),
-        (W - 120, 40, W - 40, 50), (W - 50, 40, W - 40, 120),
-        (40, H - 50, 120, H - 40), (40, H - 120, 50, H - 40),
-        (W - 120, H - 50, W - 40, H - 40), (W - 50, H - 120, W - 40, H - 40),
-    ]:
-        draw.rectangle([x0, y0, x1, y1], fill=NAVY)
-
-    # Bandas laterales azul marino
-    draw.rectangle([0, 0, 28, H], fill=NAVY_DEEP)
-    draw.rectangle([W - 28, 0, W, H], fill=NAVY_DEEP)
-    draw.rectangle([0, 0, W, 22], fill=NAVY_DEEP)
-    draw.rectangle([0, H - 22, W, H], fill=NAVY_DEEP)
-
-    # Marca de agua caduceo
-    _draw_caduceus(draw, 280, H // 2 + 20, scale=3.2)
-    # suavizar marca de agua: no hay alpha fácil sin capa; dejar fino
-
-    # ── Encabezado ──
-    _draw_caduceus(draw, 200, 95, scale=1.15)
-    f_hosp = _font(42, bold=True)
-    title = (hospital or "HOSPITAL GENERAL").upper()
-    main_w = W - 340
-    draw.text(
-        ((main_w - _tw(draw, title, f_hosp)) // 2 + 40, 70),
-        title, font=f_hosp, fill=NAVY,
-    )
-    f_lema = _font(14)
-    lema = "SALUD  ·  DISCIPLINA  ·  SERVICIO"
-    draw.text(
-        ((main_w - _tw(draw, lema, f_lema)) // 2 + 40, 120),
-        lema, font=f_lema, fill=GOLD,
-    )
-
-    # Título principal
-    f_co = _font(36, bold=True)
-    t1 = "CERTIFICADO OFICIAL"
-    draw.text(
-        ((main_w - _tw(draw, t1, f_co)) // 2 + 40, 165),
-        t1, font=f_co, fill=NAVY,
-    )
-    f_rec = _font(26, bold=True)
-    t2 = "DE RECONOCIMIENTO"
-    draw.text(
-        ((main_w - _tw(draw, t2, f_rec)) // 2 + 40, 210),
-        t2, font=f_rec, fill=GOLD,
-    )
-    _draw_ornament_line(draw, 255, main_w // 2 + 40, half=200)
-
-    # Texto intro
-    f_body = _font(15)
-    intro = (
-        "El Hospital General, por medio de su autoridad institucional, hace constar que:"
-    )
-    _center_text(draw, intro, 275, f_body, INK_SOFT, max_w=main_w - 100)
-
-    # ── beneficiarios (solo lo seleccionado en Discord) ──
-    names = [n.strip() for n in (beneficiarios or []) if (n or "").strip()]
-    if names:
-        if len(names) == 1:
-            block = names[0]
-        elif len(names) == 2:
-            block = f"{names[0]}  ·  {names[1]}"
-        else:
-            block = "  ·  ".join(names)
-        f_names = _fit_font(draw, block, main_w - 120, max_size=34, min_size=13, bold=True)
-        h_names = _center_text(draw, block, 320, f_names, NAVY, max_w=main_w - 100)
-    else:
-        h_names = 40  # espacio vacío, sin placeholder
-
-    y_after = 320 + max(h_names, 40) + 16
-    _draw_ornament_line(draw, y_after, main_w // 2 + 40, half=120)
-
-    cuerpo = (
-        "han sido reconocidos oficialmente por su participación, compromiso, desempeño "
-        "y contribución dentro de la institución, demostrando responsabilidad, disciplina "
-        "y vocación de servicio en el cumplimiento de los objetivos del Hospital General."
-    )
+    # --- Beneficiarios (centro) ---
+    names = [_limpiar_nombre(n) for n in (beneficiarios or [])]
+    names = [n for n in names if n]
     if len(names) == 1:
-        cuerpo = (
+        bloque = names[0]
+        cuerpo_verbo = (
             "ha sido reconocido(a) oficialmente por su participación, compromiso, desempeño "
             "y contribución dentro de la institución, demostrando responsabilidad, disciplina "
             "y vocación de servicio en el cumplimiento de los objetivos del Hospital General."
         )
-    f_c = _font(14)
-    h_c = _center_text(draw, cuerpo, y_after + 20, f_c, INK, max_w=main_w - 120)
+    elif names:
+        bloque = "  ·  ".join(names)
+        cuerpo_verbo = (
+            "han sido reconocidos oficialmente por su participación, compromiso, desempeño "
+            "y contribución dentro de la institución, demostrando responsabilidad, disciplina "
+            "y vocación de servicio en el cumplimiento de los objetivos del Hospital General."
+        )
+    else:
+        bloque = ""
+        cuerpo_verbo = ""
 
-    cierre = (
-        "El presente certificado se expide como constancia oficial de reconocimiento institucional, "
-        "para los fines que correspondan dentro de la organización."
-    )
-    _center_text(draw, cierre, y_after + 20 + h_c + 18, _font(13), INK_SOFT, max_w=main_w - 120)
+    # Caja de nombres (zona central de la plantilla)
+    name_box = (80, 300, W - 340, 400)
+    if bloque:
+        f_names = _fit_font(draw, bloque, name_box[2] - name_box[0] - 20, 36, 14, bold=True)
+        # si hay plantilla, cubrir suavemente el área de placeholder con rectángulo crema semi
+        if usar_plantilla:
+            overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+            od = ImageDraw.Draw(overlay)
+            od.rectangle([name_box[0], name_box[1] - 8, name_box[2], name_box[3] + 8], fill=(250, 246, 236, 230))
+            img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+            draw = ImageDraw.Draw(img)
+        _center_in_box(draw, bloque, name_box, f_names, NAVY, line_gap=8)
 
-    # ── Panel lateral DATOS DEL CERTIFICADO ──
-    px0, py0, px1, py1 = W - 310, 150, W - 48, 520
-    draw.rounded_rectangle([px0, py0, px1, py1], radius=12, outline=GOLD, width=2, fill=SIDE_BG)
-    f_side_t = _font(13, bold=True)
-    st = "DATOS DEL CERTIFICADO"
-    draw.text((px0 + (px1 - px0 - _tw(draw, st, f_side_t)) // 2, py0 + 14), st, font=f_side_t, fill=NAVY)
-    draw.line([(px0 + 20, py0 + 38), (px1 - 20, py0 + 38)], fill=GOLD, width=1)
+    # Intro y cuerpo solo si no hay plantilla (la plantilla ya los trae bien escritos)
+    if not usar_plantilla:
+        f_body = _font(15)
+        intro = "El Hospital General, por medio de su autoridad institucional, hace constar que:"
+        _center_in_box(draw, intro, (80, 260, W - 340, 295), f_body, INK_SOFT, line_gap=4)
+        if cuerpo_verbo:
+            _center_in_box(draw, cuerpo_verbo, (80, 410, W - 340, 520), _font(14), INK, line_gap=5)
+        cierre = (
+            "El presente certificado se expide como constancia oficial de reconocimiento "
+            "institucional, para los fines que correspondan dentro de la organización."
+        )
+        _center_in_box(draw, cierre, (80, 530, W - 340, 590), _font(13), INK_SOFT, line_gap=4)
 
-    def side_row(y, label, value):
-        fl = _font(11, bold=True)
-        fv = _font(12)
-        draw.text((px0 + 18, y), label, font=fl, fill=INK_SOFT)
-        val = (value or "").strip()
-        # sin valor: dejar en blanco (no poner corchetes ni ejemplos)
-        if val:
-            # wrap
-            maxw = px1 - px0 - 36
-            words, lines, cur = val.split(), [], ""
-            for w in words:
-                t = (cur + " " + w).strip()
-                if _tw(draw, t, fv) <= maxw:
-                    cur = t
-                else:
-                    if cur:
-                        lines.append(cur)
-                    cur = w
-            if cur:
-                lines.append(cur)
-            for i, ln in enumerate(lines[:3]):
-                draw.text((px0 + 18, y + 16 + i * 15), ln, font=fv, fill=NAVY)
-            return 16 + max(1, len(lines[:3])) * 15 + 12
-        return 34
+    # --- Panel lateral: solo valores reales (español correcto en etiquetas de base) ---
+    # Coordenadas alineadas a la plantilla
+    side_x0, side_x1 = W - 290, W - 48
+    side_y = 200
+    f_lab = _font(11, bold=True)
+    f_val = _font(13)
 
-    yy = py0 + 50
-    yy += side_row(yy, "Código del certificado", codigo_certificado)
-    yy += side_row(yy, "Fecha de expedición", fecha_expedicion)
-    yy += side_row(yy, "Departamento / Ala", departamento)
-    yy += side_row(yy, "Cargo / Rango", cargo)
-    yy += side_row(yy, "Motivo del reconocimiento", motivo)
+    def side_pair(label: str, value: str, y: int) -> int:
+        value = (value or "").strip()
+        if usar_plantilla:
+            # cubrir valor de plantilla y escribir limpio
+            draw.rectangle([side_x0, y + 14, side_x1 - 4, y + 48], fill=SIDE_BG)
+        else:
+            draw.text((side_x0, y), label, font=f_lab, fill=INK_SOFT)
+        if value:
+            lines = _wrap(draw, value, f_val, side_x1 - side_x0 - 8)
+            yy = y + (16 if not usar_plantilla else 16)
+            for ln in lines[:3]:
+                draw.text((side_x0 + 2, yy), ln, font=f_val, fill=NAVY)
+                yy += 16
+            return yy + 8
+        return y + 52
 
-    # ── Firmas (solo nombres seleccionados; si vacío, línea en blanco) ──
-    fy = H - 175
-    slots = [
-        (180, director_docencia, "DIRECTOR DE DOCENCIA"),
-        (520, director_departamento, "DIRECTOR DEL ALA / DEPARTAMENTO"),
-        (860, encargado_certificados, "ENCARGADO DE OTORGAMIENTO\nDE CERTIFICADOS"),
+    # En plantilla las etiquetas ya están; solo valores
+    y = side_y
+    if not usar_plantilla:
+        y = side_pair("Código del certificado", codigo_certificado, y)
+        y = side_pair("Fecha de expedición", fecha_expedicion, y)
+        y = side_pair("Departamento / Ala", departamento, y)
+        y = side_pair("Cargo / Rango", cargo, y)
+        y = side_pair("Motivo del reconocimiento", motivo, y)
+    else:
+        # posiciones aproximadas del panel de la imagen oficial
+        slots = [
+            (188, codigo_certificado),
+            (248, fecha_expedicion),
+            (308, departamento),
+            (368, cargo),
+            (428, motivo),
+        ]
+        for sy, val in slots:
+            val = (val or "").strip()
+            draw.rectangle([side_x0 - 4, sy, side_x1, sy + 36], fill=SIDE_BG)
+            if val:
+                fv = _fit_font(draw, val, side_x1 - side_x0 - 6, 14, 10, bold=False)
+                for i, ln in enumerate(_wrap(draw, val, fv, side_x1 - side_x0 - 6)[:2]):
+                    draw.text((side_x0, sy + 4 + i * 15), ln, font=fv, fill=NAVY)
+
+    # --- Firmas (solo nombres seleccionados; español en cargos ya en plantilla) ---
+    firmas = [
+        (200, _limpiar_nombre(director_docencia)),
+        (540, _limpiar_nombre(director_departamento)),
+        (880, _limpiar_nombre(encargado_certificados)),
     ]
-    f_sig = _font(13, bold=True)
-    f_lab = _font(10)
-    for cx, nombre, label in slots:
-        draw.line([(cx - 110, fy), (cx + 110, fy)], fill=NAVY, width=1)
-        nom = (nombre or "").strip()
-        if nom:
-            fn = _fit_font(draw, nom, 220, 14, 10, bold=True)
-            draw.text((cx - _tw(draw, nom, fn) // 2, fy + 8), nom, font=fn, fill=NAVY)
-        for i, lab in enumerate(label.split("\n")):
-            draw.text(
-                (cx - _tw(draw, lab, f_lab) // 2, fy + 30 + i * 12),
-                lab, font=f_lab, fill=INK_SOFT,
-            )
+    fy = H - 168
+    for cx, nom in firmas:
+        if not nom:
+            continue
+        # limpiar zona de nombre sobre la línea
+        draw.rectangle([cx - 120, fy + 4, cx + 120, fy + 28], fill=CREAM if not usar_plantilla else (248, 244, 232))
+        fn = _fit_font(draw, nom, 230, 15, 10, bold=True)
+        draw.text((cx - _tw(draw, nom, fn) // 2, fy + 6), nom, font=fn, fill=NAVY)
 
-    # Sello fijo (sin nombre dinámico)
-    _draw_seal(draw, W - 130, H - 130, r=72)
-
-    # Pie
-    f_pie = _font(10)
-    pie = "HOSPITAL GENERAL  ·  DIRECCIÓN INSTITUCIONAL  ·  ADMINISTRACIÓN SUPERIOR"
-    draw.text(((main_w - _tw(draw, pie, f_pie)) // 2 + 40, H - 48), pie, font=f_pie, fill=INK_SOFT)
+    if not usar_plantilla:
+        # etiquetas de cargo en español correcto
+        f_lab2 = _font(9)
+        cargos = [
+            (200, "DIRECTOR DE DOCENCIA"),
+            (540, "DIRECTOR DEL ALA / DEPARTAMENTO"),
+            (880, "ENCARGADO DE OTORGAMIENTO"),
+        ]
+        for cx, lab in cargos:
+            draw.line([(cx - 110, fy), (cx + 110, fy)], fill=NAVY, width=1)
+            draw.text((cx - _tw(draw, lab, f_lab2) // 2, fy + 32), lab, font=f_lab2, fill=INK_SOFT)
+        pie = "HOSPITAL GENERAL  ·  DIRECCIÓN INSTITUCIONAL  ·  ADMINISTRACIÓN SUPERIOR"
+        fp = _font(10)
+        draw.text(((W - 320 - _tw(draw, pie, fp)) // 2 + 30, H - 42), pie, font=fp, fill=INK_SOFT)
 
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
