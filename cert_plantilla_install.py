@@ -1,13 +1,13 @@
-# -*- coding: utf-8 -*
+# -*- coding: utf-8 -*-
 from __future__ import annotations
 import base64, zlib
 from pathlib import Path
 _ROOT = Path(__file__).resolve().parent
 _TARGET = _ROOT / "assets" / "certificado_plantilla.jpg"
-_N = 21
+_N = 15
 def ensure_plantilla():
     try:
-        if _TARGET.is_file() and _TARGET.stat().st_size > 40000:
+        if _TARGET.is_file() and _TARGET.stat().st_size > 10000:
             return _TARGET
     except Exception:
         pass
