@@ -1,15 +1,7 @@
 # -*- coding: utf-8 -*-
-"""
-panel_verificacion.py — Panel público de verificación Roblox + cuarentena.
-
-- Valida username en API Roblox (rechazo inmediato si es falso).
-- Examen → al enviar: rol Cuarentena hasta Aprobar/Negar del staff.
-- Aprobar: quita cuarentena, da Comunidad, renombra.
-- Negar: quita acceso / mantiene rechazo.
-"""
+"""panel_verificacion.py — Panel Roblox + rechazo inmediato si user falso."""
 from __future__ import annotations
 
-import asyncio
 from typing import Optional
 
 import discord
@@ -22,8 +14,6 @@ try:
     import verificacion as ver
 except Exception:
     ver = None
-
-_CUARENTENA_NOMBRES = ("Cuarentena", "⏳ Cuarentena", "cuarentena", "Quarantine")
 
 
 def _hospital() -> str:
@@ -51,48 +41,10 @@ def _es_staff_verif(member: discord.Member) -> bool:
         return False
 
 
-async def _rol_cuarentena(guild: discord.Guild) -> Optional[discord.Role]:
-    for n in _CUARENTENA_NOMBRES:
-        for r in guild.roles:
-            if (r.name or "").lower() == n.lower() or n.lower() in (r.name or "").lower():
-                return r
-    try:
-        return await guild.create_role(
-            name="⏳ Cuarentena",
-            colour=discord.Colour.dark_grey(),
-            reason="Verificación: modo cuarentena",
-            hoist=True,
-            mentionable=False,
-        )
-    except Exception:
-        return None
-
-
-async def _poner_cuarentena(member: discord.Member) -> str:
-    rol = await _rol_cuarentena(member.guild)
-    if not rol:
-        return "(no se pudo crear/encontrar rol Cuarentena)"
-    try:
-        if rol not in member.roles:
-            await member.add_roles(rol, reason="Examen de verificación enviado")
-        return rol.mention
-    except Exception as e:
-        return f"(error cuarentena: {e})"
-
-
-async def _quitar_cuarentena(member: discord.Member) -> None:
-    for r in list(member.roles):
-        if any(n.lower() in (r.name or "").lower() for n in ("cuarentena", "quarantine")):
-            try:
-                await member.remove_roles(r, reason="Verificación resuelta")
-            except Exception:
-                pass
-
-
 class ModalRoblox(ui.Modal, title="Verificación Roblox"):
     usuario = ui.TextInput(
         label="Usuario de Roblox (exacto)",
-        placeholder="Ej: NombreDeUsuario",
+        placeholder="NombreDeUsuario",
         min_length=3,
         max_length=20,
         required=True,
@@ -105,13 +57,12 @@ class ModalRoblox(ui.Modal, title="Verificación Roblox"):
     async def on_submit(self, inter: discord.Interaction):
         if ver is None:
             return await inter.response.send_message(
-                "❌ Módulo de verificación no disponible.", ephemeral=True
+                "❌ Verificación no disponible.", ephemeral=True
             )
         raw = str(self.usuario).strip()
         if not raw or " " in raw:
             return await inter.response.send_message(
-                "❌ Usuario inválido. Sin espacios; solo el nombre de Roblox.",
-                ephemeral=True,
+                "❌ Usuario inválido (sin espacios).", ephemeral=True
             )
 
         await inter.response.defer(ephemeral=True)
@@ -120,52 +71,53 @@ class ModalRoblox(ui.Modal, title="Verificación Roblox"):
             emb = discord.Embed(
                 title="❌ Cuenta Roblox no encontrada",
                 description=(
-                    f"No existe el usuario **`{raw}`** en Roblox.\n"
-                    f"Revisa el nombre (mayúsculas/minúsculas) e inténtalo de nuevo.\n\n"
-                    f"No se permite inventar usuarios."
+                    f"**`{raw}`** no existe en Roblox.\n"
+                    f"Revisa el nombre e inténtalo de nuevo.\n\n"
+                    f"No se aceptan usuarios inventados."
                 ),
                 color=0xE74C3C,
             )
             return await inter.followup.send(embed=emb, ephemeral=True)
 
-        # Iniciar examen (reutiliza flujo de verificacion.py)
-        try:
-            view = ver.ExamenView(
-                inter.user.id,
-                inter.guild.id if inter.guild else 0,
-                self.log_channel_id,
-                data,
-            )
-        except TypeError:
-            # Compat firmas distintas
-            view = ver.ExamenView(
-                staff_id=inter.user.id,
-                guild_id=inter.guild.id if inter.guild else 0,
-                log_channel_id=self.log_channel_id,
-                roblox_data=data,
-            )
-
+        view = ver.ExamenView(
+            user_id=inter.user.id,
+            guild_id=inter.guild.id if inter.guild else 0,
+            staff_id=inter.user.id,
+            log_channel_id=self.log_channel_id,
+            roblox_data=data,
+        )
         emb = discord.Embed(
             title="✅ Cuenta Roblox válida",
             description=(
                 f"**Usuario:** `{data.get('name')}`\n"
                 f"**Display:** {data.get('displayName')}\n"
                 f"**ID:** `{data.get('id')}`\n\n"
-                f"Responde el **examen** con honestidad.\n"
-                f"Al terminarlo quedarás en **cuarentena** hasta que el staff "
-                f"apruebe o niegue tu entrada."
+                f"Completa el examen. Al enviarlo entrarás en **cuarentena** "
+                f"hasta que el staff apruebe o niegue tu entrada."
             ),
             color=0x2ECC71,
         )
         if data.get("avatar_url"):
             emb.set_thumbnail(url=data["avatar_url"])
-        await inter.followup.send(embed=emb, view=view, ephemeral=True)
+        await inter.followup.send(embed=emb, ephemeral=True)
+        await inter.followup.send(embed=view._embed_pregunta(), view=view, ephemeral=True)
 
 
 class PanelVerificacionView(ui.View):
-    def __init__(self, log_channel_id: int):
+    def __init__(self, log_channel_id: int = 0):
         super().__init__(timeout=None)
         self.log_channel_id = log_channel_id
+
+    def _log_id(self) -> int:
+        if self.log_channel_id:
+            return int(self.log_channel_id)
+        try:
+            import roles_store
+
+            cid = roles_store.obtener_extra("canal_log_verificacion")
+            return int(cid) if cid else 0
+        except Exception:
+            return 0
 
     @ui.button(
         label="Iniciar verificación",
@@ -174,7 +126,13 @@ class PanelVerificacionView(ui.View):
         custom_id="panel_verif:iniciar",
     )
     async def iniciar(self, inter: discord.Interaction, button: ui.Button):
-        await inter.response.send_modal(ModalRoblox(self.log_channel_id))
+        lid = self._log_id()
+        if not lid:
+            return await inter.response.send_message(
+                "❌ Falta canal de logs. Staff: vuelve a publicar el panel.",
+                ephemeral=True,
+            )
+        await inter.response.send_modal(ModalRoblox(lid))
 
     @ui.button(
         label="¿Cómo funciona?",
@@ -186,14 +144,12 @@ class PanelVerificacionView(ui.View):
         emb = discord.Embed(
             title="ℹ️ Proceso de verificación",
             description=(
-                f"**{_hospital()}** · Acceso al servidor\n\n"
-                f"**1.** Pulsa **Iniciar verificación**.\n"
-                f"**2.** Escribe tu usuario de **Roblox real** (se valida en la API).\n"
-                f"**3.** Si el usuario no existe → **rechazo inmediato**.\n"
-                f"**4.** Completa el examen de normativa / RP.\n"
-                f"**5.** Al enviar el examen → modo **Cuarentena** (espera staff).\n"
-                f"**6.** Staff **Aprueba** o **Niega** la entrada.\n\n"
-                f"Sé honesto: el staff revisa tus respuestas."
+                f"**{_hospital()}**\n\n"
+                f"**1.** Usuario Roblox real (API oficial)\n"
+                f"**2.** Si no existe → rechazo inmediato\n"
+                f"**3.** Examen de normativa / RP\n"
+                f"**4.** Cuarentena hasta Aprobar / Negar del staff\n"
+                f"**5.** Entrada permitida o denegada"
             ),
             color=0x3498DB,
         )
@@ -201,55 +157,36 @@ class PanelVerificacionView(ui.View):
 
 
 def embed_panel_verificacion() -> discord.Embed:
-    emb = discord.Embed(
+    return discord.Embed(
         title=f"🛡️ Verificación · {_hospital()}",
         description=(
-            "Bienvenido/a.\n\n"
-            "Para acceder a la **comunidad** debes verificar tu cuenta de "
-            "**Roblox** y completar un breve examen.\n\n"
+            "Para unirte a la **comunidad** verifica tu **Roblox** "
+            "y completa el examen.\n\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "**📌 Requisitos**\n"
-            "• Usuario de Roblox **real** (no inventado)\n"
-            "• Leer la normativa básica del servidor\n"
-            "• Responder con sinceridad\n\n"
-            "**⏳ Tras el examen**\n"
-            "Quedarás en **cuarentena** hasta que el staff permita o niegue "
-            "tu entrada.\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            "Pulsa el botón verde cuando estés listo/a."
+            "**Requisitos**\n"
+            "• Usuario Roblox **real**\n"
+            "• Normativa básica leída\n"
+            "• Respuestas honestas\n\n"
+            "**Tras el examen** → **cuarentena** hasta decisión del staff.\n"
+            "━━━━━━━━━━━━━━━━━━━━"
         ),
         color=0x1ABC9C,
-    )
-    emb.set_footer(text=f"{_hospital()} · Verificación institucional")
-    return emb
+    ).set_footer(text=f"{_hospital()} · Verificación institucional")
 
 
 def registrar(bot: commands.Bot) -> None:
-    # Vista persistente (custom_id fijo; log se guarda en data al publicar)
     try:
-        bot.add_view(PanelVerificacionView(log_channel_id=0))
+        bot.add_view(PanelVerificacionView(0))
     except Exception:
         pass
-
-    # Hook: al terminar examen, poner cuarentena
-    if ver is not None:
-        _orig_finish = getattr(ver, "ExamenView", None)
-        # Parche suave vía monkeypatch del envío a log si existe método
-        try:
-            if hasattr(ver, "ExamenView"):
-                cls = ver.ExamenView
-                if hasattr(cls, "_finalizar") or hasattr(cls, "_enviar_resultado"):
-                    pass  # se refuerza en botones de staff abajo
-        except Exception:
-            pass
 
     @bot.tree.command(
         name="panel_verificacion",
         description="[Staff] Publica el panel de verificación Roblox",
     )
     @app_commands.describe(
-        canal="Canal donde se publica el panel",
-        canal_log="Canal de logs donde staff aprueba/niega",
+        canal="Canal del panel",
+        canal_log="Canal donde staff Aprueba/Niega",
     )
     async def panel_verificacion(
         inter: discord.Interaction,
@@ -262,23 +199,19 @@ def registrar(bot: commands.Bot) -> None:
             )
         if not _es_staff_verif(inter.user):
             return await inter.response.send_message(
-                "❌ Solo staff autorizado.", ephemeral=True
+                "❌ Solo staff.", ephemeral=True
             )
-
-        view = PanelVerificacionView(log_channel_id=canal_log.id)
-        # Guardar log id en custom view state via extra store
         try:
             import roles_store
 
             roles_store.guardar_extra("canal_log_verificacion", canal_log.id)
-            roles_store.guardar_extra("canal_panel_verificacion", canal.id)
         except Exception:
             pass
-
+        view = PanelVerificacionView(canal_log.id)
         await canal.send(embed=embed_panel_verificacion(), view=view)
         await inter.response.send_message(
-            f"✅ Panel en {canal.mention} · Logs: {canal_log.mention}",
+            f"✅ Panel en {canal.mention} · Log {canal_log.mention}",
             ephemeral=True,
         )
 
-    print("[panel_verificacion] OK — /panel_verificacion")
+    print("[panel_verificacion] OK")
