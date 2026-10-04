@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 """
 setup_servidor.py — Organigrama + categorías y canales del hospital.
-Direcciones en categorías separadas (sin aglomerar).
+
+- Direcciones en categorías separadas.
+- Canales para todo lo que el bot usa (tickets, logs, quejas, bugs, etc.).
+- NO toca data/reglamento.json ni reglamentos guardados.
 """
 from __future__ import annotations
 
 import asyncio
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import discord
 from discord import app_commands
@@ -15,15 +18,16 @@ from discord.ext import commands
 import roles_setup
 from estilos import crear_embed
 
-# ── Estructura oficial (categorías → canales) ─────────────────────────────────
-# Cada dirección va en su propia categoría para no llenar una sola.
+# ═══════════════════════════════════════════════════════════════════════════════
+# Estructura: (nombre categoría, [(slug_canal, descripción), ...])
+# ═══════════════════════════════════════════════════════════════════════════════
 
 ESTRUCTURA: List[Tuple[str, List[Tuple[str, str]]]] = [
     (
         "【👋🏻】 ingreso",
         [
-            ("bienvenida", "Mensaje de bienvenida automático del bot."),
-            ("verificacion", "Panel y flujo de verificación / whitelist."),
+            ("bienvenida", "Bienvenida automática al entrar."),
+            ("verificacion", "Verificación Roblox / whitelist."),
             ("aceptar-reglas", "Aceptar reglas → rol Miembro."),
         ],
     ),
@@ -32,84 +36,103 @@ ESTRUCTURA: List[Tuple[str, List[Tuple[str, str]]]] = [
         [
             ("normativa-rp", "Normativa de roleplay."),
             ("normativa-discord", "Normativa de Discord."),
-            ("normativa-general", "Normativa general del servidor."),
-            ("normativa-hospitalaria", "Normativa hospitalaria institucional."),
-            ("normativa-seguridad", "Normativa del departamento de seguridad."),
+            ("normativa-general", "Normativa general."),
+            ("normativa-hospitalaria", "Normativa hospitalaria."),
+            ("normativa-seguridad", "Normativa de seguridad."),
         ],
     ),
     (
         "【💬】 comunidad",
         [
-            ("general", "Chat general de la comunidad."),
-            ("anuncios", "Anuncios públicos del hospital."),
-            ("ayuda", "Dudas y orientación para miembros."),
+            ("general", "Chat general."),
+            ("anuncios", "Anuncios públicos."),
+            ("ayuda", "Dudas y orientación."),
+            ("sugerencias", "Sugerencias de la comunidad."),
         ],
     ),
     (
         "【🎭】 roleplay",
         [
-            ("rp-hospital", "Roleplay principal del hospital."),
-            ("rp-urgencias", "Roleplay de urgencias."),
+            ("rp-hospital", "RP principal del hospital."),
+            ("rp-urgencias", "RP de urgencias."),
+            ("rp-plantas", "RP de plantas / hospitalización."),
             ("rp-reportes", "Reportes y bitácora de RP."),
+            ("rp-radio", "Radio / códigos RP."),
         ],
     ),
     (
-        "【🎫】 tickets",
+        "【🎫】 tickets y reportes",
         [
-            ("abrir-ticket", "Panel para abrir tickets de soporte."),
+            ("abrir-ticket", "Panel para abrir tickets."),
+            ("reportar", "Reportar usuarios o incidencias."),
+            ("bugs", "Reportar bugs del bot o del servidor."),
+            ("quejas", "Quejas formales."),
         ],
     ),
-    # Direcciones: una categoría por área (lo necesario, sin relleno)
+    # ── Direcciones (separadas) ───────────────────────────────────────────────
     (
         "【🖥️】 dirección general",
         [
-            ("dir-general", "Canal de la Dirección General."),
-            ("anuncios-direcciones", "Anuncios internos entre direcciones."),
+            ("dir-general", "Dirección General."),
+            ("anuncios-direcciones", "Anuncios entre direcciones."),
         ],
     ),
     (
         "【🏛️】 cancillería",
         [
-            ("dir-cancilleria", "Operaciones / Canciller y Vice Canciller."),
+            ("dir-cancilleria", "Canciller / Vice Canciller / operaciones."),
+            ("citatorios", "Citatorios y accesos especiales."),
         ],
     ),
     (
         "【📚】 docencia",
         [
-            ("dir-docencia", "Dirección de Docencia y certificaciones."),
-            ("solicitudes-certificados", "Solicitudes de certificados / firmas."),
-            ("materiales-estudio", "Material de estudio para certificaciones."),
+            ("dir-docencia", "Dirección de Docencia."),
+            ("solicitudes-certificados", "Solicitudes de certificados."),
+            ("firmas-pendientes", "Firmas pendientes de autorización."),
+            ("materiales-estudio", "Material de certificaciones."),
+            ("capacitaciones", "Capacitaciones abiertas / postulación."),
         ],
     ),
     (
         "【🩺】 dirección médica",
         [
             ("dir-medica", "Dirección Médica."),
+            ("expedientes", "Expedientes clínicos (staff)."),
+            ("licencias-medicas", "Licencias médicas."),
+            ("pacientes", "Registro / gestión de pacientes RP."),
         ],
     ),
     (
         "【💉】 enfermería",
         [
             ("dir-enfermeria", "Dirección de Enfermería."),
+            ("turnos-enfermeria", "Turnos de enfermería."),
         ],
     ),
     (
         "【👥】 recursos humanos",
         [
             ("dir-rrhh", "Recursos Humanos."),
-            ("solicitudes-inactividad", "Solicitudes de inactividad justificada."),
+            ("solicitudes-inactividad", "Inactividad justificada."),
+            ("entrevistas", "Entrevistas de ingreso."),
+            ("despidos", "Procesos de despido."),
+            ("sanciones", "Sanciones de personal."),
+            ("investigaciones", "Investigaciones internas."),
         ],
     ),
     (
         "【📦】 logística",
         [
             ("dir-logistica", "Dirección de Logística."),
+            ("inventario", "Inventario / suministros."),
         ],
     ),
     (
         "【🛡️】 seguridad",
         [
             ("dir-seguridad", "Departamento de Seguridad."),
+            ("codigos-seguridad", "Códigos y alertas de seguridad."),
         ],
     ),
     (
@@ -121,36 +144,56 @@ ESTRUCTURA: List[Tuple[str, List[Tuple[str, str]]]] = [
         ],
     ),
     (
+        "【🛒】 economía y tienda",
+        [
+            ("tienda", "Catálogo / tienda del servidor."),
+            ("economia", "Economía, salarios, transferencias."),
+        ],
+    ),
+    (
+        "【📅】 reuniones",
+        [
+            ("reuniones", "Convocatorias de reuniones."),
+            ("actas-reuniones", "Actas y resúmenes."),
+        ],
+    ),
+    (
         "【📁】 logs",
         [
             ("log-tickets", "Transcripciones de tickets."),
-            ("log-verificaciones", "Resultados de verificación / whitelist."),
-            ("log-solicitudes", "Registro de solicitudes."),
-            ("aprobaciones-rrhh", "Aprobaciones de RRHH."),
-            ("log-postulaciones", "Registro de postulaciones."),
+            ("log-verificaciones", "Verificaciones / whitelist."),
+            ("log-solicitudes", "Solicitudes generales."),
+            ("aprobaciones-rrhh", "Aprobaciones RRHH."),
+            ("log-postulaciones", "Postulaciones registradas."),
+            ("log-quejas", "Registro de quejas."),
             ("log-sanciones", "Registro de sanciones."),
-            ("log-certificados", "Registro de certificados emitidos."),
-            ("log-inactividad", "Registro de inactividades."),
+            ("log-investigaciones", "Registro de investigaciones."),
+            ("log-certificados", "Certificados emitidos."),
+            ("log-inactividad", "Inactividades."),
+            ("log-despidos", "Despidos registrados."),
+            ("log-reportes", "Reportes y bugs."),
+            ("log-economia", "Movimientos económicos."),
             ("log-general", "Logs generales del bot."),
         ],
     ),
     (
         "【🛡️】 staff",
         [
-            ("staff-general", "Chat interno del staff."),
+            ("staff-general", "Chat del staff."),
             ("staff-anuncios", "Anuncios solo staff."),
+            ("staff-alertas", "Alertas urgentes staff."),
         ],
     ),
     (
         "【⚙️】 administración",
         [
-            ("admin-only", "Solo administración / owners."),
-            ("bot-comandos", "Canal técnico del bot (opcional)."),
+            ("admin-only", "Solo Owner / Admin."),
+            ("bot-comandos", "Canal técnico del bot."),
+            ("bot-status", "Estado / control del bot."),
         ],
     ),
 ]
 
-# Canal de dirección → área de canales_direccion.py
 _MAPA_DIRECCION: Dict[str, str] = {
     "dir-docencia": "docencia",
     "dir-medica": "medico",
@@ -162,20 +205,20 @@ _MAPA_DIRECCION: Dict[str, str] = {
     "dir-seguridad": "seguridad",
     "solicitudes-inactividad": "inactividad",
     "log-verificaciones": "verificacion",
+    "staff-general": "staff",
 }
 
-# Canal de log → tipo logs_store
 _MAPA_LOG: Dict[str, str] = {
     "log-tickets": "log_tickets",
     "log-solicitudes": "log_solicitudes",
     "aprobaciones-rrhh": "aprobaciones_rrhh",
     "log-postulaciones": "log_postulaciones",
+    "log-quejas": "log_quejas",
     "log-sanciones": "log_sanciones",
+    "log-investigaciones": "log_investigaciones",
     "log-general": "log_general",
-    "log-verificaciones": "log_solicitudes",  # fallback útil; área verificacion ya mapeada
 }
 
-# Categorías privadas (staff / dirección / logs / admin)
 _CATS_PRIVADAS = {
     "【🖥️】 dirección general",
     "【🏛️】 cancillería",
@@ -188,6 +231,7 @@ _CATS_PRIVADAS = {
     "【📁】 logs",
     "【🛡️】 staff",
     "【⚙️】 administración",
+    "【📅】 reuniones",
 }
 
 
@@ -221,7 +265,6 @@ async def _asegurar_canal(
 
 
 def _overwrites_privada(guild: discord.Guild) -> Dict:
-    """@everyone no ve; el bot sí."""
     ow: Dict = {
         guild.default_role: discord.PermissionOverwrite(view_channel=False),
     }
@@ -239,6 +282,7 @@ def _overwrites_privada(guild: discord.Guild) -> Dict:
 
 
 async def crear_estructura_canales(guild: discord.Guild) -> List[str]:
+    """Crea categorías/canales. Nunca borra canales ni toca reglamentos."""
     lineas: List[str] = []
     creados = 0
     existentes = 0
@@ -249,11 +293,10 @@ async def crear_estructura_canales(guild: discord.Guild) -> List[str]:
             ow = _overwrites_privada(guild) if privada else None
             cat = await _asegurar_categoria(guild, cat_nombre, overwrites=ow)
             lineas.append(f"**{cat_nombre}**")
-            await asyncio.sleep(0.35)
+            await asyncio.sleep(0.3)
 
             for slug, desc in canales:
                 try:
-                    # ¿ya existía?
                     antes = any(
                         ch.name == slug and ch.category_id == cat.id
                         for ch in guild.text_channels
@@ -268,12 +311,13 @@ async def crear_estructura_canales(guild: discord.Guild) -> List[str]:
                         creados += 1
                         lineas.append(f"  · {ch.mention} — {desc}")
                         try:
-                            emb = crear_embed("info", slug.replace("-", " ").title(), desc)
+                            emb = crear_embed(
+                                "info", slug.replace("-", " ").title(), desc
+                            )
                             await ch.send(embed=emb)
                         except Exception:
                             pass
 
-                    # Registrar dirección
                     area = _MAPA_DIRECCION.get(slug)
                     if area:
                         try:
@@ -283,7 +327,6 @@ async def crear_estructura_canales(guild: discord.Guild) -> List[str]:
                         except Exception:
                             pass
 
-                    # Registrar logs
                     tipo_log = _MAPA_LOG.get(slug)
                     if tipo_log:
                         try:
@@ -293,25 +336,34 @@ async def crear_estructura_canales(guild: discord.Guild) -> List[str]:
                         except Exception:
                             pass
 
-                    await asyncio.sleep(0.4)
+                    await asyncio.sleep(0.35)
                 except Exception as e:
                     lineas.append(f"  · ❌ `{slug}`: {e}")
         except Exception as e:
             lineas.append(f"❌ Categoría `{cat_nombre}`: {e}")
 
     lineas.append("")
-    lineas.append(f"**Resumen canales:** 🆕 {creados} creados · ✓ {existentes} ya existían")
+    lineas.append(
+        f"**Resumen canales:** 🆕 {creados} creados · ✓ {existentes} ya existían"
+    )
+    lineas.append(
+        "_Los reglamentos guardados (`/agregar_reglamento`) no se modifican._"
+    )
     return lineas
 
 
 def _preview_texto() -> str:
     parts = []
+    total = 0
     for cat, canales in ESTRUCTURA:
-        parts.append(f"**{cat}** ({len(canales)} canales)")
+        parts.append(f"**{cat}** ({len(canales)})")
+        total += len(canales)
         for slug, _ in canales:
             parts.append(f"  · `#{slug}`")
     parts.append("")
-    parts.append("También: organigrama de roles + separadores.")
+    parts.append(f"Total: **{len(ESTRUCTURA)}** categorías · **{total}** canales")
+    parts.append("Organigrama de roles + separadores.")
+    parts.append("No borra canales ni reglamentos existentes.")
     return "\n".join(parts)[:3900]
 
 
@@ -323,9 +375,9 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="setup_servidor",
-        description="[Fundador] Roles + categorías y canales del hospital",
+        description="[Fundador] Roles + todos los canales del hospital",
     )
-    @app_commands.describe(dry_run="Solo muestra lo que se crearía, sin tocar nada")
+    @app_commands.describe(dry_run="Vista previa sin crear nada")
     async def setup_servidor(
         interaction: discord.Interaction, dry_run: bool = False
     ):
@@ -352,23 +404,21 @@ def registrar(bot: commands.Bot) -> None:
         await interaction.response.defer(ephemeral=True)
 
         if dry_run:
-            emb = crear_embed(
-                "info",
-                "Vista previa /setup_servidor",
-                _preview_texto(),
+            return await interaction.followup.send(
+                embed=crear_embed(
+                    "info", "Vista previa /setup_servidor", _preview_texto()
+                ),
+                ephemeral=True,
             )
-            return await interaction.followup.send(embed=emb, ephemeral=True)
 
         lineas: List[str] = []
 
-        # 1) Roles
         try:
             lineas.append("**—— Roles ——**")
             lineas.extend(await roles_setup.configurar_organigrama(interaction.guild))
         except Exception as e:
             lineas.append(f"❌ Roles: {e}")
 
-        # 2) Categorías y canales
         try:
             lineas.append("")
             lineas.append("**—— Canales ——**")
@@ -376,13 +426,15 @@ def registrar(bot: commands.Bot) -> None:
         except Exception as e:
             lineas.append(f"❌ Canales: {e}")
 
+        # Seguridad: no se toca data/reglamento.json en ningún punto de este comando
         texto = "\n".join(lineas)
-        # Discord embed limit — partir si hace falta
         if len(texto) <= 3800:
-            emb = crear_embed(
-                "exito", "✅ Setup completado", texto, autor=interaction.user
+            await interaction.followup.send(
+                embed=crear_embed(
+                    "exito", "✅ Setup completado", texto, autor=interaction.user
+                ),
+                ephemeral=True,
             )
-            await interaction.followup.send(embed=emb, ephemeral=True)
         else:
             await interaction.followup.send(
                 embed=crear_embed(
@@ -398,4 +450,4 @@ def registrar(bot: commands.Bot) -> None:
                 ephemeral=True,
             )
 
-    print("[setup_servidor] OK — roles + categorías/canales completos")
+    print("[setup_servidor] OK — canales completos · no toca reglamentos")
