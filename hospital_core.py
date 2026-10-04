@@ -32,6 +32,9 @@ _MODULOS = (
     "comandos_nuevos",
     "centro_solicitudes_ui",
     "verificacion",
+    "panel_verificacion",
+    "verificacion_cuarentena",
+    "paneles_direccion",
     "rp_medico",
     "paneles_miembros",
     "tienda",
@@ -78,7 +81,7 @@ _CRITICOS_SLASH = (
     "setup_servidor", "limpiar_roles_viejos",
     "configurar_canal_direccion", "ver_canales_direccion",
     "otorgar_rol_certificado", "certificado_oficial", "postular_certificacion",
-    "agregar_canal",
+    "agregar_canal", "panel_verificacion", "enviar_paneles_direccion",
 )
 
 
@@ -176,6 +179,9 @@ def _asegurar_criticos(bot) -> None:
             except Exception:
                 pass
         _cargar_modulo(bot, mod)
+    for m in ("panel_verificacion", "paneles_direccion", "verificacion_cuarentena"):
+        if m not in sys.modules:
+            _cargar_modulo(bot, m)
 
 
 def _instalar_sync(bot) -> None:
