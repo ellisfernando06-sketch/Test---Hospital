@@ -69,7 +69,6 @@ ESTRUCTURA: List[Tuple[str, List[Tuple[str, str]]]] = [
             ("quejas", "Quejas formales."),
         ],
     ),
-    # ── Direcciones (separadas) ───────────────────────────────────────────────
     (
         "【🖥️】 dirección general",
         [
@@ -80,8 +79,14 @@ ESTRUCTURA: List[Tuple[str, List[Tuple[str, str]]]] = [
     (
         "【🏛️】 cancillería",
         [
-            ("dir-cancilleria", "Canciller / Vice Canciller / operaciones."),
+            ("dir-cancilleria", "Canal oficial de Cancillería (Canciller / Vice Canciller)."),
+            ("ejecutivos", "Sala de ejecutivos / alta dirección."),
+            ("canciller", "Canal operativo del Canciller."),
+            ("vice-canciller", "Canal operativo del Vice Canciller."),
+            ("operaciones", "Coordinación de operaciones del servidor."),
             ("citatorios", "Citatorios y accesos especiales."),
+            ("ordenes-ejecutivas", "Órdenes y directivas de Cancillería."),
+            ("agenda-ejecutiva", "Agenda, reuniones y prioridades ejecutivas."),
         ],
     ),
     (
@@ -426,7 +431,6 @@ def registrar(bot: commands.Bot) -> None:
         except Exception as e:
             lineas.append(f"❌ Canales: {e}")
 
-        # Seguridad: no se toca data/reglamento.json en ningún punto de este comando
         texto = "\n".join(lineas)
         if len(texto) <= 3800:
             await interaction.followup.send(
@@ -450,4 +454,4 @@ def registrar(bot: commands.Bot) -> None:
                 ephemeral=True,
             )
 
-    print("[setup_servidor] OK — canales completos · no toca reglamentos")
+    print("[setup_servidor] OK — canales completos · cancillería ejecutiva")
