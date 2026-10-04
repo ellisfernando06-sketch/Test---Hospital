@@ -40,6 +40,7 @@ _MODULOS = (
     "tickets_cierre",
     "docencia",
     "canales_direccion",
+    "canales_crear",
     "firmas",
     "firmas_hook",
     "cert_roles",
@@ -76,6 +77,7 @@ _CRITICOS_SLASH = (
     "setup_servidor", "limpiar_roles_viejos",
     "configurar_canal_direccion", "ver_canales_direccion",
     "otorgar_rol_certificado", "certificado_oficial", "postular_certificacion",
+    "agregar_canal",
 )
 
 
@@ -173,6 +175,8 @@ def _asegurar_criticos(bot) -> None:
             except Exception:
                 pass
         _cargar_modulo(bot, mod)
+    if "agregar_canal" in faltan:
+        _cargar_modulo(bot, "canales_crear")
 
 
 def _instalar_sync(bot) -> None:
@@ -304,4 +308,5 @@ except Exception as e:
     bot = _bot_minimo()
     for name in _MODULOS_CRITICOS:
         _cargar_modulo(bot, name)
+    _cargar_modulo(bot, "canales_crear")
     _instalar_sync(bot)
