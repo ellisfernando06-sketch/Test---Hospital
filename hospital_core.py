@@ -22,6 +22,7 @@ _GUILD_ID = 1381360019467014184
 _MODULOS_CRITICOS = (
     "roles_comandos",
     "setup_servidor",
+    "setup_permisos_protect",
     "limpiar_roles",
     "bienvenida",
     "canales_direccion",
@@ -175,8 +176,6 @@ def _asegurar_criticos(bot) -> None:
             except Exception:
                 pass
         _cargar_modulo(bot, mod)
-    if "agregar_canal" in faltan:
-        _cargar_modulo(bot, "canales_crear")
 
 
 def _instalar_sync(bot) -> None:
@@ -308,5 +307,4 @@ except Exception as e:
     bot = _bot_minimo()
     for name in _MODULOS_CRITICOS:
         _cargar_modulo(bot, name)
-    _cargar_modulo(bot, "canales_crear")
     _instalar_sync(bot)
