@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-bienvenida.py — Bienvenida automática al entrar.
-NO otorga roles de jerarquía ni herramientas.
-Los roles de acceso se dan al firmar reglas (Miembro) y al verificarse (Comunidad).
-Los separadores SÍ se colocan TODOS en el miembro al entrar (sin color/permisos).
+bienvenida.py — Bienvenida cálida, ordenada y guiada por puntos.
+Separadores al entrar. Sin roles de jerarquía automáticos.
 """
 from __future__ import annotations
 
@@ -22,20 +20,32 @@ def _hospital() -> str:
 def embed_bienvenida(member: discord.Member) -> discord.Embed:
     hospital = _hospital()
     total = member.guild.member_count if member.guild else "—"
+
     desc = (
-        f"¡Hola, {member.mention}!\n\n"
-        f"Acabas de ingresar a **{hospital}**.\n"
-        f"Este servidor es un espacio de **roleplay hospitalario**.\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n"
-        f"**📋 Primeros pasos**\n"
-        f"1️⃣ Lee y **acepta las reglas** → rol **Miembro**\n"
-        f"2️⃣ Completa la **verificación** → rol **Comunidad**\n"
-        f"3️⃣ Si quieres unirte al personal → **postulaciones**\n"
-        f"━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"¡Que tengas una excelente estadía! 🩺"
+        f"Hola, {member.mention} 👋\n\n"
+        f"Nos alegra tenerte en **{hospital}**.\n"
+        f"Este es un espacio de **roleplay hospitalario**: profesional, "
+        f"respetuoso y pensado para que disfrutes la experiencia.\n\n"
+        f"╔══════════════════════════╗\n"
+        f"║   **Tu guía de ingreso**   ║\n"
+        f"╚══════════════════════════╝\n\n"
+        f"**1.** Lee las **normativas** del servidor\n"
+        f"　　· RP · Discord · General\n\n"
+        f"**2.** Acepta las **reglas**\n"
+        f"　　→ Obtienes el rol **Miembro**\n\n"
+        f"**3.** Completa la **verificación Roblox**\n"
+        f"　　→ Examen breve · el staff aprueba tu entrada\n"
+        f"　　→ Rol **Comunidad** al ser aceptado/a\n\n"
+        f"**4.** (Opcional) Si deseas personal sanitario\n"
+        f"　　→ Revisa **postulaciones**\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"💡 *Ve con calma. El staff está para orientarte.*\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"¡Bienvenido/a a la familia de **{hospital}**! 🏥✨"
     )
+
     emb = discord.Embed(
-        title=f"🏥 Bienvenido/a a {hospital}",
+        title=f"🏥  Bienvenido/a a {hospital}",
         description=desc,
         color=0x1ABC9C,
         timestamp=discord.utils.utcnow(),
@@ -50,8 +60,8 @@ def embed_bienvenida(member: discord.Member) -> discord.Embed:
         pass
     emb.add_field(name="👤 Usuario", value=member.mention, inline=True)
     emb.add_field(name="🆔 ID", value=f"`{member.id}`", inline=True)
-    emb.add_field(name="👥 Miembros", value=f"`{total}`", inline=True)
-    emb.set_footer(text=f"{hospital} · Bienvenida automática")
+    emb.add_field(name="👥 Comunidad", value=f"`{total}` miembros", inline=True)
+    emb.set_footer(text=f"{hospital}  ·  Te acompañamos en cada paso")
     return emb
 
 
@@ -59,18 +69,22 @@ def embed_bienvenida_dm(member: discord.Member) -> discord.Embed:
     hospital = _hospital()
     desc = (
         f"Hola, **{member.display_name}**.\n\n"
-        f"Tu entrada a **{hospital}** quedó registrada.\n\n"
-        f"**Siguiente paso**\n"
-        f"• Acepta las **reglas** → rol **Miembro**\n"
-        f"• Completa la **verificación** → rol **Comunidad**\n\n"
-        f"¡Bienvenido/a!"
+        f"Tu ingreso a **{hospital}** quedó registrado.\n\n"
+        f"**Pasos recomendados**\n"
+        f"**1.** Normativas del servidor\n"
+        f"**2.** Aceptar reglas → **Miembro**\n"
+        f"**3.** Verificación Roblox → **Comunidad**\n\n"
+        f"Si tienes dudas, abre un ticket o pregunta en ayuda.\n\n"
+        f"Que tengas una excelente estadía. 🩺"
     )
-    return discord.Embed(
-        title=f"🏥 Acceso a {hospital}",
+    emb = discord.Embed(
+        title=f"💌 Acceso a {hospital}",
         description=desc,
         color=0x3498DB,
         timestamp=discord.utils.utcnow(),
     )
+    emb.set_footer(text=f"{hospital} · Mensaje automático de bienvenida")
+    return emb
 
 
 def _canal_bienvenida(guild: discord.Guild) -> Optional[discord.TextChannel]:
@@ -86,7 +100,8 @@ def _canal_bienvenida(guild: discord.Guild) -> Optional[discord.TextChannel]:
         pass
     for name in ("bienvenida", "welcome", "ingresos", "general"):
         for ch in guild.text_channels:
-            if name in (ch.name or "").lower():
+            cn = (ch.name or "").lower()
+            if name in cn:
                 return ch
     return guild.system_channel
 
@@ -95,7 +110,6 @@ async def _on_member_join(member: discord.Member) -> None:
     if member.bot or not member.guild:
         return
 
-    # Separadores: TODOS los del organigrama, en automático al entrar
     try:
         import asyncio
         import roles_setup
@@ -113,7 +127,7 @@ async def _on_member_join(member: discord.Member) -> None:
     canal = _canal_bienvenida(member.guild)
     if canal:
         try:
-            await canal.send(content=f"👋 {member.mention}", embed=emb)
+            await canal.send(content=f"✨ {member.mention}", embed=emb)
         except Exception as e:
             print(f"[bienvenida] canal: {e}", flush=True)
 
@@ -125,4 +139,21 @@ async def _on_member_join(member: discord.Member) -> None:
 
 def registrar(bot: commands.Bot) -> None:
     bot.add_listener(_on_member_join, "on_member_join")
-    print("[bienvenida] OK — todos los separadores al entrar + mensaje", flush=True)
+
+    @bot.tree.command(
+        name="probar_bienvenida",
+        description="[Staff] Envía una muestra del mensaje de bienvenida",
+    )
+    async def probar_bienvenida(inter: discord.Interaction):
+        if not inter.guild or not isinstance(inter.user, discord.Member):
+            return await inter.response.send_message(
+                "❌ Solo en el servidor.", ephemeral=True
+            )
+        emb = embed_bienvenida(inter.user)
+        await inter.response.send_message(
+            content="*(Vista previa de bienvenida)*",
+            embed=emb,
+            ephemeral=True,
+        )
+
+    print("[bienvenida] OK — guía por puntos + /probar_bienvenida", flush=True)
