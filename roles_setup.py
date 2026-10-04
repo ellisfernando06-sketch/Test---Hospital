@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
-"""roles_setup.py — carga organigrama; respeta hoist y @mention manuales."""
+"""roles_setup.py — organigrama; respeta hoist y @mention en TODOS los roles."""
 from __future__ import annotations
 
-import importlib
 import sys
 import types
 import urllib.request
 
-# Última versión buena conocida en el repo (antes del PLACEHOLDER)
 _URL = (
     "https://raw.githubusercontent.com/ellisfernando06-sketch/Test---Hospital/"
     "fd793aa8c736de6617c77e332e0ef850befe7c1c/roles_setup.py"
@@ -15,7 +13,13 @@ _URL = (
 
 
 def _parchear_asegurar(mod: types.ModuleType) -> None:
-    """No tocar hoist / mentionable / permissions en roles que ya existen."""
+    """
+    Regla para TODOS los roles que ya existen:
+    - No tocar hoist (Mostrar por separado)
+    - No tocar mentionable (Permitir @mention)
+    - No tocar permissions ni color personalizado
+    Solo puede renombrar si el organigrama lo pide.
+    """
     import asyncio
     from typing import Optional, Tuple
 
@@ -35,31 +39,20 @@ def _parchear_asegurar(mod: types.ModuleType) -> None:
     ) -> Tuple[Optional[discord.Role], str]:
         existente = rol_existente or orig_buscar(guild, nombre)
         if existente:
-            # Respetar edición manual (Mostrar por separado / Permitir @mention)
+            # Cualquier rol ya creado: el staff manda en Discord
             if renombrar_si_antiguo and existente.name != nombre:
                 try:
-                    kw = {"name": nombre, "reason": "Organigrama (solo nombre)"}
-                    if es_separador:
-                        kw["colour"] = discord.Colour.default()
-                    await existente.edit(**kw)
+                    await existente.edit(
+                        name=nombre,
+                        reason="Organigrama (solo nombre; hoist/@mention intactos)",
+                    )
                     return existente, "renombrado"
                 except Exception:
                     return existente, "ok"
-            if es_separador:
-                try:
-                    kw = {"reason": "Separador: sin permisos/color"}
-                    need = False
-                    if existente.permissions.value != 0:
-                        kw["permissions"] = discord.Permissions.none()
-                        need = True
-                    if existente.colour.value != 0:
-                        kw["colour"] = discord.Colour.default()
-                        need = True
-                    if need:
-                        await existente.edit(**kw)
-                except Exception:
-                    pass
+            # No editar nada más (ni separadores: no forzar hoist/mentionable/perms)
             return existente, "ok"
+
+        # Solo al CREAR se usan defaults; luego el staff puede cambiarlos y se quedan
         try:
             if es_separador:
                 rol = await guild.create_role(
@@ -101,13 +94,6 @@ def _cargar() -> types.ModuleType:
     return mod
 
 
-try:
-    _mod = _cargar()
-except Exception as e:
-    print(f"[roles_setup] fallback local falló descarga: {e}")
-    raise
-
-# Re-exportar API pública del módulo descargado
+_mod = _cargar()
 globals().update({k: getattr(_mod, k) for k in dir(_mod) if not k.startswith("__")})
-
-print("[roles_setup] cargado + parche hoist/@mention")
+print("[roles_setup] OK — hoist/@mention preservados en TODOS los roles existentes")
