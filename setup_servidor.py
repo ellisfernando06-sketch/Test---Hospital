@@ -1,14 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-setup_servidor.py — Organigrama + categorías y canales del hospital.
-
-- Direcciones en categorías separadas.
-- Canales para todo lo que el bot usa (tickets, logs, quejas, bugs, etc.).
-- NO toca data/reglamento.json ni reglamentos guardados.
+setup_servidor.py — Organigrama + canales con diseño →【emoji】nombre
+NO toca reglamentos guardados.
 """
 from __future__ import annotations
 
 import asyncio
+import re
 from typing import Dict, List, Optional, Tuple
 
 import discord
@@ -18,183 +16,182 @@ from discord.ext import commands
 import roles_setup
 from estilos import crear_embed
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Estructura: (nombre categoría, [(slug_canal, descripción), ...])
-# ═══════════════════════════════════════════════════════════════════════════════
+# Diseño oficial: →【emoji】nombre
 
-ESTRUCTURA: List[Tuple[str, List[Tuple[str, str]]]] = [
+ESTRUCTURA: List[Tuple[str, List[Tuple[str, str, str]]]] = [
+    # (categoría, [(nombre_completo, base_slug, descripción), ...])
     (
-        "【👋🏻】 ingreso",
+        "→【👋🏻】INGRESO",
         [
-            ("bienvenida", "Bienvenida automática al entrar."),
-            ("verificacion", "Verificación Roblox / whitelist."),
-            ("aceptar-reglas", "Aceptar reglas → rol Miembro."),
+            ("→【👋🏻】bienvenida", "bienvenida", "Bienvenida automática al entrar."),
+            ("→【✅】verificacion", "verificacion", "Verificación Roblox / whitelist."),
+            ("→【📋】aceptar-reglas", "aceptar-reglas", "Aceptar reglas → rol Miembro."),
         ],
     ),
     (
-        "【📜】 normativas",
+        "→【📜】NORMATIVAS",
         [
-            ("normativa-rp", "Normativa de roleplay."),
-            ("normativa-discord", "Normativa de Discord."),
-            ("normativa-general", "Normativa general."),
-            ("normativa-hospitalaria", "Normativa hospitalaria."),
-            ("normativa-seguridad", "Normativa de seguridad."),
+            ("→【📜】normativa-rp", "normativa-rp", "Normativa de roleplay."),
+            ("→【📜】normativa-discord", "normativa-discord", "Normativa de Discord."),
+            ("→【📜】normativa-general", "normativa-general", "Normativa general."),
+            ("→【📜】normativa-hospitalaria", "normativa-hospitalaria", "Normativa hospitalaria."),
+            ("→【📜】normativa-seguridad", "normativa-seguridad", "Normativa de seguridad."),
         ],
     ),
     (
-        "【💬】 comunidad",
+        "→【💬】COMUNIDAD",
         [
-            ("general", "Chat general."),
-            ("anuncios", "Anuncios públicos."),
-            ("ayuda", "Dudas y orientación."),
-            ("sugerencias", "Sugerencias de la comunidad."),
+            ("→【💬】general", "general", "Chat general."),
+            ("→【📢】anuncios", "anuncios", "Anuncios públicos."),
+            ("→【🆘】ayuda", "ayuda", "Dudas y orientación."),
+            ("→【💡】sugerencias", "sugerencias", "Sugerencias de la comunidad."),
         ],
     ),
     (
-        "【🎭】 roleplay",
+        "→【🎭】ROLEPLAY",
         [
-            ("rp-hospital", "RP principal del hospital."),
-            ("rp-urgencias", "RP de urgencias."),
-            ("rp-plantas", "RP de plantas / hospitalización."),
-            ("rp-reportes", "Reportes y bitácora de RP."),
-            ("rp-radio", "Radio / códigos RP."),
+            ("→【🏥】rp-hospital", "rp-hospital", "RP principal del hospital."),
+            ("→【🚑】rp-urgencias", "rp-urgencias", "RP de urgencias."),
+            ("→【🛏️】rp-plantas", "rp-plantas", "RP de plantas / hospitalización."),
+            ("→【📝】rp-reportes", "rp-reportes", "Reportes y bitácora de RP."),
+            ("→【📡】rp-radio", "rp-radio", "Radio / códigos RP."),
         ],
     ),
     (
-        "【🎫】 tickets y reportes",
+        "→【🎫】TICKETS Y REPORTES",
         [
-            ("abrir-ticket", "Panel para abrir tickets."),
-            ("reportar", "Reportar usuarios o incidencias."),
-            ("bugs", "Reportar bugs del bot o del servidor."),
-            ("quejas", "Quejas formales."),
+            ("→【🎫】abrir-ticket", "abrir-ticket", "Panel para abrir tickets."),
+            ("→【🚨】reportar", "reportar", "Reportar usuarios o incidencias."),
+            ("→【🐛】bugs", "bugs", "Reportar bugs del bot o del servidor."),
+            ("→【😠】quejas", "quejas", "Quejas formales."),
         ],
     ),
     (
-        "【🖥️】 dirección general",
+        "→【🖥️】DIRECCIÓN GENERAL",
         [
-            ("dir-general", "Dirección General."),
-            ("anuncios-direcciones", "Anuncios entre direcciones."),
+            ("→【🖥️】dir-general", "dir-general", "Dirección General."),
+            ("→【📢】anuncios-direcciones", "anuncios-direcciones", "Anuncios entre direcciones."),
         ],
     ),
     (
-        "【🏛️】 cancillería",
+        "→【🏛️】CANCILLERÍA",
         [
-            ("dir-cancilleria", "Canal oficial de Cancillería (Canciller / Vice Canciller)."),
-            ("ejecutivos", "Sala de ejecutivos / alta dirección."),
-            ("canciller", "Canal operativo del Canciller."),
-            ("vice-canciller", "Canal operativo del Vice Canciller."),
-            ("operaciones", "Coordinación de operaciones del servidor."),
-            ("citatorios", "Citatorios y accesos especiales."),
-            ("ordenes-ejecutivas", "Órdenes y directivas de Cancillería."),
-            ("agenda-ejecutiva", "Agenda, reuniones y prioridades ejecutivas."),
+            ("→【🏛️】dir-cancilleria", "dir-cancilleria", "Canal oficial de Cancillería."),
+            ("→【👔】ejecutivos", "ejecutivos", "Sala de ejecutivos / alta dirección."),
+            ("→【⚜️】canciller", "canciller", "Canal operativo del Canciller."),
+            ("→【🔰】vice-canciller", "vice-canciller", "Canal operativo del Vice Canciller."),
+            ("→【📡】operaciones", "operaciones", "Coordinación de operaciones."),
+            ("→【📨】citatorios", "citatorios", "Citatorios y accesos especiales."),
+            ("→【📜】ordenes-ejecutivas", "ordenes-ejecutivas", "Órdenes y directivas."),
+            ("→【📅】agenda-ejecutiva", "agenda-ejecutiva", "Agenda y prioridades ejecutivas."),
         ],
     ),
     (
-        "【📚】 docencia",
+        "→【📚】DOCENCIA",
         [
-            ("dir-docencia", "Dirección de Docencia."),
-            ("solicitudes-certificados", "Solicitudes de certificados."),
-            ("firmas-pendientes", "Firmas pendientes de autorización."),
-            ("materiales-estudio", "Material de certificaciones."),
-            ("capacitaciones", "Capacitaciones abiertas / postulación."),
+            ("→【📚】dir-docencia", "dir-docencia", "Dirección de Docencia."),
+            ("→【🎓】solicitudes-certificados", "solicitudes-certificados", "Solicitudes de certificados."),
+            ("→【✍️】firmas-pendientes", "firmas-pendientes", "Firmas pendientes."),
+            ("→【📖】materiales-estudio", "materiales-estudio", "Material de certificaciones."),
+            ("→【📘】capacitaciones", "capacitaciones", "Capacitaciones / postulación."),
         ],
     ),
     (
-        "【🩺】 dirección médica",
+        "→【🩺】DIRECCIÓN MÉDICA",
         [
-            ("dir-medica", "Dirección Médica."),
-            ("expedientes", "Expedientes clínicos (staff)."),
-            ("licencias-medicas", "Licencias médicas."),
-            ("pacientes", "Registro / gestión de pacientes RP."),
+            ("→【🩺】dir-medica", "dir-medica", "Dirección Médica."),
+            ("→【📂】expedientes", "expedientes", "Expedientes clínicos (staff)."),
+            ("→【🏥】licencias-medicas", "licencias-medicas", "Licencias médicas."),
+            ("→【🧑‍⚕️】pacientes", "pacientes", "Gestión de pacientes RP."),
         ],
     ),
     (
-        "【💉】 enfermería",
+        "→【💉】ENFERMERÍA",
         [
-            ("dir-enfermeria", "Dirección de Enfermería."),
-            ("turnos-enfermeria", "Turnos de enfermería."),
+            ("→【💉】dir-enfermeria", "dir-enfermeria", "Dirección de Enfermería."),
+            ("→【🗓️】turnos-enfermeria", "turnos-enfermeria", "Turnos de enfermería."),
         ],
     ),
     (
-        "【👥】 recursos humanos",
+        "→【👥】RECURSOS HUMANOS",
         [
-            ("dir-rrhh", "Recursos Humanos."),
-            ("solicitudes-inactividad", "Inactividad justificada."),
-            ("entrevistas", "Entrevistas de ingreso."),
-            ("despidos", "Procesos de despido."),
-            ("sanciones", "Sanciones de personal."),
-            ("investigaciones", "Investigaciones internas."),
+            ("→【👥】dir-rrhh", "dir-rrhh", "Recursos Humanos."),
+            ("→【⏸️】solicitudes-inactividad", "solicitudes-inactividad", "Inactividad justificada."),
+            ("→【🎤】entrevistas", "entrevistas", "Entrevistas de ingreso."),
+            ("→【🚪】despidos", "despidos", "Procesos de despido."),
+            ("→【⚠️】sanciones", "sanciones", "Sanciones de personal."),
+            ("→【🔍】investigaciones", "investigaciones", "Investigaciones internas."),
         ],
     ),
     (
-        "【📦】 logística",
+        "→【📦】LOGÍSTICA",
         [
-            ("dir-logistica", "Dirección de Logística."),
-            ("inventario", "Inventario / suministros."),
+            ("→【📦】dir-logistica", "dir-logistica", "Dirección de Logística."),
+            ("→【📦】inventario", "inventario", "Inventario / suministros."),
         ],
     ),
     (
-        "【🛡️】 seguridad",
+        "→【🛡️】SEGURIDAD",
         [
-            ("dir-seguridad", "Departamento de Seguridad."),
-            ("codigos-seguridad", "Códigos y alertas de seguridad."),
+            ("→【🛡️】dir-seguridad", "dir-seguridad", "Departamento de Seguridad."),
+            ("→【🚨】codigos-seguridad", "codigos-seguridad", "Códigos y alertas."),
         ],
     ),
     (
-        "【📝】 postulaciones",
+        "→【📝】POSTULACIONES",
         [
-            ("postulaciones-medica", "Postulaciones área médica."),
-            ("postulaciones-especialidad", "Postulaciones a especialidades."),
-            ("postulaciones-administrativa", "Postulaciones área administrativa."),
+            ("→【🩺】postulaciones-medica", "postulaciones-medica", "Postulaciones área médica."),
+            ("→【🔬】postulaciones-especialidad", "postulaciones-especialidad", "Postulaciones a especialidades."),
+            ("→【📋】postulaciones-administrativa", "postulaciones-administrativa", "Postulaciones administrativas."),
         ],
     ),
     (
-        "【🛒】 economía y tienda",
+        "→【🛒】ECONOMÍA Y TIENDA",
         [
-            ("tienda", "Catálogo / tienda del servidor."),
-            ("economia", "Economía, salarios, transferencias."),
+            ("→【🛒】tienda", "tienda", "Catálogo / tienda."),
+            ("→【💰】economia", "economia", "Economía y salarios."),
         ],
     ),
     (
-        "【📅】 reuniones",
+        "→【📅】REUNIONES",
         [
-            ("reuniones", "Convocatorias de reuniones."),
-            ("actas-reuniones", "Actas y resúmenes."),
+            ("→【📅】reuniones", "reuniones", "Convocatorias de reuniones."),
+            ("→【📄】actas-reuniones", "actas-reuniones", "Actas y resúmenes."),
         ],
     ),
     (
-        "【📁】 logs",
+        "→【📁】LOGS",
         [
-            ("log-tickets", "Transcripciones de tickets."),
-            ("log-verificaciones", "Verificaciones / whitelist."),
-            ("log-solicitudes", "Solicitudes generales."),
-            ("aprobaciones-rrhh", "Aprobaciones RRHH."),
-            ("log-postulaciones", "Postulaciones registradas."),
-            ("log-quejas", "Registro de quejas."),
-            ("log-sanciones", "Registro de sanciones."),
-            ("log-investigaciones", "Registro de investigaciones."),
-            ("log-certificados", "Certificados emitidos."),
-            ("log-inactividad", "Inactividades."),
-            ("log-despidos", "Despidos registrados."),
-            ("log-reportes", "Reportes y bugs."),
-            ("log-economia", "Movimientos económicos."),
-            ("log-general", "Logs generales del bot."),
+            ("→【🎫】log-tickets", "log-tickets", "Transcripciones de tickets."),
+            ("→【✅】log-verificaciones", "log-verificaciones", "Verificaciones / whitelist."),
+            ("→【📥】log-solicitudes", "log-solicitudes", "Solicitudes generales."),
+            ("→【✔️】aprobaciones-rrhh", "aprobaciones-rrhh", "Aprobaciones RRHH."),
+            ("→【📝】log-postulaciones", "log-postulaciones", "Postulaciones registradas."),
+            ("→【😠】log-quejas", "log-quejas", "Registro de quejas."),
+            ("→【⚠️】log-sanciones", "log-sanciones", "Registro de sanciones."),
+            ("→【🔍】log-investigaciones", "log-investigaciones", "Registro de investigaciones."),
+            ("→【🎓】log-certificados", "log-certificados", "Certificados emitidos."),
+            ("→【⏸️】log-inactividad", "log-inactividad", "Inactividades."),
+            ("→【🚪】log-despidos", "log-despidos", "Despidos registrados."),
+            ("→【🐛】log-reportes", "log-reportes", "Reportes y bugs."),
+            ("→【💰】log-economia", "log-economia", "Movimientos económicos."),
+            ("→【🤖】log-general", "log-general", "Logs generales del bot."),
         ],
     ),
     (
-        "【🛡️】 staff",
+        "→【🛡️】STAFF",
         [
-            ("staff-general", "Chat del staff."),
-            ("staff-anuncios", "Anuncios solo staff."),
-            ("staff-alertas", "Alertas urgentes staff."),
+            ("→【🛡️】staff-general", "staff-general", "Chat del staff."),
+            ("→【📢】staff-anuncios", "staff-anuncios", "Anuncios solo staff."),
+            ("→【🚨】staff-alertas", "staff-alertas", "Alertas urgentes staff."),
         ],
     ),
     (
-        "【⚙️】 administración",
+        "→【⚙️】ADMINISTRACIÓN",
         [
-            ("admin-only", "Solo Owner / Admin."),
-            ("bot-comandos", "Canal técnico del bot."),
-            ("bot-status", "Estado / control del bot."),
+            ("→【⚙️】admin-only", "admin-only", "Solo Owner / Admin."),
+            ("→【🤖】bot-comandos", "bot-comandos", "Canal técnico del bot."),
+            ("→【📡】bot-status", "bot-status", "Estado / control del bot."),
         ],
     ),
 ]
@@ -225,19 +222,28 @@ _MAPA_LOG: Dict[str, str] = {
 }
 
 _CATS_PRIVADAS = {
-    "【🖥️】 dirección general",
-    "【🏛️】 cancillería",
-    "【📚】 docencia",
-    "【🩺】 dirección médica",
-    "【💉】 enfermería",
-    "【👥】 recursos humanos",
-    "【📦】 logística",
-    "【🛡️】 seguridad",
-    "【📁】 logs",
-    "【🛡️】 staff",
-    "【⚙️】 administración",
-    "【📅】 reuniones",
+    "→【🖥️】DIRECCIÓN GENERAL",
+    "→【🏛️】CANCILLERÍA",
+    "→【📚】DOCENCIA",
+    "→【🩺】DIRECCIÓN MÉDICA",
+    "→【💉】ENFERMERÍA",
+    "→【👥】RECURSOS HUMANOS",
+    "→【📦】LOGÍSTICA",
+    "→【🛡️】SEGURIDAD",
+    "→【📁】LOGS",
+    "→【🛡️】STAFF",
+    "→【⚙️】ADMINISTRACIÓN",
+    "→【📅】REUNIONES",
 }
+
+
+def _base_de_nombre(nombre: str) -> str:
+    """Extrae el slug base: '→【👋🏻】bienvenida' → 'bienvenida'."""
+    n = (nombre or "").strip()
+    # quitar flecha y bloque 【...】
+    n = re.sub(r"^→\s*", "", n)
+    n = re.sub(r"【[^】]*】\s*", "", n)
+    return n.strip().lower()
 
 
 async def _asegurar_categoria(
@@ -245,8 +251,16 @@ async def _asegurar_categoria(
     nombre: str,
     overwrites: Optional[Dict] = None,
 ) -> discord.CategoryChannel:
+    # Match exacto o por texto sin flecha/emoji
+    base_cat = _base_de_nombre(nombre).lower()
     for c in guild.categories:
         if c.name == nombre:
+            return c
+        if _base_de_nombre(c.name).lower() == base_cat:
+            try:
+                await c.edit(name=nombre, reason="Diseño →【emoji】nombre")
+            except Exception:
+                pass
             return c
     kwargs = {"reason": "Setup servidor"}
     if overwrites:
@@ -257,12 +271,44 @@ async def _asegurar_categoria(
 async def _asegurar_canal(
     guild: discord.Guild,
     nombre: str,
+    base: str,
     category: discord.CategoryChannel,
     overwrites: Optional[Dict] = None,
 ) -> discord.TextChannel:
+    base_l = (base or _base_de_nombre(nombre)).lower()
+
+    # 1) Nombre exacto en la categoría
     for ch in guild.text_channels:
         if ch.name == nombre and ch.category_id == category.id:
             return ch
+
+    # 2) Mismo base en la categoría → renombrar al diseño
+    for ch in guild.text_channels:
+        if ch.category_id != category.id:
+            continue
+        if _base_de_nombre(ch.name) == base_l or (ch.name or "").lower() == base_l:
+            try:
+                await ch.edit(name=nombre, reason="Diseño →【emoji】nombre")
+            except Exception:
+                pass
+            return ch
+
+    # 3) Mismo base en cualquier categoría → mover + renombrar
+    for ch in guild.text_channels:
+        if _base_de_nombre(ch.name) == base_l or (ch.name or "").lower() == base_l:
+            try:
+                await ch.edit(
+                    name=nombre,
+                    category=category,
+                    reason="Diseño →【emoji】nombre",
+                )
+            except Exception:
+                try:
+                    await ch.edit(name=nombre, reason="Diseño →【emoji】nombre")
+                except Exception:
+                    pass
+            return ch
+
     kwargs = {"category": category, "reason": "Setup servidor"}
     if overwrites:
         kwargs["overwrites"] = overwrites
@@ -287,10 +333,10 @@ def _overwrites_privada(guild: discord.Guild) -> Dict:
 
 
 async def crear_estructura_canales(guild: discord.Guild) -> List[str]:
-    """Crea categorías/canales. Nunca borra canales ni toca reglamentos."""
     lineas: List[str] = []
     creados = 0
     existentes = 0
+    renombrados = 0
 
     for cat_nombre, canales in ESTRUCTURA:
         try:
@@ -300,30 +346,33 @@ async def crear_estructura_canales(guild: discord.Guild) -> List[str]:
             lineas.append(f"**{cat_nombre}**")
             await asyncio.sleep(0.3)
 
-            for slug, desc in canales:
+            for nombre, base, desc in canales:
                 try:
-                    antes = any(
-                        ch.name == slug and ch.category_id == cat.id
-                        for ch in guild.text_channels
-                    )
+                    antes_nombres = {ch.id: ch.name for ch in guild.text_channels}
                     ch = await _asegurar_canal(
-                        guild, slug, cat, overwrites=ow if privada else None
+                        guild,
+                        nombre,
+                        base,
+                        cat,
+                        overwrites=ow if privada else None,
                     )
-                    if antes:
-                        existentes += 1
-                        lineas.append(f"  · {ch.mention} _(ya existía)_")
-                    else:
+                    prev = antes_nombres.get(ch.id)
+                    if prev is None:
                         creados += 1
                         lineas.append(f"  · {ch.mention} — {desc}")
                         try:
-                            emb = crear_embed(
-                                "info", slug.replace("-", " ").title(), desc
-                            )
+                            emb = crear_embed("info", base.replace("-", " ").title(), desc)
                             await ch.send(embed=emb)
                         except Exception:
                             pass
+                    elif prev != nombre:
+                        renombrados += 1
+                        lineas.append(f"  · {ch.mention} _(diseño aplicado)_")
+                    else:
+                        existentes += 1
+                        lineas.append(f"  · {ch.mention} _(ok)_")
 
-                    area = _MAPA_DIRECCION.get(slug)
+                    area = _MAPA_DIRECCION.get(base)
                     if area:
                         try:
                             import canales_direccion
@@ -332,7 +381,7 @@ async def crear_estructura_canales(guild: discord.Guild) -> List[str]:
                         except Exception:
                             pass
 
-                    tipo_log = _MAPA_LOG.get(slug)
+                    tipo_log = _MAPA_LOG.get(base)
                     if tipo_log:
                         try:
                             import logs_store
@@ -343,17 +392,15 @@ async def crear_estructura_canales(guild: discord.Guild) -> List[str]:
 
                     await asyncio.sleep(0.35)
                 except Exception as e:
-                    lineas.append(f"  · ❌ `{slug}`: {e}")
+                    lineas.append(f"  · ❌ `{nombre}`: {e}")
         except Exception as e:
             lineas.append(f"❌ Categoría `{cat_nombre}`: {e}")
 
     lineas.append("")
     lineas.append(
-        f"**Resumen canales:** 🆕 {creados} creados · ✓ {existentes} ya existían"
+        f"**Resumen:** 🆕 {creados} · ✏️ {renombrados} diseño · ✓ {existentes} ok"
     )
-    lineas.append(
-        "_Los reglamentos guardados (`/agregar_reglamento`) no se modifican._"
-    )
+    lineas.append("_Reglamentos guardados no se modifican._")
     return lineas
 
 
@@ -363,12 +410,11 @@ def _preview_texto() -> str:
     for cat, canales in ESTRUCTURA:
         parts.append(f"**{cat}** ({len(canales)})")
         total += len(canales)
-        for slug, _ in canales:
-            parts.append(f"  · `#{slug}`")
+        for nombre, _, _ in canales:
+            parts.append(f"  · `{nombre}`")
     parts.append("")
     parts.append(f"Total: **{len(ESTRUCTURA)}** categorías · **{total}** canales")
-    parts.append("Organigrama de roles + separadores.")
-    parts.append("No borra canales ni reglamentos existentes.")
+    parts.append("Diseño: `→【emoji】nombre`")
     return "\n".join(parts)[:3900]
 
 
@@ -380,7 +426,7 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="setup_servidor",
-        description="[Fundador] Roles + todos los canales del hospital",
+        description="[Fundador] Roles + canales con diseño →【emoji】nombre",
     )
     @app_commands.describe(dry_run="Vista previa sin crear nada")
     async def setup_servidor(
@@ -417,7 +463,6 @@ def registrar(bot: commands.Bot) -> None:
             )
 
         lineas: List[str] = []
-
         try:
             lineas.append("**—— Roles ——**")
             lineas.extend(await roles_setup.configurar_organigrama(interaction.guild))
@@ -442,10 +487,7 @@ def registrar(bot: commands.Bot) -> None:
         else:
             await interaction.followup.send(
                 embed=crear_embed(
-                    "exito",
-                    "✅ Setup completado (1/2)",
-                    texto[:3800],
-                    autor=interaction.user,
+                    "exito", "✅ Setup (1/2)", texto[:3800], autor=interaction.user
                 ),
                 ephemeral=True,
             )
@@ -454,4 +496,4 @@ def registrar(bot: commands.Bot) -> None:
                 ephemeral=True,
             )
 
-    print("[setup_servidor] OK — canales completos · cancillería ejecutiva")
+    print("[setup_servidor] OK — diseño →【emoji】nombre")
