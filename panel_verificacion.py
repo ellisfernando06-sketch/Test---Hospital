@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
-"""panel_verificacion.py — Panel Roblox + rechazo inmediato si user falso."""
+"""panel_verificacion.py — Panel Roblox; rechazo inmediato si user falso. Sin cuarentena."""
 from __future__ import annotations
-
-from typing import Optional
 
 import discord
 from discord import app_commands, ui
@@ -92,8 +90,8 @@ class ModalRoblox(ui.Modal, title="Verificación Roblox"):
                 f"**Usuario:** `{data.get('name')}`\n"
                 f"**Display:** {data.get('displayName')}\n"
                 f"**ID:** `{data.get('id')}`\n\n"
-                f"Completa el examen. Al enviarlo entrarás en **cuarentena** "
-                f"hasta que el staff apruebe o niegue tu entrada."
+                f"Completa el examen. El staff revisará tus respuestas "
+                f"y **aprobará o negará** tu verificación."
             ),
             color=0x2ECC71,
         )
@@ -148,8 +146,7 @@ class PanelVerificacionView(ui.View):
                 f"**1.** Usuario Roblox real (API oficial)\n"
                 f"**2.** Si no existe → rechazo inmediato\n"
                 f"**3.** Examen de normativa / RP\n"
-                f"**4.** Cuarentena hasta Aprobar / Negar del staff\n"
-                f"**5.** Entrada permitida o denegada"
+                f"**4.** Staff **Aprueba** o **Niega** en el canal de logs"
             ),
             color=0x3498DB,
         )
@@ -167,7 +164,7 @@ def embed_panel_verificacion() -> discord.Embed:
             "• Usuario Roblox **real**\n"
             "• Normativa básica leída\n"
             "• Respuestas honestas\n\n"
-            "**Tras el examen** → **cuarentena** hasta decisión del staff.\n"
+            "El staff revisará tu solicitud y te avisará.\n"
             "━━━━━━━━━━━━━━━━━━━━"
         ),
         color=0x1ABC9C,
@@ -214,4 +211,4 @@ def registrar(bot: commands.Bot) -> None:
             ephemeral=True,
         )
 
-    print("[panel_verificacion] OK")
+    print("[panel_verificacion] OK — sin cuarentena")

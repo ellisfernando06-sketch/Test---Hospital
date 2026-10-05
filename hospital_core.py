@@ -179,7 +179,7 @@ def _asegurar_criticos(bot) -> None:
             except Exception:
                 pass
         _cargar_modulo(bot, mod)
-    for m in ("panel_verificacion", "paneles_direccion", "verificacion_cuarentena"):
+    for m in ("panel_verificacion", "paneles_direccion"):
         if m not in sys.modules:
             _cargar_modulo(bot, m)
 
