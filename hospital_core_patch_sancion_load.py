@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Carga forzada: /sancion, apelable y fix doble MD / sin entrevista."""
+"""Carga forzada de /sancion, apelable y fix doble MD/entrevista."""
 from __future__ import annotations
 
 
