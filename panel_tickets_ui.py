@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-panel_tickets_ui.py — Panel de tickets institucional, elegante y profesional.
-/panel_tickets publica el panel.
-"""
+"""Panel de tickets: Apelación, Reportar, Quejas, Soporte general, Otro."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -24,14 +21,21 @@ try:
 except Exception:
     _paneles = None
 
-# Tipos de ticket (menú)
 _TIPOS = [
+    ("apelacion", "Apelación", "Apelar una advertencia, sanción o ban"),
+    ("reportar", "Reportar", "Reportar usuario o incidente"),
+    ("quejas", "Quejas", "Queja o reclamación formal"),
     ("soporte", "Soporte general", "Ayuda con el servidor, roles o acceso"),
-    ("reportar", "Reportar usuario / incidente", "Reportes de conducta o RP"),
-    ("queja", "Queja o reclamación", "Inconformidades formales"),
-    ("postulacion", "Postulación / personal", "Consultas de ingreso al staff"),
-    ("otro", "Otro asunto", "Cualquier otro tema privado"),
+    ("otro", "Otro", "Cualquier otro asunto privado"),
 ]
+
+_EMOJIS = {
+    "apelacion": "⚖️",
+    "reportar": "⚠️",
+    "quejas": "📩",
+    "soporte": "💬",
+    "otro": "📁",
+}
 
 
 def _hospital() -> str:
@@ -42,16 +46,15 @@ def embed_panel_tickets() -> discord.Embed:
     hospital = _hospital()
     desc = (
         f"Bienvenido/a al **centro de atención** de **{hospital}**.\n\n"
-        f"Si necesitas ayuda del personal, abre un **ticket privado**.\n"
-        f"Solo tú y el staff autorizado podrán verlo.\n\n"
+        f"Abre un **ticket privado**. Solo tú y el staff lo verán.\n\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"**Cómo funciona**\n"
-        f"**1.** Elige el tipo de consulta en el menú\n"
-        f"**2.** Se crea un canal privado solo para ti\n"
+        f"**1.** Elige el tipo en el menú\n"
+        f"**2.** Se crea tu canal privado\n"
         f"**3.** Describe tu caso con claridad\n"
-        f"**4.** El staff te responderá a la brevedad\n"
+        f"**4.** El staff te responderá\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"*Mantén el respeto. Los tickets son un canal formal de comunicación.*"
+        f"*Mantén el respeto. Canal formal de comunicación.*"
     )
     emb = discord.Embed(
         title=f"🎫  Centro de Tickets · {hospital}",
@@ -60,28 +63,23 @@ def embed_panel_tickets() -> discord.Embed:
         timestamp=datetime.now(timezone.utc),
     )
     emb.add_field(
-        name="📋 Tipos disponibles",
+        name="📋 Tipos",
         value=(
-            "• Soporte general\n"
-            "• Reportar usuario / incidente\n"
-            "• Queja o reclamación\n"
-            "• Postulación / personal\n"
-            "• Otro asunto"
+            "⚖️ Apelación\n"
+            "⚠️ Reportar\n"
+            "📩 Quejas\n"
+            "💬 Soporte general\n"
+            "📁 Otro"
         ),
         inline=True,
     )
     emb.add_field(
         name="⏱️ Atención",
-        value=(
-            "Respuesta del staff\n"
-            "en el menor tiempo posible.\n\n"
-            "Horario según disponibilidad\n"
-            "del personal en línea."
-        ),
+        value="Respuesta del staff\nsegún disponibilidad.",
         inline=True,
     )
     emb.set_footer(
-        text=f"{hospital}  ·  Atención institucional  ·  Salud · Disciplina · Servicio"
+        text=f"{hospital}  ·  Salud · Disciplina · Servicio"
     )
     return emb
 
@@ -94,17 +92,16 @@ def embed_ticket_abierto(
         title="✨ Ticket abierto",
         description=(
             f"Hola, {member.mention}.\n\n"
-            f"Tu solicitud fue registrada correctamente.\n"
-            f"Un miembro del **staff** te atenderá en este canal.\n\n"
+            f"Tu solicitud fue registrada.\n"
+            f"El **staff** te atenderá aquí.\n\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"**Tipo:** {tipo_label}\n"
             f"**Detalle:** {tipo_desc}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"**Por favor:**\n"
-            f"• Explica tu caso con orden y claridad\n"
-            f"• Adjunta capturas si ayudan\n"
-            f"• Espera la respuesta del personal\n\n"
-            f"*Gracias por confiar en {hospital}.*"
+            f"• Explica tu caso con orden\n"
+            f"• Adjunta pruebas si aplica\n"
+            f"• Espera la respuesta del personal"
         ),
         color=0x148F77,
         timestamp=datetime.now(timezone.utc),
@@ -124,19 +121,19 @@ def _categoria_tickets(guild: discord.Guild) -> Optional[discord.CategoryChannel
         if isinstance(ch, discord.CategoryChannel):
             return ch
     for c in guild.categories:
-        n = (c.name or "").lower()
-        if "ticket" in n:
+        if "ticket" in (c.name or "").lower():
             return c
     return None
 
 
-def _overwrites_ticket(
-    guild: discord.Guild, user: discord.Member
-) -> dict:
+def _overwrites_ticket(guild: discord.Guild, user: discord.Member) -> dict:
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(view_channel=False),
         user: discord.PermissionOverwrite(
-            view_channel=True, send_messages=True, attach_files=True, read_message_history=True
+            view_channel=True,
+            send_messages=True,
+            attach_files=True,
+            read_message_history=True,
         ),
         guild.me: discord.PermissionOverwrite(
             view_channel=True,
@@ -145,10 +142,12 @@ def _overwrites_ticket(
             manage_messages=True,
         ),
     }
-    keys = list(getattr(config, "TICKET_STAFF_KEYS", None) or [])
-    if not keys:
-        keys = ["OWNER", "CO_OWNER", "ADMIN", "ADMIN_JEFE", "DIR_RRHH", "DIRECTOR_RRHH"]
-
+    keys = list(getattr(config, "TICKET_STAFF_KEYS", None) or []) or [
+        "OWNER",
+        "CO_OWNER",
+        "ADMIN",
+        "ADMIN_JEFE",
+    ]
     if roles_store is not None:
         for key in keys:
             if key == "DIRECTOR":
@@ -168,33 +167,20 @@ def _overwrites_ticket(
                         overwrites[rol] = discord.PermissionOverwrite(
                             view_channel=True, send_messages=True
                         )
-
-    # Staff por nombre
     if _paneles is not None:
         try:
-            staff_role = _paneles._rol_staff_servidor(guild)
-            if staff_role:
-                overwrites[staff_role] = discord.PermissionOverwrite(
+            sr = _paneles._rol_staff_servidor(guild)
+            if sr:
+                overwrites[sr] = discord.PermissionOverwrite(
                     view_channel=True, send_messages=True
                 )
         except Exception:
             pass
-    else:
-        for n in ("Staff del Servidor", "Staff", "STAFF"):
-            r = discord.utils.get(guild.roles, name=n)
-            if r:
-                overwrites[r] = discord.PermissionOverwrite(
-                    view_channel=True, send_messages=True
-                )
-                break
-
-    # Admins
     for r in guild.roles:
         if r.permissions.administrator and r != guild.default_role:
             overwrites[r] = discord.PermissionOverwrite(
                 view_channel=True, send_messages=True
             )
-
     return overwrites
 
 
@@ -205,9 +191,7 @@ class TicketTipoSelect(ui.Select):
                 label=label,
                 value=value,
                 description=desc[:100],
-                emoji={"soporte": "💬", "reportar": "⚠️", "queja": "📩", "postulacion": "📋", "otro": "📁"}.get(
-                    value, "🎫"
-                ),
+                emoji=_EMOJIS.get(value, "🎫"),
             )
             for value, label, desc in _TIPOS
         ]
@@ -230,26 +214,18 @@ class TicketTipoSelect(ui.Select):
         meta = next((t for t in _TIPOS if t[0] == tipo), _TIPOS[-1])
         _, label, desc = meta
 
-        # Evitar spam: un ticket abierto del mismo usuario
-        pref = f"ticket-{interaction.user.name}".lower()[:40]
         for ch in guild.text_channels:
             n = (ch.name or "").lower()
-            if n.startswith("ticket-") and interaction.user.name.lower()[:20] in n:
+            if n.startswith("ticket-") and interaction.user.name.lower()[:15] in n:
                 return await interaction.response.send_message(
-                    f"Ya tienes un ticket abierto: {ch.mention}\n"
-                    f"Úsalo o pide al staff que lo cierre.",
+                    f"Ya tienes un ticket abierto: {ch.mention}",
                     ephemeral=True,
                 )
 
         await interaction.response.defer(ephemeral=True)
-
         cat = _categoria_tickets(guild)
         overwrites = _overwrites_ticket(guild, interaction.user)
-        safe_name = (
-            f"ticket-{tipo}-{interaction.user.name}"
-            .lower()
-            .replace(" ", "-")[:90]
-        )
+        safe_name = f"ticket-{tipo}-{interaction.user.name}".lower().replace(" ", "-")[:90]
 
         try:
             canal = await guild.create_text_channel(
@@ -259,18 +235,12 @@ class TicketTipoSelect(ui.Select):
                 topic=f"Ticket de {interaction.user} · {label}",
                 reason=f"Ticket {tipo} · {interaction.user}",
             )
-        except discord.Forbidden:
-            return await interaction.followup.send(
-                "❌ No tengo permisos para crear canales.", ephemeral=True
-            )
         except Exception as e:
             return await interaction.followup.send(
-                f"❌ Error al crear el ticket: {e}", ephemeral=True
+                f"❌ No se pudo crear el ticket: {e}", ephemeral=True
             )
 
         emb = embed_ticket_abierto(interaction.user, label, desc)
-
-        # Vista de cierre (paneles o tickets_cierre)
         view_cierre = None
         if _paneles is not None:
             try:
@@ -287,13 +257,12 @@ class TicketTipoSelect(ui.Select):
         except Exception:
             pass
 
-        kwargs = {"content": " ".join(mentions), "embed": emb}
+        kw = {"content": " ".join(mentions), "embed": emb}
         if view_cierre is not None:
-            kwargs["view"] = view_cierre
-
-        await canal.send(**kwargs)
+            kw["view"] = view_cierre
+        await canal.send(**kw)
         await interaction.followup.send(
-            f"✅ Ticket creado: {canal.mention}\n**Tipo:** {label}",
+            f"✅ Ticket creado: {canal.mention} · **{label}**",
             ephemeral=True,
         )
 
@@ -307,8 +276,8 @@ class PanelTicketsView(ui.View):
 def registrar(bot: commands.Bot) -> None:
     try:
         bot.add_view(PanelTicketsView())
-    except Exception as e:
-        print(f"[panel_tickets_ui] add_view: {e}")
+    except Exception:
+        pass
 
     try:
         bot.tree.remove_command("panel_tickets")
@@ -317,9 +286,9 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="panel_tickets",
-        description="[Staff] Publica el panel profesional de tickets",
+        description="[Staff] Publica el panel de tickets",
     )
-    @app_commands.describe(canal="Canal donde se publica el panel (opcional)")
+    @app_commands.describe(canal="Canal del panel (opcional)")
     async def panel_tickets(
         inter: discord.Interaction,
         canal: Optional[discord.TextChannel] = None,
@@ -334,21 +303,18 @@ def registrar(bot: commands.Bot) -> None:
             or inter.user.guild_permissions.manage_channels
         ):
             return await inter.response.send_message(
-                "❌ Solo staff autorizado.", ephemeral=True
+                "❌ Solo staff.", ephemeral=True
             )
-
         destino = canal or (
             inter.channel if isinstance(inter.channel, discord.TextChannel) else None
         )
         if destino is None:
             return await inter.response.send_message(
-                "❌ Indica un canal de texto.", ephemeral=True
+                "❌ Indica un canal.", ephemeral=True
             )
-
         await destino.send(embed=embed_panel_tickets(), view=PanelTicketsView())
         await inter.response.send_message(
-            f"✅ Panel de tickets publicado en {destino.mention}",
-            ephemeral=True,
+            f"✅ Panel en {destino.mention}", ephemeral=True
         )
 
-    print("[panel_tickets_ui] OK — /panel_tickets elegante")
+    print("[panel_tickets_ui] OK — tipos: apelación/reportar/quejas/soporte/otro")
