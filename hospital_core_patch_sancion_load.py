@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Carga en orden: roles, comando, apelable, fix doble (último gana)."""
+"""Carga en orden correcto del sistema de sanciones."""
 from __future__ import annotations
 
 
@@ -10,8 +10,8 @@ def registrar(bot) -> None:
         "sanciones",
         "sanciones_apelacion_ui",
         "sanciones_comandos_hook",
-        "sancion_comando_unico",
         "sancion_roles",
+        "sancion_comando_unico",
         "sancion_apelable_check",
         "sancion_fix_doble",  # último
     ):
