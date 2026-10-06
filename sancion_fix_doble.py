@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 - Un solo MD por sanción (anti-doble)
-- Apelación: solo ticket (sin botón Entrevista)
-- Log: un mensaje con Aceptar / Negar únicamente
+- Apelación: solo ticket limpio
+- Log: un mensaje con Aceptar / Negar (sin Entrevista)
 """
 from __future__ import annotations
 
@@ -15,18 +15,20 @@ from discord.ext import commands
 
 _NOTIFIED: Set[int] = set()
 _NOTIFIED_TS: dict = {}
+_LOGGED: Set[int] = set()
+_LOGGED_TS: dict = {}
 
 
-def _ya_notificado(sid: int) -> bool:
+def _ya_visto(store: Set[int], ts_map: dict, key: int, secs: float = 60.0) -> bool:
     now = time.time()
-    for k, ts in list(_NOTIFIED_TS.items()):
-        if now - ts > 60:
-            _NOTIFIED.discard(k)
-            _NOTIFIED_TS.pop(k, None)
-    if sid in _NOTIFIED:
+    for k, ts in list(ts_map.items()):
+        if now - ts > secs:
+            store.discard(k)
+            ts_map.pop(k, None)
+    if key in store:
         return True
-    _NOTIFIED.add(sid)
-    _NOTIFIED_TS[sid] = now
+    store.add(key)
+    ts_map[key] = now
     return False
 
 
@@ -42,7 +44,6 @@ def registrar(bot: commands.Bot) -> None:
     except Exception:
         sanc = None
 
-    # ── 1) notificar_usuario: una sola vez por id ─────────────────────────
     _prev_notify = ui_mod.notificar_usuario
 
     async def notificar_usuario(bot_, guild, reg: dict) -> bool:
@@ -54,8 +55,9 @@ def registrar(bot: commands.Bot) -> None:
 
     ui_mod.notificar_usuario = notificar_usuario
 
-    # ── 2) Log apelaciones: solo Aceptar / Negar (sin Entrevista) ───────
     class LogApelacionView(ui.View):
+        """Solo Aceptar / Negar. Sin entrevista."""
+
         def __init__(self, user_id: int = 0, sancion_id: int = 0):
             super().__init__(timeout=None)
             self.user_id = int(user_id or 0)
@@ -201,14 +203,10 @@ def registrar(bot: commands.Bot) -> None:
     except Exception:
         pass
 
-    # ── 3) enviar_log_apelacion: un mensaje, vista sin entrevista ─────────
-    async def enviar_log_apelacion(
-        bot_, guild, member, reg, ticket
-    ) -> None:
+    async def enviar_log_apelacion(bot_, guild, member, reg, ticket) -> None:
         canal = ui_mod._canal_log_apelaciones(bot_, guild)
         if not canal:
             return
-        # anti-doble log por misma sanción en 60s
         key = f"log_{reg.get('id')}"
         if not hasattr(bot_, "_apelacion_logs"):
             bot_._apelacion_logs = {}
@@ -230,21 +228,17 @@ def registrar(bot: commands.Bot) -> None:
         try:
             await canal.send(
                 embed=emb,
-                view=LogApelacionView(
-                    member.id, int(reg.get("id") or 0)
-                ),
+                view=LogApelacionView(member.id, int(reg.get("id") or 0)),
             )
         except Exception as e:
             print(f"[sancion_fix_doble] log: {e}")
 
     ui_mod.enviar_log_apelacion = enviar_log_apelacion
 
-    # ── 4) Ticket de apelación: un solo mensaje limpio ────────────────────
-    if sanc is not None and not getattr(sanc, "_ticket_limpio", False):
-        _orig_abrir = sanc.abrir_ticket_apelacion
+    # Ticket limpio (1 mensaje de texto, sin embeds dobles)
+    if sanc is not None:
 
         async def abrir_ticket_apelacion(guild, usuario, sancion, *a, **kw):
-            # Crear canal con la lógica original pero sin spam de embeds
             import config
             import roles_store
 
@@ -317,11 +311,8 @@ def registrar(bot: commands.Bot) -> None:
                 kw_send["view"] = view_cierre
             await canal.send(**kw_send)
 
-            # Un log (si el hook también llama, anti-doble lo frena)
             try:
-                await enviar_log_apelacion(
-                    bot, guild, usuario, sancion, canal
-                )
+                await enviar_log_apelacion(bot, guild, usuario, sancion, canal)
             except Exception:
                 pass
             return canal
@@ -329,14 +320,4 @@ def registrar(bot: commands.Bot) -> None:
         sanc.abrir_ticket_apelacion = abrir_ticket_apelacion  # type: ignore
         sanc._ticket_limpio = True  # type: ignore
 
-    # Desactivar segundo log del hook de comandos si duplica
-    try:
-        import sanciones_comandos_hook as hook
-
-        # El hook v2 también envuelve abrir_ticket; si _ticket_limpio ya loguea, ok
-    except Exception:
-        pass
-
-    print(
-        "[sancion_fix_doble] OK — 1 MD · ticket único · sin entrevista"
-    )
+    print("[sancion_fix_doble] OK — 1 MD · ticket único · sin entrevista")
