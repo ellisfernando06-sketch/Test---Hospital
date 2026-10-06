@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Carga en orden del sistema de sanciones."""
+"""Carga en orden del sistema de sanciones + apelación."""
 from __future__ import annotations
 
 
@@ -13,7 +13,8 @@ def registrar(bot) -> None:
         "sancion_roles",
         "sancion_comando_unico",
         "sancion_apelable_check",
-        "sancion_fix_doble",  # último: 1 MD, ticket limpio, sin entrevista
+        "sancion_fix_doble",
+        "apelar_sancion_cmd",  # /apelar_sancion enlazado
     ):
         try:
             if name in sys.modules:
