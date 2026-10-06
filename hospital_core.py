@@ -42,6 +42,7 @@ _MODULOS = (
     "limpiar_canal",
     "entrevista_ui",
     "tickets_cierre",
+    "panel_tickets_ui",
     "docencia",
     "canales_direccion",
     "canales_crear",
@@ -86,7 +87,7 @@ _CRITICOS_SLASH = (
     "otorgar_rol_certificado", "certificado_oficial", "postular_certificacion",
     "agregar_canal", "panel_verificacion", "enviar_paneles_direccion",
     "reglamento_hospital", "publicar_reglamento_hospital",
-    "agregar_reglamento", "publicar_reglamento", "registrar_firma",
+    "agregar_reglamento", "publicar_reglamento", "registrar_firma", "panel_tickets",
 )
 
 
@@ -191,6 +192,7 @@ def _asegurar_criticos(bot) -> None:
         "firmas_cargos_extra",
         "panel_verificacion",
         "paneles_direccion",
+        "panel_tickets_ui",
     ):
         _cargar_modulo(bot, m)
 
