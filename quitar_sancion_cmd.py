@@ -2,11 +2,18 @@
 """
 /quitar_sancion — menú de sanciones registradas.
 Quita la sanción (anula) y el rol de perfil.
-Solo: autoridades competentes, Admin en jefe, Administrador, Admin en prueba.
+
+SOLO keys (no basta con Administrador de Discord):
+  - Fundador y Owner / Co-Owner
+  - Canciller / Vice Canciller
+  - Director General
+  - Admin en jefe
+  - Administrador
+  - Admin en prueba
 """
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List
 
 import discord
 from discord import app_commands, ui
@@ -27,7 +34,6 @@ try:
 except Exception:
     permisos = None
 
-# Keys autorizadas (autoridades + admins)
 _KEYS_QUITAR = (
     "FUNDADOR_OWNER",
     "CO_OWNER",
@@ -44,14 +50,14 @@ _KEYS_QUITAR = (
 
 
 def _puede_quitar(m: discord.Member) -> bool:
-    if m.guild_permissions.administrator:
-        return True
+    """Solo keys listadas. NO se acepta solo administrator de Discord."""
+    # Dueño del servidor Discord = autoridad máxima (equivale a Fundador)
     if m.guild and m.id == m.guild.owner_id:
         return True
     if permisos is None:
         return False
     try:
-        return permisos.member_tiene_alguna_key(m, *_KEYS_QUITAR)
+        return bool(permisos.member_tiene_alguna_key(m, *_KEYS_QUITAR))
     except Exception:
         return False
 
@@ -104,8 +110,9 @@ class QuitarSelect(ui.Select):
             )
         if not _puede_quitar(interaction.user):
             return await interaction.response.send_message(
-                "❌ Sin permiso. Solo autoridades, Admin en jefe, "
-                "Administrador o Admin en prueba.",
+                "❌ Sin permiso. Solo autoridades competentes, "
+                "Admin en jefe, Administrador o Admin en prueba.\n"
+                "*(No basta con el permiso Administrador de Discord.)*",
                 ephemeral=True,
             )
         if sanc is None:
@@ -127,7 +134,6 @@ class QuitarSelect(ui.Select):
 
         await interaction.response.defer(ephemeral=True)
 
-        # Anular en el registro
         try:
             sanc.anular_sancion(
                 int(reg.get("id") or 0),
@@ -139,7 +145,6 @@ class QuitarSelect(ui.Select):
                 f"❌ No se pudo anular: {e}", ephemeral=True
             )
 
-        # Quitar rol de perfil
         member = interaction.guild.get_member(
             int(reg.get("usuario_id") or 0)
         ) or self.target
@@ -154,7 +159,6 @@ class QuitarSelect(ui.Select):
             except Exception as e:
                 print(f"[quitar_sancion] rol: {e}")
 
-        # Aviso al usuario
         if member:
             try:
                 await member.send(
@@ -192,7 +196,7 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="quitar_sancion",
-        description="[Staff] Quitar sanción del menú (registro + rol)",
+        description="[Staff] Quitar sanción del menú (solo autoridades/admins clave)",
     )
     @app_commands.describe(usuario="Miembro con sanciones registradas")
     async def quitar_sancion(
@@ -206,7 +210,8 @@ def registrar(bot: commands.Bot) -> None:
             return await inter.response.send_message(
                 "❌ Sin permiso.\n"
                 "Solo: **autoridades competentes**, **Admin en jefe**, "
-                "**Administrador** o **Admin en prueba**.",
+                "**Administrador** o **Admin en prueba**.\n"
+                "*(No basta con el permiso Administrador de Discord.)*",
                 ephemeral=True,
             )
         if sanc is None:
@@ -237,5 +242,5 @@ def registrar(bot: commands.Bot) -> None:
         )
 
     print(
-        "[quitar_sancion_cmd] OK — menú + anula + quita rol (staff autorizado)"
+        "[quitar_sancion_cmd] OK — solo keys (sin admin Discord genérico)"
     )
