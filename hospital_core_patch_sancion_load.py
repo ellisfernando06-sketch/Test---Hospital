@@ -1,18 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Carga forzada de /sancion y chequeo apelable."""
+"""Carga forzada de /sancion, apelable y fix doble MD/entrevista."""
 from __future__ import annotations
 
 
 def registrar(bot) -> None:
+    import sys
+
     for name in (
+        "sanciones_apelacion_ui",
+        "sanciones_comandos_hook",
         "sancion_comando_unico",
         "sancion_apelable_check",
-        "sanciones_comandos_hook",
-        "sanciones_apelacion_ui",
+        "sancion_fix_doble",  # último: gana sobre vistas previas
     ):
         try:
-            if name in __import__("sys").modules:
-                del __import__("sys").modules[name]
+            if name in sys.modules:
+                del sys.modules[name]
         except Exception:
             pass
         try:
