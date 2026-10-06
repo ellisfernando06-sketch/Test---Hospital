@@ -47,7 +47,9 @@ _MODULOS = (
     "sanciones_apelacion_ui",
     "sanciones_comandos_hook",
     "sancion_comando_unico",
+    "sancion_apelable_check",
     "hospital_core_patch_sanciones",
+    "hospital_core_patch_sancion_load",
     "docencia",
     "canales_direccion",
     "canales_crear",
@@ -180,22 +182,12 @@ def _bot_minimo() -> commands.Bot:
 
 
 def _asegurar_criticos(bot) -> None:
-    names = set(_listar(bot))
-    faltan = [c for c in _CRITICOS_SLASH if c not in names]
-    if not faltan:
-        return
-    for mod in _MODULOS_CRITICOS:
-        if mod in sys.modules:
-            try:
-                del sys.modules[mod]
-            except Exception:
-                pass
-        _cargar_modulo(bot, mod)
     for m in (
         "sancion_comando_unico",
+        "sancion_apelable_check",
         "sanciones_apelacion_ui",
         "sanciones_comandos_hook",
-        "panel_tickets_ui",
+        "hospital_core_patch_sancion_load",
     ):
         _cargar_modulo(bot, m)
 
