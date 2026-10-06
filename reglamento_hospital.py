@@ -2,9 +2,8 @@
 """
 reglamento_hospital.py — Reglamento del Hospital General.
 
-/reglamento_hospital texto:…  → guarda (y opcionalmente publica)
-/publicar_reglamento_hospital canal:… → publica el guardado
-Se integra con el almacén de varios reglamentos (anuncios_largos).
+Se guarda en el MISMO almacén que /agregar_reglamento,
+para que aparezca en el menú de /publicar_reglamento.
 """
 from __future__ import annotations
 
@@ -43,49 +42,23 @@ def _es_autoridad(member: discord.Member) -> bool:
 
 
 def _guardar(texto: str, por: int) -> dict:
-    try:
-        import anuncios_largos as al
+    import anuncios_largos as al
 
-        return al._guardar_item(_TITULO, texto, por, rid=_ID)
-    except Exception:
-        # Fallback local
-        import json
-        import os
-
-        path = os.path.join(os.path.dirname(__file__), "data", "reglamento.json")
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        data = {"items": {}}
-        if os.path.isfile(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-            except Exception:
-                data = {"items": {}}
-        data.setdefault("items", {})[_ID] = {
-            "id": _ID,
-            "titulo": _TITULO,
-            "texto": texto,
-            "actualizado_por": por,
-            "actualizado_at": datetime.now(timezone.utc).isoformat(),
-        }
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        return data["items"][_ID]
+    # Mismo almacén → visible en /publicar_reglamento
+    return al._guardar_item(_TITULO, texto, por, rid=_ID)
 
 
 def _obtener() -> Optional[dict]:
-    try:
-        import anuncios_largos as al
+    import anuncios_largos as al
 
-        it = al._obtener(_ID)
-        if it:
-            return it
-        # buscar por título
-        for x in al._listar_items():
-            if (x.get("titulo") or "").lower() == _TITULO.lower():
-                return x
-    except Exception:
-        pass
+    it = al._obtener(_ID)
+    if it:
+        return it
+    for x in al._listar_items():
+        if (x.get("titulo") or "").lower() == _TITULO.lower():
+            return x
+        if (x.get("id") or "") == _ID:
+            return x
     return None
 
 
@@ -138,7 +111,7 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="reglamento_hospital",
-        description="[Autoridad] Guarda el Reglamento del Hospital",
+        description="[Autoridad] Guarda el Reglamento del Hospital (sale en /publicar_reglamento)",
     )
     @app_commands.describe(
         texto="Texto completo del reglamento del hospital",
@@ -163,7 +136,8 @@ def registrar(bot: commands.Bot) -> None:
         msg = (
             f"✅ **{_TITULO}** guardado "
             f"(`{reg.get('id')}`, {len(texto)} caracteres).\n"
-            f"Publícalo con `/publicar_reglamento_hospital` o `/publicar_reglamento`."
+            f"Aparece en el menú de `/publicar_reglamento`.\n"
+            f"También: `/publicar_reglamento_hospital`."
         )
         if publicar_en:
             embeds = _embeds(texto, inter.user)
@@ -191,8 +165,9 @@ def registrar(bot: commands.Bot) -> None:
         reg = _obtener()
         if not reg or not (reg.get("texto") or "").strip():
             return await inter.response.send_message(
-                "❌ No hay Reglamento del Hospital guardado. "
-                "Usa `/reglamento_hospital` primero.",
+                "❌ No hay Reglamento del Hospital guardado.\n"
+                "Usa `/reglamento_hospital` o `/agregar_reglamento` "
+                "con título **Reglamento del Hospital**.",
                 ephemeral=True,
             )
         await inter.response.defer(ephemeral=True)
@@ -205,4 +180,4 @@ def registrar(bot: commands.Bot) -> None:
             ephemeral=True,
         )
 
-    print("[reglamento_hospital] OK — /reglamento_hospital · /publicar_reglamento_hospital")
+    print("[reglamento_hospital] OK — mismo almacén que /publicar_reglamento")
