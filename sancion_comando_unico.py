@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Un solo comando /sancion con menú desplegable de tipos:
-  Advertencia · Disciplinaria · Administrativa · Timeout · Kick · Ban
-Flujo ordenado, un registro, un MD con Apelar.
+/sancion — un comando, menú de tipos, opción apelable (sí/no) del admin.
 """
 from __future__ import annotations
 
@@ -76,7 +74,6 @@ def _puede_sobre(actor: discord.Member, target: discord.Member) -> bool:
     return actor.top_role > target.top_role
 
 
-# Orden del menú (value, label, description)
 _TIPOS = [
     ("advertencia", "Advertencia", "Aviso formal — sin kick/ban"),
     ("disciplinaria", "Disciplinaria", "Sanción disciplinaria registrada"),
@@ -87,18 +84,35 @@ _TIPOS = [
 ]
 
 
+def _marcar_apelable(reg: dict, apelable: bool) -> dict:
+    """Guarda el flag en el registro de sanciones."""
+    if sanc is None or not reg:
+        return reg
+    try:
+        data = sanc._load()
+        for s in data.get("sanciones") or []:
+            if int(s.get("id") or 0) == int(reg.get("id") or 0):
+                s["apelable"] = bool(apelable)
+                reg["apelable"] = bool(apelable)
+                break
+        sanc._save(data)
+    except Exception as e:
+        print(f"[sancion_unico] apelable: {e}")
+        reg["apelable"] = bool(apelable)
+    return reg
+
+
 async def _aplicar(
     inter: discord.Interaction,
     usuario: discord.Member,
     tipo: str,
     motivo: str,
     minutos: int = 0,
+    apelable: bool = True,
 ) -> str:
-    """Ejecuta la medida. Devuelve texto de resultado."""
     guild = inter.guild
     assert guild and isinstance(inter.user, discord.Member)
 
-    # 1) Acción Discord según tipo
     extra = ""
     if tipo == "timeout":
         mins = max(1, min(int(minutos or 10), 40320))
@@ -122,9 +136,7 @@ async def _aplicar(
             return f"❌ Kick: {e}"
 
     elif tipo == "ban":
-        # Cuarentena si sigue en el server; si no se puede ban real opcional
         try:
-            # Preferir cuarentena disciplinaria (apelable)
             from sanciones_apelacion_ui import _rol_cuarentena
 
             rol = await _rol_cuarentena(guild)
@@ -145,7 +157,6 @@ async def _aplicar(
             except Exception as e:
                 return f"❌ Ban: {e}"
 
-    # 2) Registro canónico (una sola vez)
     tipo_reg = {
         "advertencia": "advertencia",
         "disciplinaria": "disciplinaria",
@@ -161,44 +172,27 @@ async def _aplicar(
     elif tipo in ("kick", "ban"):
         detalle = f"[{tipo}] {motivo}"
 
-    # registros (expediente) — el hook puede registrar otra vez; usamos skip + un solo sanciones
     if registros is not None:
         try:
+            if sanc is not None:
+                sanc._skip_notify = True  # type: ignore
             if tipo == "advertencia":
-                # Solo expediente; sanciones se hace abajo sin doble notify del hook
-                try:
-                    import sanciones as smod
-
-                    smod._skip_notify = True  # type: ignore
-                except Exception:
-                    pass
                 registros.registrar_advertencia(
                     usuario.id, motivo, inter.user.id
                 )
-                try:
-                    import sanciones as smod
-
-                    smod._skip_notify = False  # type: ignore
-                except Exception:
-                    pass
             else:
-                try:
-                    import sanciones as smod
-
-                    smod._skip_notify = True  # type: ignore
-                except Exception:
-                    pass
                 registros.registrar_evento_cargo(
                     usuario.id, tipo, detalle, inter.user.id
                 )
-                try:
-                    import sanciones as smod
-
-                    smod._skip_notify = False  # type: ignore
-                except Exception:
-                    pass
+            if sanc is not None:
+                sanc._skip_notify = False  # type: ignore
         except Exception as e:
             print(f"[sancion_unico] registros: {e}")
+            try:
+                if sanc is not None:
+                    sanc._skip_notify = False  # type: ignore
+            except Exception:
+                pass
 
     reg = None
     if sanc is not None:
@@ -218,10 +212,10 @@ async def _aplicar(
                 )
             finally:
                 sanc._skip_notify = False  # type: ignore
+            reg = _marcar_apelable(reg, apelable)
         except Exception as e:
             print(f"[sancion_unico] sanciones: {e}")
 
-    # 3) Un MD
     if reg is not None:
         try:
             from sanciones_apelacion_ui import notificar_usuario
@@ -230,7 +224,6 @@ async def _aplicar(
         except Exception as e:
             print(f"[sancion_unico] dm: {e}")
 
-    # 4) Log sanciones si existe
     if reg is not None and sanc is not None:
         try:
             emb = sanc.embed_sancion(reg, guild)
@@ -240,14 +233,22 @@ async def _aplicar(
 
     label = next((l for v, l, _ in _TIPOS if v == tipo), tipo)
     sid = f" · `#{reg.get('id')}`" if reg else ""
-    return f"✅ **{label}** a {usuario.mention}{sid}{extra}"
+    ap = " · apelable" if apelable else " · sin apelación"
+    return f"✅ **{label}** a {usuario.mention}{sid}{extra}{ap}"
 
 
 class SancionTipoSelect(ui.Select):
-    def __init__(self, usuario: discord.Member, motivo: str, minutos: int):
+    def __init__(
+        self,
+        usuario: discord.Member,
+        motivo: str,
+        minutos: int,
+        apelable: bool,
+    ):
         self.usuario = usuario
         self.motivo = motivo
         self.minutos = minutos
+        self.apelable = apelable
         options = [
             discord.SelectOption(
                 label=label,
@@ -288,7 +289,7 @@ class SancionTipoSelect(ui.Select):
         tipo = self.values[0]
         if tipo == "timeout" and self.minutos < 1:
             return await interaction.response.send_message(
-                "❌ Para **Timeout** indica minutos en el comando (parámetro `minutos`).",
+                "❌ Para **Timeout** indica `minutos` en el comando.",
                 ephemeral=True,
             )
 
@@ -299,6 +300,7 @@ class SancionTipoSelect(ui.Select):
             tipo,
             self.motivo,
             minutos=self.minutos,
+            apelable=self.apelable,
         )
         try:
             await interaction.message.edit(
@@ -310,13 +312,20 @@ class SancionTipoSelect(ui.Select):
 
 
 class SancionTipoView(ui.View):
-    def __init__(self, usuario: discord.Member, motivo: str, minutos: int):
+    def __init__(
+        self,
+        usuario: discord.Member,
+        motivo: str,
+        minutos: int,
+        apelable: bool,
+    ):
         super().__init__(timeout=120)
-        self.add_item(SancionTipoSelect(usuario, motivo, minutos))
+        self.add_item(
+            SancionTipoSelect(usuario, motivo, minutos, apelable)
+        )
 
 
 def registrar(bot: commands.Bot) -> None:
-    # Quitar alias confusos si existen
     for n in ("sancionar", "sancion"):
         try:
             bot.tree.remove_command(n)
@@ -325,17 +334,25 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="sancion",
-        description="[Staff] Sanción: elige tipo en el menú (advertencia, ban, kick…)",
+        description="[Staff] Sanción con menú de tipo y si admite apelación",
     )
     @app_commands.describe(
         usuario="Miembro",
-        motivo="Motivo (se envía por MD)",
+        motivo="Motivo (MD al usuario)",
+        permite_apelacion="Si el sancionado puede apelar (tú decides)",
         minutos="Solo para Timeout (1–40320)",
+    )
+    @app_commands.choices(
+        permite_apelacion=[
+            app_commands.Choice(name="Sí — puede apelar", value="si"),
+            app_commands.Choice(name="No — sin apelación", value="no"),
+        ]
     )
     async def sancion(
         inter: discord.Interaction,
         usuario: discord.Member,
         motivo: str,
+        permite_apelacion: app_commands.Choice[str],
         minutos: Optional[app_commands.Range[int, 1, 40320]] = None,
     ):
         if not inter.guild or not isinstance(inter.user, discord.Member):
@@ -355,17 +372,19 @@ def registrar(bot: commands.Bot) -> None:
                 "❌ No puedes actuar sobre ese usuario.", ephemeral=True
             )
 
+        apelable = (permite_apelacion.value or "si").lower() == "si"
         mins = int(minutos or 0)
         texto = (
             f"**Usuario:** {usuario.mention}\n"
             f"**Motivo:** {motivo[:200]}\n"
+            f"**Apelación:** {'permitida' if apelable else 'no permitida'}\n"
             + (f"**Minutos (timeout):** {mins}\n" if mins else "")
-            + "\nElige el tipo en el menú:"
+            + "\nElige el tipo:"
         )
         await inter.response.send_message(
             content=texto,
-            view=SancionTipoView(usuario, motivo, mins),
+            view=SancionTipoView(usuario, motivo, mins, apelable),
             ephemeral=True,
         )
 
-    print("[sancion_comando_unico] OK — /sancion + menú de tipos")
+    print("[sancion_comando_unico] OK — /sancion + apelable sí/no")
