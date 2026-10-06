@@ -46,6 +46,7 @@ _MODULOS = (
     "sanciones",
     "sanciones_apelacion_ui",
     "sanciones_comandos_hook",
+    "sancion_comando_unico",
     "hospital_core_patch_sanciones",
     "docencia",
     "canales_direccion",
@@ -92,7 +93,7 @@ _CRITICOS_SLASH = (
     "agregar_canal", "panel_verificacion", "enviar_paneles_direccion",
     "reglamento_hospital", "publicar_reglamento_hospital",
     "agregar_reglamento", "publicar_reglamento", "registrar_firma", "panel_tickets",
-    "panel_apelaciones", "estado_sancion", "configurar_log_apelaciones",
+    "panel_apelaciones", "estado_sancion", "configurar_log_apelaciones", "sancion",
 )
 
 
@@ -191,11 +192,10 @@ def _asegurar_criticos(bot) -> None:
                 pass
         _cargar_modulo(bot, mod)
     for m in (
-        "panel_tickets_ui",
-        "sanciones",
+        "sancion_comando_unico",
         "sanciones_apelacion_ui",
         "sanciones_comandos_hook",
-        "hospital_core_patch_sanciones",
+        "panel_tickets_ui",
     ):
         _cargar_modulo(bot, m)
 
