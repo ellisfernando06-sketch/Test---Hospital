@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Carga forzada: /sancion, apelable y fix doble MD / sin entrevista."""
+"""Carga forzada de /sancion, apelable y fix doble MD/entrevista."""
 from __future__ import annotations
 
 
@@ -7,12 +7,11 @@ def registrar(bot) -> None:
     import sys
 
     for name in (
-        "sanciones",
         "sanciones_apelacion_ui",
         "sanciones_comandos_hook",
         "sancion_comando_unico",
         "sancion_apelable_check",
-        "sancion_fix_doble",  # último: 1 MD, log sin entrevista, ticket limpio
+        "sancion_fix_doble",  # último: gana sobre vistas previas
     ):
         try:
             if name in sys.modules:
