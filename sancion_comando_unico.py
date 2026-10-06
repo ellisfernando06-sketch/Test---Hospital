@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-/sancion — un comando, menú de tipos, opción apelable (sí/no) del admin.
+/sancion — un comando, menú de tipos, apelable sí/no, roles de perfil.
 """
 from __future__ import annotations
 
@@ -28,9 +28,10 @@ try:
 except Exception:
     permisos = None
 
-
-def _hospital() -> str:
-    return getattr(config, "NOMBRE_HOSPITAL", None) or "Hospital General"
+try:
+    import sancion_roles as sroles
+except Exception:
+    sroles = None
 
 
 def _es_staff(m: discord.Member) -> bool:
@@ -85,7 +86,6 @@ _TIPOS = [
 
 
 def _marcar_apelable(reg: dict, apelable: bool) -> dict:
-    """Guarda el flag en el registro de sanciones."""
     if sanc is None or not reg:
         return reg
     try:
@@ -216,6 +216,29 @@ async def _aplicar(
         except Exception as e:
             print(f"[sancion_unico] sanciones: {e}")
 
+    # ROL EN EL PERFIL (obligatorio)
+    rol_txt = ""
+    if sroles is not None and guild.get_member(usuario.id):
+        try:
+            rol = await sroles.otorgar_rol_sancion(
+                guild, usuario, tipo_reg if tipo != "timeout" and tipo != "kick" else tipo_reg
+            )
+            # timeout/kick already map to disciplinaria via tipo_reg
+            if rol:
+                rol_txt = f" · rol {rol.mention}"
+            else:
+                # reintentar con el tipo del menú
+                rol = await sroles.otorgar_rol_sancion(guild, usuario, tipo)
+                if rol:
+                    rol_txt = f" · rol {rol.mention}"
+                else:
+                    rol_txt = " · ⚠️ no se pudo poner el rol"
+        except Exception as e:
+            print(f"[sancion_unico] rol: {e}")
+            rol_txt = f" · ⚠️ rol: {e}"
+    elif sroles is None:
+        rol_txt = " · ⚠️ módulo roles no cargado"
+
     if reg is not None:
         try:
             from sanciones_apelacion_ui import notificar_usuario
@@ -234,7 +257,7 @@ async def _aplicar(
     label = next((l for v, l, _ in _TIPOS if v == tipo), tipo)
     sid = f" · `#{reg.get('id')}`" if reg else ""
     ap = " · apelable" if apelable else " · sin apelación"
-    return f"✅ **{label}** a {usuario.mention}{sid}{extra}{ap}"
+    return f"✅ **{label}** a {usuario.mention}{sid}{extra}{ap}{rol_txt}"
 
 
 class SancionTipoSelect(ui.Select):
@@ -387,4 +410,4 @@ def registrar(bot: commands.Bot) -> None:
             ephemeral=True,
         )
 
-    print("[sancion_comando_unico] OK — /sancion + apelable sí/no")
+    print("[sancion_comando_unico] OK — roles + apelable sí/no")
