@@ -46,6 +46,7 @@ _MODULOS = (
     "canales_direccion",
     "canales_crear",
     "firmas",
+    "firmas_cargos_extra",
     "firmas_hook",
     "cert_roles",
     "cert_roles_hook",
@@ -64,6 +65,7 @@ _MODULOS = (
     "roles_otorgados",
     "licencia_medica",
     "anuncios_largos",
+    "reglamento_hospital",
     "despidos",
     "inactividad",
 )
@@ -82,6 +84,7 @@ _CRITICOS_SLASH = (
     "configurar_canal_direccion", "ver_canales_direccion",
     "otorgar_rol_certificado", "certificado_oficial", "postular_certificacion",
     "agregar_canal", "panel_verificacion", "enviar_paneles_direccion",
+    "reglamento_hospital", "publicar_reglamento_hospital", "registrar_firma",
 )
 
 
@@ -179,9 +182,14 @@ def _asegurar_criticos(bot) -> None:
             except Exception:
                 pass
         _cargar_modulo(bot, mod)
-    for m in ("panel_verificacion", "paneles_direccion"):
-        if m not in sys.modules:
-            _cargar_modulo(bot, m)
+    for m in (
+        "panel_verificacion",
+        "paneles_direccion",
+        "firmas_cargos_extra",
+        "reglamento_hospital",
+        "anuncios_largos",
+    ):
+        _cargar_modulo(bot, m)
 
 
 def _instalar_sync(bot) -> None:
