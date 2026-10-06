@@ -66,6 +66,7 @@ _MODULOS = (
     "licencia_medica",
     "anuncios_largos",
     "reglamento_hospital",
+    "reglamento_menu_fix",
     "despidos",
     "inactividad",
 )
@@ -84,7 +85,8 @@ _CRITICOS_SLASH = (
     "configurar_canal_direccion", "ver_canales_direccion",
     "otorgar_rol_certificado", "certificado_oficial", "postular_certificacion",
     "agregar_canal", "panel_verificacion", "enviar_paneles_direccion",
-    "reglamento_hospital", "publicar_reglamento_hospital", "registrar_firma",
+    "reglamento_hospital", "publicar_reglamento_hospital",
+    "agregar_reglamento", "publicar_reglamento", "registrar_firma",
 )
 
 
@@ -183,11 +185,12 @@ def _asegurar_criticos(bot) -> None:
                 pass
         _cargar_modulo(bot, mod)
     for m in (
+        "anuncios_largos",
+        "reglamento_hospital",
+        "reglamento_menu_fix",
+        "firmas_cargos_extra",
         "panel_verificacion",
         "paneles_direccion",
-        "firmas_cargos_extra",
-        "reglamento_hospital",
-        "anuncios_largos",
     ):
         _cargar_modulo(bot, m)
 
