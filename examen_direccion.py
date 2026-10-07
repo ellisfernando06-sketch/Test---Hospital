@@ -1,20 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Exámenes de postulación a Direcciones (incl. Cancillería / Vice Cancillería).
-
-/examen_direccion canal_log:
-  · Menú de direcciones
-  · Enviar examen a quienes tienen el rol de esa dirección
-  · Preguntas difíciles por área
-  · Resultados al DM del evaluado
-  · Log con puntuación + Aprobar / Rechazar (con motivo si < mínimo)
+Exámenes de postulación a Direcciones (RP — nivel accesible).
+/examen_direccion canal_log → menú de direcciones → MD a quienes tienen el rol.
+Log con puntuación + Aprobar / Rechazar (motivo si no llega al mínimo).
 """
 from __future__ import annotations
 
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import discord
 from discord import app_commands, ui
@@ -31,10 +26,9 @@ except Exception:
     roles_store = None
 
 _DATA = Path(__file__).resolve().parent / "examen_direccion_data.json"
-_MINIMO = 70  # % mínimo para poder aprobar
-_PREGUNTAS_POR_EXAMEN = 8
+_MINIMO = 60  # % mínimo (RP)
+_PREGUNTAS_POR_EXAMEN = 6
 
-# key de rol → (id menú, nombre, emoji, color)
 _DIRECCIONES: List[Tuple[str, str, str, int]] = [
     ("CANCILLER", "Cancillería", "🏛️", 0x2C3E50),
     ("VICE_CANCILLER", "Vice Cancillería", "🏛️", 0x34495E),
@@ -47,921 +41,741 @@ _DIRECCIONES: List[Tuple[str, str, str, int]] = [
     ("JEFE_SEGURIDAD", "Dirección de Seguridad", "🛡️", 0x2C3E50),
 ]
 
-# Preguntas difíciles por dirección: (pregunta, opciones[4], índice correcta 0-3)
+# Preguntas de RP (claras, no académicas): (pregunta, [A,B,C,D], índice correcta)
 _BANCO: Dict[str, List[Tuple[str, List[str], int]]] = {
     "CANCILLER": [
         (
-            "En un conflicto entre dos Direcciones con impacto en la operación del hospital, ¿cuál es la primera obligación del Canciller?",
+            "En el roleplay del hospital, ¿qué representa principalmente el Canciller?",
             [
-                "Imponer una decisión inmediata sin consultar",
-                "Mediar con criterio institucional, documentar y preservar la cadena de mando",
-                "Delegar todo al Director General sin intervención",
-                "Cerrar ambas direcciones hasta nuevo aviso",
+                "Solo un médico de urgencias",
+                "La autoridad institucional que coordina y representa al hospital",
+                "Un visitante con rango de color",
+                "Únicamente el bot del servidor",
             ],
             1,
         ),
         (
-            "La Vice Cancillería emite una directiva que contradice el reglamento general. ¿Qué debe hacer el Canciller?",
+            "Si dos direcciones discuten en OOC, lo correcto es:",
             [
-                "Ignorarla si no es urgente",
-                "Validar, corregir o anular según jerarquía y dejar constancia formal",
-                "Permitir que cada área elija qué aplicar",
-                "Expulsar al Vice Canciller sin proceso",
+                "Insultarse en el canal general",
+                "Hablar con respeto, usar los canales de staff y seguir el organigrama",
+                "Cerrar el servidor",
+                "Ignorar siempre las normas",
             ],
             1,
         ),
         (
-            "¿Qué principio rige la representación institucional ante autoridades externas?",
+            "Una decisión importante del Canciller debería:",
             [
-                "Solo el Director Médico puede representar al hospital",
-                "Unidad de criterio, protocolo y respaldo documental de Cancillería",
-                "Cualquier staff puede hablar en nombre del hospital",
-                "No se permite ninguna representación externa",
+                "Hacerse solo por chat privado sin dejar rastro",
+                "Quedar clara y, si hace falta, documentada para el staff",
+                "Publicarse solo con memes",
+                "Nunca comunicarse",
             ],
             1,
         ),
         (
-            "Una sanción a un Director debe:",
+            "¿Quién está por encima del Canciller en el organigrama típico del servidor?",
             [
-                "Aplicarse en público sin expediente",
-                "Seguir debido proceso, registro y proporcionalidad",
-                "Decidirse solo por votación informal",
-                "Ser siempre un ban inmediato",
+                "Un residente",
+                "Fundador / Owner (y autoridades del servidor)",
+                "Cualquier visitante",
+                "El bot de tickets",
             ],
             1,
         ),
         (
-            "Ante una crisis de imagen del servidor de rol, la prioridad del Canciller es:",
+            "En una crisis de rol grande, el Canciller debería:",
             [
-                "Borrar evidencias",
-                "Coordinar respuesta oficial, contener daños y proteger la operación",
-                "Culpar a un área al azar",
-                "Cerrar el servidor sin aviso",
+                "Desaparecer del servidor",
+                "Ayudar a ordenar la situación y apoyar a las direcciones",
+                "Banear a todos sin mirar",
+                "Solo mirar desde el chat de memes",
             ],
             1,
         ),
         (
-            "La relación Canciller–Fundador/Owner implica:",
+            "El Vice Canciller sirve para:",
             [
-                "Que el Canciller sustituye al Owner en todo",
-                "Ejecución estratégica bajo límites del organigrama y del Owner",
-                "Independencia total sin rendición de cuentas",
-                "Solo funciones ceremoniales",
+                "Reemplazar al Owner para siempre",
+                "Apoyar al Canciller y cubrir cuando haga falta",
+                "Solo poner embeds bonitos",
+                "Gestionar únicamente la economía",
             ],
             1,
         ),
         (
-            "Un miembro del staff filtra información confidencial de una reunión de Cancillería. Acción correcta:",
+            "Si alguien filtra información privada de una reunión de staff:",
             [
-                "Advertencia verbal sin registro",
-                "Investigación, medida proporcional y refuerzo de confidencialidad",
-                "Ignorarlo si no hay quejas",
-                "Promover al miembro por honestidad",
+                "Se premia",
+                "Se trata como falta seria según el reglamento",
+                "No pasa nada",
+                "Se publica otra vez en general",
             ],
             1,
         ),
         (
-            "¿Cuándo es legítimo que Cancillería intervenga en un área operativa?",
+            "Representar al hospital ante otros implica:",
             [
-                "Nunca",
-                "Cuando hay riesgo institucional, incumplimiento grave o vacío de mando",
-                "Siempre, en cada decisión menor",
-                "Solo si lo pide un residente",
-            ],
-            1,
-        ),
-        (
-            "La aprobación de un cambio estructural del organigrama requiere:",
-            [
-                "Solo un mensaje en general",
-                "Validación de autoridades competentes y comunicación formal",
-                "Voto de todos los visitantes",
-                "Decisión unilateral de un jefe de servicio",
-            ],
-            1,
-        ),
-        (
-            "El lema institucional debe usarse en actos oficiales para:",
-            [
-                "Decoración sin significado",
-                "Reforzar identidad, disciplina y servicio del hospital",
-                "Reemplazar el reglamento",
-                "Evitar sanciones",
+                "Decir cualquier cosa en nombre del server",
+                "Cuidar la imagen y seguir lo acordado con las autoridades",
+                "Pelear con otros servidores",
+                "No responder nunca",
             ],
             1,
         ),
     ],
     "VICE_CANCILLER": [
         (
-            "El Vice Canciller actúa con plenitud cuando:",
+            "El Vice Canciller actúa sobre todo cuando:",
             [
-                "El Canciller está ausente o lo delega formalmente",
-                "Lo decide por iniciativa personal siempre",
-                "Un director se lo pide en privado",
-                "Nunca puede actuar",
-            ],
-            0,
-        ),
-        (
-            "En ausencia del Canciller, una disputa entre RRHH y Docencia se resuelve:",
-            [
-                "Ignorándola",
-                "Con mediación, registro y respeto al organigrama",
-                "Favoreciendo siempre a RRHH",
-                "Cerrando ambas áreas",
+                "Quiere mandar sobre el Canciller",
+                "El Canciller no está o le pide apoyo",
+                "Un visitante se lo ordena",
+                "Nunca puede hacer nada",
             ],
             1,
         ),
         (
-            "¿Qué documento debe conservar el Vice Canciller tras una decisión interina?",
+            "Si el Canciller corrige una decisión tuya:",
             [
-                "Ninguno",
-                "Acta o registro con motivo, fecha y alcance",
-                "Solo un emoji de reacción",
-                "Un mensaje privado sin copia",
+                "La ignoras",
+                "La respetas y sigues el organigrama",
+                "Sancionas al Canciller",
+                "Cierras el ticket del Canciller",
             ],
             1,
         ),
         (
-            "Si el Canciller anula una decisión del Vice Canciller:",
+            "En un conflicto entre dos áreas, lo ideal es:",
             [
-                "Se ignora la anulación",
-                "Se acata y se documenta el cambio",
-                "Se apela en público al Owner inmediatamente sin canal",
-                "Se sanciona al Canciller",
+                "Ponerse de un solo lado sin escuchar",
+                "Mediar con calma y buscar una solución justa",
+                "Borrar los canales",
+                "Banear a ambos directores",
             ],
             1,
         ),
         (
-            "La confidencialidad de expedientes de alta dirección implica:",
+            "La información sensible de Cancillería:",
             [
-                "Compartirlos en staff-general",
-                "Acceso restringido y necesidad de conocer",
-                "Publicarlos en anuncios",
-                "Eliminarlos cada día",
+                "Se comparte en el chat general",
+                "Se cuida y solo se comparte con quien debe saberla",
+                "Se vende a otros jugadores",
+                "Se borra siempre al instante",
             ],
             1,
         ),
         (
-            "Un Director cuestiona la legitimidad del Vice Canciller. Respuesta correcta:",
+            "Trabajar con la Dirección General significa:",
             [
-                "Sancionar sin diálogo",
-                "Reafirmar el mandato, citar organigrama y escalar si es necesario",
-                "Renunciar de inmediato",
-                "Ignorar y no responder",
+                "Competir y no hablarse",
+                "Coordinarse para que el hospital funcione bien",
+                "Solo pelear en staff",
+                "Ignorar la operación del día a día",
             ],
             1,
         ),
         (
-            "Coordinación con Dirección General debe ser:",
+            "Si un director cuestiona tu cargo:",
             [
-                "Competencia hostil",
-                "Complementaria: estrategia institucional vs. operación diaria",
-                "Inexistente",
-                "Solo por intermediarios anónimos",
+                "Responder con insultos",
+                "Explicar el organigrama con respeto y escalar si hace falta",
+                "Renunciar en silencio",
+                "Banearlo sin proceso",
             ],
             1,
         ),
         (
-            "En una emergencia de rol masiva, el Vice Canciller prioriza:",
+            "Un buen Vice Canciller en RP:",
             [
-                "Su propia escena de RP",
-                "Cadena de mando, seguridad de canales y continuidad operativa",
-                "Cerrar todos los tickets",
-                "Banear a todos los residentes",
+                "Solo aparece para ponerse el rol",
+                "Está disponible, comunica y apoya al equipo",
+                "Nunca entra a los canales de dirección",
+                "Ignora las normas del server",
             ],
             1,
         ),
         (
-            "La firma en documentos oficiales del Vice Canciller:",
+            "En una emergencia de rol, priorizas:",
             [
-                "No tiene valor",
-                "Vale según delegación y registro de firmas institucionales",
-                "Sustituye siempre al Owner",
-                "Solo sirve en certificados médicos",
-            ],
-            1,
-        ),
-        (
-            "¿Qué diferencia clave existe entre Vice Canciller y Admin en jefe?",
-            [
-                "Ninguna",
-                "El Vice es autoridad institucional; el Admin en jefe es staff de servidor",
-                "El Admin en jefe manda sobre el Canciller",
-                "El Vice solo gestiona tickets",
+                "Tu escena personal",
+                "Orden, seguridad de canales y ayudar al staff",
+                "Cerrar todos los tickets sin mirar",
+                "Salirte del servidor",
             ],
             1,
         ),
     ],
     "DIR_GENERAL": [
         (
-            "La Dirección General coordina principalmente:",
+            "La Dirección General se enfoca en:",
             [
-                "Solo el área de limpieza",
-                "Alineación operativa entre direcciones y políticas hospitalarias",
-                "Únicamente sanciones de Discord",
-                "Solo la economía del servidor",
+                "Solo curar pacientes en quirófano",
+                "Coordinar que las direcciones trabajen juntas",
+                "Solo poner roles de color",
+                "Solo hacer anuncios de fiestas",
             ],
             1,
         ),
         (
-            "Un fallo de comunicación entre Médica y Logística se gestiona:",
+            "Si Médica y Logística no se entienden:",
             [
-                "Dejando que escalen en público",
-                "Con mesa de coordinación, responsables y plazos",
-                "Cerrando Logística",
-                "Ignorando el problema",
+                "Dejar que peleen en público",
+                "Hablar con ambas y buscar un acuerdo claro",
+                "Cerrar una de las dos áreas",
+                "Ignorar el problema",
             ],
             1,
         ),
         (
-            "Indicadores de rendimiento de direcciones deben ser:",
+            "Un director lleva mucho tiempo inactivo sin avisar:",
             [
-                "Secretos e inexistentes",
-                "Medibles, revisados y orientados a mejora",
-                "Solo opiniones personales",
-                "Publicados por visitantes",
+                "No pasa nada nunca",
+                "Se le contacta y se sigue el reglamento de inactividad",
+                "Se le promociona",
+                "Se le da ban sin hablar",
             ],
             1,
         ),
         (
-            "Ante un Director inactivo sin justificación:",
+            "Un cambio de reglas que afecta a todo el hospital debería:",
             [
-                "Nada",
-                "Aviso formal, plazos y escalado a Cancillería/RRHH",
-                "Ban inmediato sin proceso",
-                "Promoción automática",
+                "Publicarse sin avisar a nadie",
+                "Comunicarse bien a las áreas y al staff",
+                "Quedarse solo en un MD",
+                "Ocultarse del resto",
             ],
             1,
         ),
         (
-            "La planificación semanal de operaciones incluye:",
+            "En un incidente grande, Dirección General:",
             [
-                "Solo memes",
-                "Prioridades clínicas, recursos y cobertura de turnos críticos",
-                "Únicamente eventos sociales",
-                "Cerrar el hospital los fines de semana",
+                "Se desconecta",
+                "Ayuda a organizar y mantiene la operación en marcha",
+                "Solo mira el chat de memes",
+                "Banear a todos los pacientes",
             ],
             1,
         ),
         (
-            "Un cambio de protocolo transversal requiere:",
+            "Reportar a Cancillería sirve para:",
             [
-                "Publicarlo sin consulta",
-                "Consulta a áreas afectadas, validación y difusión oficial",
-                "Solo mensaje a un amigo",
-                "Ocultarlo del staff",
+                "Quejarse sin datos",
+                "Informar de lo importante con claridad",
+                "Difamar a otros",
+                "Nunca informar",
             ],
             1,
         ),
         (
-            "Relación con Seguridad en incidentes graves:",
+            "Delegar a un jefe de servicio significa:",
             [
-                "Dirigir el RP médico ignorando seguridad",
-                "Coordinar contención, acceso y continuidad asistencial",
-                "Dejar solo a Seguridad sin información",
-                "Evacuar sin protocolo",
+                "Abandonar el área por completo",
+                "Confiar tareas pero seguir pendiente del resultado",
+                "Prohibir que nadie más trabaje",
+                "Pasarle el cargo de Director para siempre",
             ],
             1,
         ),
         (
-            "Reportes a Cancillería deben ser:",
+            "Lo que NO es función típica de Dirección General:",
             [
-                "Informales y sin datos",
-                "Periódicos, claros y con riesgos/acciones",
-                "Solo quejas anónimas",
-                "Inexistentes",
-            ],
-            1,
-        ),
-        (
-            "¿Qué no es función de Dirección General?",
-            [
-                "Coordinar direcciones",
-                "Sustituir el rol clínico del médico tratante en cada paciente",
-                "Supervisar políticas operativas",
-                "Escalar crisis institucionales",
-            ],
-            1,
-        ),
-        (
-            "Delegación a jefes de servicio implica:",
-            [
-                "Abandonar toda supervisión",
-                "Autonomía operativa con rendición de cuentas",
-                "Prohibir toda iniciativa",
-                "Transferir la titularidad del cargo",
+                "Coordinar áreas",
+                "Hacer de médico tratante en cada paciente del servidor",
+                "Ayudar en crisis operativas",
+                "Cuidar que se cumplan políticas del hospital",
             ],
             1,
         ),
     ],
     "DIR_MEDICO": [
         (
-            "En un código azul en rol, el Director Médico debe garantizar:",
+            "En una emergencia de rol (código), lo importante es:",
             [
-                "Que nadie intervenga",
-                "Liderazgo clínico, asignación de roles y registro del evento",
-                "Solo observar sin intervenir",
+                "Que cada uno improvise sin hablar",
+                "Organizar quién hace qué y cuidar la escena",
                 "Cerrar el canal de voz",
+                "Salirse del rol",
             ],
             1,
         ),
         (
-            "La jerarquía en escena de trauma prioritiza:",
-            [
-                "Al visitante más antiguo",
-                "Al médico de mayor competencia asignado y al líder de escena",
-                "Al que escriba más rápido",
-                "Siempre al paramédico sobre el médico",
-            ],
-            1,
-        ),
-        (
-            "Un residente comete un error grave de protocolo. Acción correcta:",
+            "Un residente se equivoca en el protocolo. ¿Qué haces?",
             [
                 "Humillarlo en público",
-                "Corregir, documentar, formar y escalar si es reiterado",
+                "Corregirlo con respeto y enseñarle",
                 "Ignorarlo",
-                "Expulsarlo del servidor sin expediente",
+                "Expulsarlo del server sin hablar",
             ],
             1,
         ),
         (
-            "La coordinación con Enfermería en quirófano de rol implica:",
+            "Trabajar con enfermería en una escena significa:",
             [
                 "Ignorar al personal de enfermería",
-                "Comunicación clara de órdenes, tiempos y seguridad del paciente",
-                "Dejar que cada uno improvise sin plan",
-                "Prohibir la presencia de enfermería",
+                "Coordinar órdenes y cuidar al paciente de rol",
+                "Prohibir que enfermería entre",
+                "Solo hablar por OOC de forma tóxica",
             ],
             1,
         ),
         (
-            "Consentimiento informado en RP médico:",
+            "Si hay pelea OOC entre médicos en medio del rol:",
             [
-                "No existe en rol",
-                "Debe respetarse salvo emergencias vitales justificadas",
-                "Solo aplica a staff",
-                "Es opcional siempre",
+                "Seguir discutiendo en la escena",
+                "Separar IC/OOC y resolver fuera de la escena",
+                "Banear a los dos sin más",
+                "Borrar el canal del hospital",
             ],
             1,
         ),
         (
-            "Un médico especialista se niega a recibir traslados sin motivo clínico. Usted:",
+            "Un buen Director Médico en RP:",
             [
-                "Lo apoya sin preguntar",
-                "Evalúa carga, criterios y obliga cobertura según protocolo",
-                "Cierra urgencias",
-                "Sanciona al paciente",
+                "Solo tiene el rol y no organiza nada",
+                "Apoya al equipo, da ejemplo y mantiene el orden clínico del rol",
+                "Nunca responde tickets ni mensajes",
+                "Ignora a residentes e internos",
             ],
             1,
         ),
         (
-            "Documentación clínica mínima en un ingreso incluye:",
+            "La historia clínica en rol debería tener al menos:",
             [
-                "Solo el nombre",
-                "Motivo, hallazgos, plan y responsable",
-                "Un emoji",
-                "Nada si hay prisa",
+                "Solo un emoji",
+                "Qué le pasa al paciente, qué se hizo y quién atendió",
+                "Nada, nunca se anota",
+                "Solo el color del rol del médico",
             ],
             1,
         ),
         (
-            "Conflicto OOC entre médicos en canal de rol:",
+            "Respecto a Docencia y certificaciones:",
             [
-                "Continuar la discusión en escena",
-                "Separar IC/OOC, pausar si hace falta y mediar fuera de escena",
-                "Banear a ambos sin hablar",
-                "Eliminar el canal",
+                "Competir y bloquear todo",
+                "Apoyar que la gente se forme bien para el rol médico",
+                "Ignorar por completo las capacitaciones",
+                "Dar certificados sin ningún criterio",
             ],
             1,
         ),
         (
-            "La supervisión de internos/residentes busca:",
+            "Si un médico no quiere atender sin motivo de rol:",
             [
-                "Sustituirlos siempre",
-                "Autonomía progresiva con seguridad del paciente ficticio",
-                "Prohibirles actuar",
-                "Dejarlos solos en códigos",
-            ],
-            1,
-        ),
-        (
-            "Relación con Docencia para certificaciones clínicas:",
-            [
-                "Competencia y bloqueo",
-                "Estándares clínicos alineados y validación de competencias",
-                "Ignorar certificaciones",
-                "Que Docencia dicte tratamientos en cada paciente",
+                "Dejar la urgencia vacía siempre",
+                "Hablar el tema y asegurar cobertura según las normas del área",
+                "Cerrar el hospital",
+                "Sancionar al paciente",
             ],
             1,
         ),
     ],
     "DIR_ENFERMERIA": [
         (
-            "La prioritización de cuidados se basa en:",
+            "¿A quién se atiende primero en una escena con varios pacientes?",
             [
-                "Orden de llegada solo",
-                "Gravedad, dependencia y recursos disponibles",
-                "Simpatía personal",
-                "Rango Discord del paciente",
+                "Al que llegó primero siempre",
+                "Al que está más grave o necesita más cuidado",
+                "Al que tiene el rol más alto de Discord",
+                "Al que pide más en el chat",
             ],
             1,
         ),
         (
-            "Administración de medicación en rol exige:",
+            "Antes de dar un medicamento en rol conviene:",
             [
-                "Improvisar dosis",
-                "Verificación de orden, paciente, vía y registro",
-                "Solo el color del medicamento",
-                "No registrar nada",
+                "Inventar la dosis",
+                "Confirmar qué se pidió, a quién y registrarlo",
+                "No preguntar nada",
+                "Dárselo a otro paciente",
             ],
             1,
         ),
         (
-            "Un auxiliar incumple aislamiento. Acción:",
+            "Si un auxiliar se equivoca en el protocolo:",
             [
-                "Reírse",
-                "Corregir de inmediato, educar y reportar si es grave",
-                "Ignorar",
-                "Cerrar el hospital",
+                "Reírse y no decir nada",
+                "Corregir, explicar y avisar si es grave",
+                "Banearlo al momento",
+                "Ignorarlo siempre",
             ],
             1,
         ),
         (
-            "Coordinación con el médico tratante implica:",
+            "Coordinar con el médico en una escena es:",
             [
-                "Cambiar órdenes sin avisar",
-                "Ejecutar plan, reportar cambios y clarificar dudas",
+                "Cambiar las órdenes sin avisar",
+                "Seguir el plan, avisar cambios y preguntar si hay duda",
                 "Nunca hablar con el médico",
-                "Solo escribir en OOC",
+                "Solo pelear en OOC",
             ],
             1,
         ),
         (
-            "Turnos cortos de personal se resuelven:",
+            "Si falta personal en el turno:",
             [
-                "Abandonando pacientes",
-                "Redistribución, priorización y escalado a Dirección",
-                "Cerrando urgencias en silencio",
-                "Promoviendo a visitantes a enfermeros",
+                "Abandonar a los pacientes",
+                "Reorganizar tareas y pedir apoyo si hace falta",
+                "Cerrar todo en silencio",
+                "Dar rol de enfermero a cualquier visitante sin proceso",
             ],
             1,
         ),
         (
-            "Registro de enfermería debe ser:",
+            "Los datos del paciente en RP:",
             [
-                "Opcional",
-                "Claro, oportuno y verificable",
-                "Solo mental",
-                "Copia exacta del chat de memes",
+                "Se publican en el chat general",
+                "Se cuidan; solo se comparten con quien atiende",
+                "Se inventan para troll",
+                "No importan nunca",
             ],
             1,
         ),
         (
-            "Liderazgo de equipo de enfermería en crisis:",
+            "Liderar enfermería en una crisis de rol implica:",
             [
-                "Gritar sin roles",
-                "Asignar tareas, tiempos y punto de control",
-                "Salir de la escena",
+                "Gritar sin organizar",
+                "Repartir tareas claras al equipo",
+                "Salirse de la escena",
                 "Dejar que cada uno haga lo que quiera",
             ],
             1,
         ),
         (
-            "Formación de auxiliares es responsabilidad de:",
+            "Formar a auxiliares es algo que:",
             [
-                "Nadie",
-                "Dirección de Enfermería con apoyo de Docencia",
-                "Solo Seguridad",
-                "Solo el Owner",
-            ],
-            1,
-        ),
-        (
-            "Confidencialidad del paciente en RP:",
-            [
-                "Se publica en general",
-                "Se protege; solo se comparte con necesidad asistencial",
-                "Se vende a otros jugadores",
-                "No existe",
-            ],
-            1,
-        ),
-        (
-            "Conflicto entre enfermeros en turno:",
-            [
-                "Pelear en el pasillo de rol",
-                "Separar, escuchar, mediar y documentar",
-                "Banear al más nuevo",
-                "Cerrar el turno",
+                "No le importa a nadie",
+                "Debe impulsar la Dirección de Enfermería (con Docencia si aplica)",
+                "Solo hace Seguridad",
+                "Solo hace el Owner",
             ],
             1,
         ),
     ],
     "DIR_RRHH": [
         (
-            "Un proceso de selección justo incluye:",
+            "Al contratar o aceptar a alguien, lo justo es:",
             [
-                "Elegir amigos sin criterios",
-                "Perfil, evaluación, transparencia y registro",
-                "Solo sorteo",
+                "Elegir solo amigos sin mirar nada",
+                "Revisar perfil, normas y dejar registro del proceso",
                 "Vender el puesto",
+                "Aceptar a cualquiera sin leer",
             ],
             1,
         ),
         (
-            "Una queja formal contra un jefe de servicio se gestiona:",
+            "Si llega una queja formal contra un jefe:",
             [
-                "Borrándola",
-                "Recepción, imparcialidad, investigación y resolución documentada",
-                "Publicándola en anuncios",
-                "Ignorándola si el jefe es popular",
+                "Borrarla",
+                "Recibirla, investigar con imparcialidad y resolver con registro",
+                "Publicarla en anuncios para drama",
+                "Ignorarla si el jefe es popular",
             ],
             1,
         ),
         (
-            "Onboarding de nuevo personal debe incluir:",
+            "Un nuevo miembro debería recibir:",
             [
                 "Nada",
-                "Normativa, organigrama, canales y expectativas del cargo",
-                "Solo el rol de color",
-                "Acceso admin inmediato",
+                "Normas básicas, canales y qué se espera de su cargo",
+                "Admin del servidor al instante",
+                "Solo un rol de color sin explicación",
             ],
             1,
         ),
         (
-            "Inactividad injustificada reiterada:",
+            "Inactividad sin avisar durante mucho tiempo:",
             [
-                "Premio",
-                "Aviso, plazos y medidas según reglamento",
-                "Promoción",
-                "Ignorar siempre",
+                "Se premia",
+                "Se aplica el reglamento (avisos / medidas)",
+                "Se ignora siempre",
+                "Se promociona al cargo superior",
             ],
             1,
         ),
         (
-            "Confidencialidad de expedientes laborales:",
+            "Los expedientes de personal:",
             [
-                "Abiertos a todos",
-                "Acceso restringido a roles autorizados",
-                "En el canal general",
-                "En DMs masivos",
+                "Son públicos para todo el servidor",
+                "Solo los ven quienes tienen permiso",
+                "Se mandan por MD a todos",
+                "Se publican en general",
             ],
             1,
         ),
         (
-            "Despido de un miembro requiere:",
+            "Un despido en el hospital de rol debería:",
             [
-                "Mensaje agresivo sin causa",
-                "Causa, proceso y comunicación formal",
-                "Solo un emoji",
-                "Voto de visitantes",
+                "Ser un insulto sin motivo",
+                "Tener causa clara y aviso formal",
+                "Hacerse solo con un emoji",
+                "Decidirse por voto de visitantes",
             ],
             1,
         ),
         (
-            "Conflicto de interés en una contratación:",
+            "Si un postulado miente en su experiencia de rol:",
             [
-                "Ocultarlo",
-                "Declararlo y abstenerse de decidir",
-                "Forzar la contratación",
-                "Mentir en el registro",
+                "Se aprueba igual",
+                "Se rechaza y se deja constancia según normas",
+                "Se le da Director General",
+                "Se ignora",
             ],
             1,
         ),
         (
-            "Métricas de RRHH útiles son:",
+            "RRHH y Cancillería en un caso grave deberían:",
             [
-                "Ninguna",
-                "Tiempo de cobertura, rotación y calidad de procesos",
-                "Solo likes",
-                "Cantidad de memes",
-            ],
-            1,
-        ),
-        (
-            "Relación con Cancillería en casos graves:",
-            [
-                "Ocultar información",
-                "Informar con hechos y proponer medidas",
-                "Difamar en público",
-                "Renunciar en silencio",
-            ],
-            1,
-        ),
-        (
-            "Un postulado falsea experiencia. Acción:",
-            [
-                "Aprobarlo igual",
-                "Rechazar, registrar y aplicar norma antisuplantación",
-                "Ignorar",
-                "Darle admin",
+                "Ocultarse información",
+                "Comunicarse con hechos y proponer soluciones",
+                "Pelear en público",
+                "No hablar nunca",
             ],
             1,
         ),
     ],
     "DIR_DOCENCIA": [
         (
-            "Una certificación clínica debe basarse en:",
+            "Una certificación en el hospital debería basarse en:",
             [
-                "Amistad",
-                "Competencias evaluables y material oficial",
-                "Solo presencia en voz",
-                "Pago OOC",
+                "Solo ser amigo del director",
+                "Estudiar, evaluar y cumplir el proceso del área",
+                "Pagar por fuera del rol",
+                "Estar un minuto en un canal de voz",
             ],
             1,
         ),
         (
-            "El Director de Docencia puede emitir certificados cuando:",
+            "Si alguien copia en un examen de capacitación:",
             [
-                "Quiere",
-                "Hay proceso, evaluación y firmas según protocolo",
-                "Lo pide un visitante",
-                "Sin examen nunca",
+                "Se le aprueba igual",
+                "Se anula o se aplica la norma de Docencia",
+                "Se le sube la nota",
+                "Se le da el rol de Director",
             ],
             1,
         ),
         (
-            "Un instructor sesga notas a favor de su círculo. Usted:",
+            "El material de estudio debería ser:",
             [
-                "Lo premia",
-                "Investiga, corrige evaluaciones y sanciona si procede",
-                "Ignora",
-                "Cierra Docencia",
+                "Imposible de entender a propósito",
+                "Claro y acorde a las normas de RP del hospital",
+                "Solo memes sin contenido",
+                "Secreto para siempre",
             ],
             1,
         ),
         (
-            "Material de estudio debe ser:",
+            "Docencia y Dirección Médica deberían:",
             [
-                "Secreto imposible",
-                "Claro, alineado a normativa RP y actualizado",
-                "Copiado de servidores ajenos sin revisión",
-                "Solo imágenes sin texto",
+                "Evitarse mutuamente",
+                "Coordinarse para que lo enseñado sirva en el rol clínico",
+                "Pelear por los canales",
+                "Ignorar las certificaciones",
             ],
             1,
         ),
         (
-            "Revalidación de certificaciones sirve para:",
+            "Guardar quién aprobó un curso sirve para:",
             [
-                "Molestar",
-                "Mantener estándares y actualizar competencias",
-                "Eliminar roles al azar",
                 "Nada",
-            ],
-            1,
-        ),
-        (
-            "Coordinación con Dirección Médica en contenidos:",
-            [
-                "Evitarla",
-                "Validar rigor clínico del temario",
-                "Que Médica ignore Docencia",
-                "Solo pelear en staff",
-            ],
-            1,
-        ),
-        (
-            "Un postulante copia en el examen. Acción:",
-            [
-                "Aprobarlo",
-                "Anular, registrar y aplicar política académica",
-                "Subirle nota",
-                "Darle el rol de director",
-            ],
-            1,
-        ),
-        (
-            "Registro de capacitaciones debe permitir:",
-            [
-                "Olvidar quién aprobó",
-                "Trazabilidad de fecha, instructor y resultado",
+                "Tener orden: fecha, resultado y quién formó",
                 "Borrar evidencias",
-                "Solo oral",
+                "Trollear al staff",
             ],
             1,
         ),
         (
-            "Carga horaria de formadores se gestiona:",
+            "Un instructor favorece siempre a su círculo. ¿Qué haces?",
             [
-                "Quemándolos sin límite",
-                "Planificando turnos y evitando sobrecarga",
-                "Obligando 24/7",
-                "Prohibiendo formar",
+                "Lo premias",
+                "Revisas el caso y corriges si hubo injusticia",
+                "Cierras Docencia para siempre",
+                "Ignoras las quejas",
             ],
             1,
         ),
         (
-            "La excelencia docente se mide por:",
+            "El objetivo de capacitar es:",
             [
-                "Cantidad de roles de color",
-                "Calidad de aprendizaje y cumplimiento de estándares",
-                "Solo embeds bonitos",
-                "Número de sanciones",
+                "Solo llenar el servidor de roles",
+                "Que la gente rolee mejor y con más calidad",
+                "Sancionar por diversión",
+                "Evitar que nadie entre al hospital",
+            ],
+            1,
+        ),
+        (
+            "Emitir un certificado sin evaluación:",
+            [
+                "Está bien siempre",
+                "No es correcto si el protocolo pide examen o práctica",
+                "Es obligatorio cada día",
+                "Solo lo hace Seguridad",
             ],
             1,
         ),
     ],
     "DIR_LOGISTICA": [
         (
-            "Prioridad de suministro en emergencia:",
+            "En una emergencia, ¿qué insumos van primero?",
             [
-                "Lo más barato siempre",
-                "Criticidad clínica y continuidad operativa",
                 "Lo que pida el más ruidoso",
-                "Nada de stock",
+                "Lo más importante para atender y mantener el hospital",
+                "Nada de stock nunca",
+                "Solo decoración",
             ],
             1,
         ),
         (
-            "Inventario descuadrado se corrige:",
+            "Si el inventario no cuadra:",
             [
-                "Inventando cifras",
-                "Auditoría, ajuste documentado y controles",
-                "Ignorando",
-                "Culpando a un bot",
+                "Se inventan números",
+                "Se revisa, se corrige y se deja registro",
+                "Se ignora",
+                "Se culpa al bot sin mirar",
             ],
             1,
         ),
         (
-            "Coordinación con Médica para insumos críticos:",
+            "Con Dirección Médica, Logística debería:",
             [
-                "No hablar",
-                "Previsión de demanda y canales de solicitud claros",
-                "Entregar sin registro",
-                "Negar todo",
+                "No hablar nunca",
+                "Anticipar pedidos y tener canales claros de solicitud",
+                "Negar todo siempre",
+                "Entregar sin anotar nada",
             ],
             1,
         ),
         (
-            "Un proveedor interno incumple plazos reiterados:",
+            "Un área pide material urgente fuera de lo normal:",
             [
-                "Premiarlo",
-                "Aviso, alternativas y escalado",
-                "Ignorar",
-                "Cerrar el hospital",
+                "Siempre se niega",
+                "Se evalúa, se entrega si procede y luego se regulariza",
+                "Se da a cualquiera sin control",
+                "Se borra el pedido",
             ],
             1,
         ),
         (
-            "Almacenes restringidos requieren:",
+            "El almacén restringido debería tener:",
             [
-                "Acceso libre",
-                "Control de acceso y registro de movimientos",
-                "Solo un emoji de llave",
-                "Ningún control",
+                "Acceso libre para todos",
+                "Control de quién entra y qué se mueve",
+                "Ningún tipo de control",
+                "Solo un emoji de candado sin reglas",
             ],
             1,
         ),
         (
-            "Plan de contingencia logística incluye:",
+            "Si se pierde material:",
             [
-                "Nada",
-                "Stock mínimo, rutas alternativas y responsables",
-                "Solo rezar",
-                "Borrar el inventario",
+                "Se oculta",
+                "Se investiga con calma y se evita que vuelva a pasar",
+                "Se culpa a alguien al azar",
+                "Se cierra el hospital",
             ],
             1,
         ),
         (
-            "Pérdida de material se investiga para:",
+            "Reportar a Dirección General sirve para:",
             [
-                "Culpar al azar",
-                "Causa, responsabilidad y prevención",
-                "Ocultar el faltante",
-                "Aumentar el caos",
+                "Solo mandar memes",
+                "Avisar niveles de stock y problemas reales",
+                "Nunca informar",
+                "Quejarse sin datos",
             ],
             1,
         ),
         (
-            "Reportes a Dirección General deben mostrar:",
+            "Organizar turnos de logística busca:",
             [
-                "Solo quejas",
-                "Niveles de stock, riesgos y acciones",
-                "Memes",
-                "Nada",
-            ],
-            1,
-        ),
-        (
-            "Rotación de turnos logísticos busca:",
-            [
-                "Fatiga crónica",
-                "Cobertura estable y bienestar del equipo",
-                "Un solo miembro 24/7",
-                "Cero personal",
-            ],
-            1,
-        ),
-        (
-            "Solicitudes urgentes fuera de protocolo:",
-            [
-                "Siempre negadas",
-                "Evaluadas, registradas y regularizadas después",
-                "Sin registro nunca",
-                "Entregadas a cualquiera",
+                "Quemar a una sola persona 24/7",
+                "Que haya cobertura y el equipo no se agote",
+                "Dejar el área vacía",
+                "Prohibir entrar al almacén",
             ],
             1,
         ),
     ],
     "JEFE_SEGURIDAD": [
         (
-            "Primera respuesta ante un intruso en área restringida:",
+            "Si hay un intruso en zona restringida:",
             [
-                "Ignorarlo",
-                "Identificar, contener según protocolo y reportar",
-                "Banear sin evidencia",
-                "Huir",
+                "Se ignora",
+                "Se identifica, se sigue el protocolo y se reporta",
+                "Se banea sin mirar el rol",
+                "Se huye de la escena",
             ],
             1,
         ),
         (
-            "Uso de fuerza en RP de seguridad debe ser:",
+            "El uso de fuerza en RP de seguridad debe ser:",
             [
-                "Máximo siempre",
-                "Proporcional, escalonado y justificado",
-                "Aleatorio",
-                "Prohibido siempre",
+                "Lo máximo siempre",
+                "Proporcional y justificado en la escena",
+                "Aleatorio por diversión",
+                "Prohibido en todo caso",
             ],
             1,
         ),
         (
-            "Coordinación con personal clínico en incidente violento:",
+            "En un incidente violento cerca de pacientes:",
             [
                 "Bloquear a todos los médicos",
-                "Asegurar escena y permitir asistencia segura",
+                "Asegurar la zona y dejar que atiendan con seguridad",
                 "Evacuar sin avisar a nadie",
-                "Cerrar el RP médico",
+                "Cerrar el rol médico",
             ],
             1,
         ),
         (
-            "Informe de incidente de seguridad incluye:",
+            "Un informe de seguridad debería incluir:",
             [
                 "Solo opiniones",
-                "Hechos, horarios, involucrados y acciones",
+                "Qué pasó, cuándo y qué se hizo",
                 "Nada escrito",
-                "Difamación",
+                "Insultos a los involucrados",
             ],
             1,
         ),
         (
-            "Un guardia abusa de autoridad. Usted:",
+            "Si un guardia abusa de su rol:",
             [
-                "Lo cubre",
-                "Investiga, sanciona y reentrena",
-                "Lo asciende",
-                "Ignora quejas",
+                "Se le cubre",
+                "Se investiga y se corrige o sanciona según normas",
+                "Se le asciende",
+                "Se ignoran las quejas",
             ],
             1,
         ),
         (
-            "Control de accesos a quirófano implica:",
+            "El acceso a quirófano o áreas sensibles:",
             [
-                "Dejar pasar a cualquiera",
-                "Verificación de rol y necesidad",
-                "Prohibir a todo el staff médico",
-                "No hay control",
+                "Es libre para cualquiera",
+                "Se verifica quién es y por qué entra",
+                "Está prohibido para todo el staff médico",
+                "No se controla nunca",
             ],
             1,
         ),
         (
-            "Amenaza OOC en canales del hospital:",
+            "Una amenaza OOC en un canal del hospital:",
             [
-                "Tratarla como RP",
-                "Separar IC/OOC, documentar y escalar a staff admin",
-                "Responder con más amenazas",
-                "Borrar sin registro",
+                "Se trata como si fuera solo RP",
+                "Se separa de IC, se documenta y se escala al staff",
+                "Se responde con más amenazas",
+                "Se borra sin dejar rastro y ya",
             ],
             1,
         ),
         (
-            "Rondas y puestos fijos sirven para:",
+            "Entrenar al equipo de seguridad sirve para:",
             [
-                "Decoración",
-                "Disuasión, detección temprana y cobertura",
-                "Nada",
-                "Solo RP de café",
-            ],
-            1,
-        ),
-        (
-            "Relación con Cancillería en crisis de seguridad:",
-            [
-                "Ocultar el incidente",
-                "Informar con hechos y plan de contención",
-                "Culpar a Cancillería",
-                "Cerrar sin avisar",
-            ],
-            1,
-        ),
-        (
-            "Entrenamiento del equipo de seguridad prioriza:",
-            [
-                "Solo chat",
-                "Protocolos, comunicación y proporcionalidad",
-                "Caos improvisado",
+                "Solo rellenar tiempo",
+                "Que conozcan protocolos y actúen con criterio en el rol",
+                "Generar caos a propósito",
                 "Ignorar el reglamento",
             ],
             1,
@@ -1022,37 +836,24 @@ def _rol_por_key(guild: discord.Guild, key: str) -> Optional[discord.Role]:
                     return r
         except Exception:
             pass
-    # fallback por nombre aproximado
-    for _, nombre, emoji, _ in _DIRECCIONES:
-        if _direccion_key_por_nombre(nombre) == key:
-            pass
-    nombres_hint = {
-        "CANCILLER": "canciller",
-        "VICE_CANCILLER": "vice",
-        "DIR_GENERAL": "director general",
-        "DIR_MEDICO": "director médico",
-        "DIR_ENFERMERIA": "enfermer",
-        "DIR_RRHH": "rrhh",
-        "DIR_DOCENCIA": "docencia",
-        "DIR_LOGISTICA": "logíst",
-        "JEFE_SEGURIDAD": "seguridad",
+    hints = {
+        "CANCILLER": ("canciller",),
+        "VICE_CANCILLER": ("vice canciller", "vicecanciller"),
+        "DIR_GENERAL": ("director general",),
+        "DIR_MEDICO": ("director médico", "director medico"),
+        "DIR_ENFERMERIA": ("director de enfermería", "director de enfermeria", "dir enfermer"),
+        "DIR_RRHH": ("director de rrhh", "dir rrhh", "recursos humanos"),
+        "DIR_DOCENCIA": ("director de docencia", "dir docencia"),
+        "DIR_LOGISTICA": ("director de logística", "director de logistica", "dir logist"),
+        "JEFE_SEGURIDAD": ("jefe de seguridad", "director de seguridad"),
     }
-    hint = nombres_hint.get(key, key.lower())
     for r in guild.roles:
         n = (r.name or "").lower()
-        if hint in n and "director" in n or (key == "CANCILLER" and "canciller" in n and "vice" not in n):
-            return r
-        if key == "VICE_CANCILLER" and "vice" in n and "canciller" in n:
-            return r
-        if key == "JEFE_SEGURIDAD" and "seguridad" in n and ("jefe" in n or "director" in n):
-            return r
-    return None
-
-
-def _direccion_key_por_nombre(nombre: str) -> Optional[str]:
-    for k, n, _, _ in _DIRECCIONES:
-        if n == nombre:
-            return k
+        for h in hints.get(key, ()):
+            if h in n:
+                if key == "CANCILLER" and "vice" in n:
+                    continue
+                return r
     return None
 
 
@@ -1060,90 +861,74 @@ def _miembros_con_rol(guild: discord.Guild, key: str) -> List[discord.Member]:
     rol = _rol_por_key(guild, key)
     if not rol:
         return []
-    return [m for m in guild.members if (not m.bot) and rol in m.roles]
+    return [m for m in guild.members if not m.bot and rol in m.roles]
 
 
 def _preguntas_para(key: str) -> List[Tuple[str, List[str], int]]:
     banco = list(_BANCO.get(key) or [])
     if not banco:
         return []
-    # tomar hasta N, rotando por tiempo
     start = int(time.time()) % max(1, len(banco))
     rot = banco[start:] + banco[:start]
     return rot[:_PREGUNTAS_POR_EXAMEN]
 
 
 def _embed_inicio(dir_nombre: str, emoji: str, color: int, total: int) -> discord.Embed:
-    emb = discord.Embed(
+    return discord.Embed(
         title=f"{emoji}  Examen de postulación · {dir_nombre}",
         description=(
-            f"Evaluación institucional del **Hospital General**.\n\n"
-            f"• **{total}** preguntas de nivel directivo\n"
-            f"• Mínimo para poder ser **aprobado por staff:** **{_MINIMO}%**\n"
-            f"• Responde con honestidad; el resultado se registra\n\n"
-            f"Pulsa **Comenzar examen** cuando estés listo."
+            f"Evaluación de **roleplay** del Hospital General.\n\n"
+            f"• **{total}** preguntas sencillas sobre el área\n"
+            f"• Mínimo para que el staff pueda **aprobar:** **{_MINIMO}%**\n"
+            f"• El resultado llega a tu MD y al canal de log\n\n"
+            f"Pulsa **Comenzar examen** cuando quieras."
         ),
         color=color,
-    )
-    emb.set_footer(text="Hospital General · Direcciones · Evaluación formal")
-    return emb
+    ).set_footer(text="Hospital General · Postulación a Direcciones")
 
 
 def _embed_pregunta(
-    dir_nombre: str,
-    emoji: str,
-    color: int,
-    idx: int,
-    total: int,
-    texto: str,
+    dir_nombre: str, emoji: str, color: int, idx: int, total: int, texto: str
 ) -> discord.Embed:
-    emb = discord.Embed(
+    return discord.Embed(
         title=f"{emoji}  {dir_nombre} · Pregunta {idx + 1}/{total}",
         description=f"**{texto}**",
         color=color,
-    )
-    emb.set_footer(text="Elige una opción · No se puede volver atrás")
-    return emb
+    ).set_footer(text="Elige una opción")
 
 
 def _embed_resultado(
-    dir_nombre: str,
-    emoji: str,
-    score: int,
-    total: int,
-    pct: int,
+    dir_nombre: str, emoji: str, score: int, total: int, pct: int
 ) -> discord.Embed:
     ok = pct >= _MINIMO
-    color = 0x2ECC71 if ok else 0xE74C3C
-    emb = discord.Embed(
+    return discord.Embed(
         title=f"{emoji}  Resultado · {dir_nombre}",
         description=(
             f"**Puntuación:** {score}/{total}  ·  **{pct}%**\n"
-            f"**Mínimo requerido:** {_MINIMO}%\n\n"
+            f"**Mínimo:** {_MINIMO}%\n\n"
             + (
-                "Alcanzaste el mínimo. El staff puede **aprobar** tu postulación en el log."
+                "Alcanzaste el mínimo. El staff puede **aprobar** en el log."
                 if ok
-                else "No alcanzaste el mínimo. El staff **rechazará** la postulación con motivo."
+                else "No llegaste al mínimo. El staff **rechazará** con un motivo."
             )
         ),
-        color=color,
-    )
-    emb.set_footer(text="Hospital General · Resultado enviado también al log oficial")
-    return emb
+        color=0x2ECC71 if ok else 0xE74C3C,
+    ).set_footer(text="Hospital General · Resultado de postulación")
 
 
 class RespuestaSelect(ui.Select):
     def __init__(self, session_id: str, opciones: List[str], correcta: int):
         self.session_id = session_id
         self.correcta = correcta
-        opts = [
-            discord.SelectOption(
-                label=f"{chr(65 + i)}. {opciones[i][:90]}",
-                value=str(i),
-                description=opciones[i][90:190] if len(opciones[i]) > 90 else None,
+        opts = []
+        for i, op in enumerate(opciones):
+            opts.append(
+                discord.SelectOption(
+                    label=f"{chr(65 + i)}. {op[:90]}",
+                    value=str(i),
+                    description=(op[90:190] if len(op) > 90 else None),
+                )
             )
-            for i in range(len(opciones))
-        ]
         super().__init__(
             placeholder="Selecciona tu respuesta…",
             min_values=1,
@@ -1156,7 +941,7 @@ class RespuestaSelect(ui.Select):
         ses = data.get("sesiones", {}).get(self.session_id)
         if not ses:
             return await interaction.response.send_message(
-                "❌ Sesión expirada o inválida.", ephemeral=True
+                "❌ Sesión expirada.", ephemeral=True
             )
         if int(ses.get("user_id") or 0) != interaction.user.id:
             return await interaction.response.send_message(
@@ -1164,7 +949,7 @@ class RespuestaSelect(ui.Select):
             )
         if ses.get("terminado"):
             return await interaction.response.send_message(
-                "❌ Examen ya finalizado.", ephemeral=True
+                "❌ Ya terminaste este examen.", ephemeral=True
             )
 
         eleccion = int(self.values[0])
@@ -1172,12 +957,10 @@ class RespuestaSelect(ui.Select):
         preguntas = ses.get("preguntas") or []
         if idx >= len(preguntas):
             return await interaction.response.send_message(
-                "❌ Índice inválido.", ephemeral=True
+                "❌ Error de índice.", ephemeral=True
             )
 
-        # preguntas guardadas como [texto, opciones, correcta]
-        ok = eleccion == int(preguntas[idx][2])
-        if ok:
+        if eleccion == int(preguntas[idx][2]):
             ses["score"] = int(ses.get("score") or 0) + 1
         ses["idx"] = idx + 1
         data["sesiones"][self.session_id] = ses
@@ -1198,12 +981,7 @@ class ComenzarView(ui.View):
         super().__init__(timeout=900)
         self.session_id = session_id
 
-    @ui.button(
-        label="Comenzar examen",
-        style=discord.ButtonStyle.primary,
-        emoji="📋",
-        custom_id="examen_dir:start_static",  # replaced per instance below
-    )
+    @ui.button(label="Comenzar examen", style=discord.ButtonStyle.primary, emoji="📋")
     async def comenzar(self, interaction: discord.Interaction, button: ui.Button):
         data = _load()
         ses = data.get("sesiones", {}).get(self.session_id)
@@ -1247,14 +1025,10 @@ async def _continuar_examen(interaction: discord.Interaction, session_id: str):
                 await interaction.followup.send(embed=emb)
             except Exception:
                 pass
-
-        # DM resultado (por si el examen no estaba en DM)
         try:
-            user = interaction.user
-            await user.send(embed=emb)
+            await interaction.user.send(embed=emb)
         except Exception:
             pass
-
         await _enviar_log_resultado(interaction.client, ses, score, total, pct)
         return
 
@@ -1285,7 +1059,6 @@ async def _enviar_log_resultado(
     dir_nombre = ses.get("dir_nombre") or "—"
     emoji = ses.get("emoji") or "📋"
     ok_min = pct >= _MINIMO
-    color = 0xF1C40F if ok_min else 0xE74C3C
 
     emb = discord.Embed(
         title=f"{emoji}  Log de examen · {dir_nombre}",
@@ -1293,16 +1066,15 @@ async def _enviar_log_resultado(
             f"**Candidato:** <@{uid}> (`{uid}`)\n"
             f"**Puntuación:** **{score}/{total}** · **{pct}%**\n"
             f"**Mínimo:** {_MINIMO}%\n"
-            f"**Estado mínimo:** "
+            f"**Estado:** "
             + (
-                "✅ Alcanzado — staff puede **Aprobar**"
+                "✅ Llegó al mínimo → puedes **Aprobar**"
                 if ok_min
-                else "❌ No alcanzado — staff debe **Rechazar** con motivo"
+                else "❌ No llegó al mínimo → **Rechazar** con motivo"
             )
         ),
-        color=color,
-    )
-    emb.set_footer(text=f"Sesión {ses.get('id', '')[:12]} · Hospital General")
+        color=0xF1C40F if ok_min else 0xE74C3C,
+    ).set_footer(text="Hospital General · Postulaciones")
 
     view = LogExamenView(
         session_id=str(ses.get("id") or ""),
@@ -1311,16 +1083,7 @@ async def _enviar_log_resultado(
         dir_nombre=dir_nombre,
     )
     try:
-        msg = await canal.send(embed=emb, view=view)
-        data = _load()
-        data.setdefault("logs", {})[str(ses.get("id"))] = {
-            "message_id": msg.id,
-            "channel_id": canal.id,
-            "user_id": uid,
-            "pct": pct,
-            "dir": dir_nombre,
-        }
-        _save(data)
+        await canal.send(embed=emb, view=view)
     except Exception as e:
         print(f"[examen_direccion] log: {e}")
 
@@ -1339,9 +1102,6 @@ class LogExamenView(ui.View):
         self.pct = pct
         self.dir_nombre = dir_nombre
 
-    def _es_staff(self, m: discord.Member) -> bool:
-        return _es_staff(m)
-
     @ui.button(
         label="Aprobar postulación",
         style=discord.ButtonStyle.success,
@@ -1353,9 +1113,9 @@ class LogExamenView(ui.View):
             return await inter.response.send_message(
                 "❌ Solo en servidor.", ephemeral=True
             )
-        if not self._es_staff(inter.user):
+        if not _es_staff(inter.user):
             return await inter.response.send_message(
-                "❌ Solo staff autorizado.", ephemeral=True
+                "❌ Solo staff.", ephemeral=True
             )
 
         data = _load()
@@ -1363,8 +1123,7 @@ class LogExamenView(ui.View):
         pct = int(ses.get("pct") or self.pct or 0)
         if pct < _MINIMO:
             return await inter.response.send_message(
-                f"❌ Puntuación **{pct}%** < mínimo **{_MINIMO}%**. "
-                f"Debes **Rechazar** con motivo; no se puede aprobar.",
+                f"❌ Tiene **{pct}%** (mínimo {_MINIMO}%). Debes **Rechazar** con motivo.",
                 ephemeral=True,
             )
 
@@ -1379,7 +1138,7 @@ class LogExamenView(ui.View):
                         description=(
                             f"Tu examen de **{dir_n}** fue **aprobado** "
                             f"por {inter.user.mention}.\n"
-                            f"Puntuación: **{pct}%** (mín. {_MINIMO}%)."
+                            f"Puntuación: **{pct}%**."
                         ),
                         color=0x2ECC71,
                     ).set_footer(text="Hospital General")
@@ -1404,10 +1163,12 @@ class LogExamenView(ui.View):
             return await inter.response.send_message(
                 "❌ Solo en servidor.", ephemeral=True
             )
-        if not self._es_staff(inter.user):
+        if not _es_staff(inter.user):
             return await inter.response.send_message(
-                "❌ Solo staff autorizado.", ephemeral=True
+                "❌ Solo staff.", ephemeral=True
             )
+
+        parent = self
 
         class MotivoModal(ui.Modal, title="Motivo del rechazo"):
             motivo = ui.TextInput(
@@ -1415,22 +1176,20 @@ class LogExamenView(ui.View):
                 style=discord.TextStyle.paragraph,
                 required=True,
                 max_length=500,
-                placeholder="Explica por qué se rechaza la postulación…",
+                placeholder="Explica el rechazo (obligatorio)…",
             )
-
-            def __init__(self, parent: "LogExamenView"):
-                super().__init__()
-                self.parent = parent
 
             async def on_submit(self, modal_inter: discord.Interaction):
                 data = _load()
-                ses = data.get("sesiones", {}).get(self.parent.session_id) or {}
-                uid = int(ses.get("user_id") or self.parent.user_id)
-                dir_n = ses.get("dir_nombre") or self.parent.dir_nombre
-                pct = int(ses.get("pct") or self.parent.pct or 0)
+                ses = data.get("sesiones", {}).get(parent.session_id) or {}
+                uid = int(ses.get("user_id") or parent.user_id)
+                dir_n = ses.get("dir_nombre") or parent.dir_nombre
+                pct = int(ses.get("pct") or parent.pct or 0)
                 motivo_txt = str(self.motivo.value).strip()
 
-                member = modal_inter.guild.get_member(uid) if modal_inter.guild else None
+                member = (
+                    modal_inter.guild.get_member(uid) if modal_inter.guild else None
+                )
                 if member:
                     try:
                         await member.send(
@@ -1442,7 +1201,7 @@ class LogExamenView(ui.View):
                                     f"**Motivo:** {motivo_txt}"
                                 ),
                                 color=0xE74C3C,
-                            ).set_footer(text="Hospital General · Prepara la normativa del área")
+                            ).set_footer(text="Hospital General")
                         )
                     except Exception:
                         pass
@@ -1461,7 +1220,7 @@ class LogExamenView(ui.View):
                 )
                 await modal_inter.response.edit_message(embed=emb, view=None)
 
-        await inter.response.send_modal(MotivoModal(self))
+        await inter.response.send_modal(MotivoModal())
 
 
 class DireccionSelect(ui.Select):
@@ -1472,7 +1231,7 @@ class DireccionSelect(ui.Select):
                 label=nombre,
                 value=key,
                 emoji=emoji,
-                description=f"Examen · {nombre}"[:100],
+                description=f"Examen RP · {nombre}"[:100],
             )
             for key, nombre, emoji, _ in _DIRECCIONES
         ]
@@ -1498,26 +1257,23 @@ class DireccionSelect(ui.Select):
         preguntas = _preguntas_para(key)
         if not preguntas:
             return await interaction.response.send_message(
-                "❌ No hay banco de preguntas para esta dirección.",
-                ephemeral=True,
+                "❌ Sin preguntas para esta dirección.", ephemeral=True
             )
-
         if not miembros:
             return await interaction.response.send_message(
-                f"⚠️ No encontré miembros con el rol de **{nombre}**.\n"
-                f"Verifica que el rol esté vinculado en el organigrama.",
+                f"⚠️ No hay miembros con el rol de **{nombre}**.\n"
+                f"Revisa el organigrama / keys de roles.",
                 ephemeral=True,
             )
 
         await interaction.response.defer(ephemeral=True)
-        enviados = 0
-        fallos = 0
         data = _load()
         data.setdefault("sesiones", {})
+        enviados = fallos = 0
 
         for m in miembros:
             sid = f"{m.id}_{key}_{int(time.time())}"
-            ses = {
+            data["sesiones"][sid] = {
                 "id": sid,
                 "user_id": m.id,
                 "dir_key": key,
@@ -1525,20 +1281,15 @@ class DireccionSelect(ui.Select):
                 "emoji": emoji,
                 "color": color,
                 "log_channel_id": self.log_channel.id,
-                "preguntas": [
-                    [p[0], p[1], p[2]] for p in preguntas
-                ],
+                "preguntas": [[p[0], p[1], p[2]] for p in preguntas],
                 "idx": 0,
                 "score": 0,
                 "terminado": False,
             }
-            data["sesiones"][sid] = ses
             try:
-                view = ComenzarView(sid)
-                # custom_id único no persistente: timeout 900 ok
                 await m.send(
                     embed=_embed_inicio(nombre, emoji, color, len(preguntas)),
-                    view=view,
+                    view=ComenzarView(sid),
                 )
                 enviados += 1
             except Exception:
@@ -1549,26 +1300,22 @@ class DireccionSelect(ui.Select):
         emb = discord.Embed(
             title=f"{emoji}  Examen enviado · {nombre}",
             description=(
-                f"**Canal de log:** {self.log_channel.mention}\n"
-                f"**Destinatarios (con rol):** {len(miembros)}\n"
-                f"**DM enviados:** {enviados}\n"
-                f"**Fallos (MD cerrado):** {fallos}\n"
-                f"**Preguntas:** {len(preguntas)} · **Mínimo:** {_MINIMO}%\n\n"
-                f"Cuando terminen, el log mostrará la puntuación y "
-                f"botones **Aprobar** / **Rechazar**."
+                f"**Log:** {self.log_channel.mention}\n"
+                f"**Con el rol:** {len(miembros)}\n"
+                f"**MD ok:** {enviados} · **Fallos:** {fallos}\n"
+                f"**Preguntas:** {len(preguntas)} · **Mínimo:** {_MINIMO}%"
             ),
             color=color,
-        )
-        emb.set_footer(text="Hospital General · Postulaciones a Direcciones")
+        ).set_footer(text="Hospital General · Exámenes de Dirección")
         await interaction.followup.send(embed=emb, ephemeral=True)
 
         try:
             await self.log_channel.send(
                 embed=discord.Embed(
-                    title=f"{emoji}  Ronda de examen iniciada · {nombre}",
+                    title=f"{emoji}  Ronda iniciada · {nombre}",
                     description=(
-                        f"Iniciada por {interaction.user.mention}\n"
-                        f"Destinatarios: {enviados}/{len(miembros)}"
+                        f"Por {interaction.user.mention}\n"
+                        f"Enviados: {enviados}/{len(miembros)}"
                     ),
                     color=color,
                 )
@@ -1588,7 +1335,6 @@ def registrar(bot: commands.Bot) -> None:
         bot.tree.remove_command("examen_direccion")
     except Exception:
         pass
-
     try:
         bot.add_view(LogExamenView())
     except Exception:
@@ -1596,14 +1342,11 @@ def registrar(bot: commands.Bot) -> None:
 
     @bot.tree.command(
         name="examen_direccion",
-        description="[Staff] Examen de postulación a Direcciones (log + aprobación)",
+        description="[Staff] Examen RP de postulación a Direcciones",
     )
-    @app_commands.describe(
-        canal_log="Canal donde se publicará el resultado y la aprobación",
-    )
+    @app_commands.describe(canal_log="Canal de log de resultados y aprobación")
     async def examen_direccion(
-        inter: discord.Interaction,
-        canal_log: discord.TextChannel,
+        inter: discord.Interaction, canal_log: discord.TextChannel
     ):
         if not inter.guild or not isinstance(inter.user, discord.Member):
             return await inter.response.send_message(
@@ -1617,21 +1360,18 @@ def registrar(bot: commands.Bot) -> None:
         emb = discord.Embed(
             title="🏛️  Exámenes de Dirección · Hospital General",
             description=(
-                "Selecciona la **dirección** en el menú.\n\n"
-                f"El bot detectará a quienes tengan el **rol** de esa dirección "
-                f"y les enviará el examen por **MD**.\n\n"
-                f"**Log de resultados:** {canal_log.mention}\n"
+                "Elige la **dirección** en el menú.\n\n"
+                "El bot busca a quienes tienen el **rol** de esa dirección "
+                "y les manda el examen por **MD**.\n\n"
+                f"**Log:** {canal_log.mention}\n"
                 f"**Mínimo para aprobar:** **{_MINIMO}%**\n\n"
-                "• Si alcanza el mínimo → staff puede **Aprobar**\n"
-                "• Si no → staff **Rechaza** con **motivo** (obligatorio)"
+                "• Si llega al mínimo → **Aprobar**\n"
+                "• Si no → **Rechazar** (motivo obligatorio)"
             ),
             color=0x1A5276,
-        )
-        emb.set_footer(text="Postulaciones institucionales · Evaluación formal")
+        ).set_footer(text="Roleplay · Postulaciones a Direcciones")
         await inter.response.send_message(
-            embed=emb,
-            view=DireccionMenuView(canal_log),
-            ephemeral=True,
+            embed=emb, view=DireccionMenuView(canal_log), ephemeral=True
         )
 
-    print("[examen_direccion] OK — /examen_direccion con log y aprobación")
+    print("[examen_direccion] OK — preguntas RP accesibles · mín 60%")
