@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Parche: cada examen de dirección usa exactamente 20 preguntas RP."""
+"""Parche: 20 preguntas RP + mínimo 70% para aprobar."""
 from __future__ import annotations
 
 
@@ -17,9 +17,7 @@ def registrar(bot) -> None:
         BANCO = {}
 
     ed._PREGUNTAS_POR_EXAMEN = 20  # type: ignore
-    if hasattr(ed, "_MINIMO"):
-        # mantener mínimo RP accesible
-        ed._MINIMO = max(int(getattr(ed, "_MINIMO", 60) or 60), 50)  # type: ignore
+    ed._MINIMO = 70  # type: ignore
 
     def _preguntas_para(key: str):
         import time
@@ -40,5 +38,4 @@ def registrar(bot) -> None:
         return rot[:n]
 
     ed._preguntas_para = _preguntas_para  # type: ignore
-    # si el módulo ya registró el comando, basta con el parche de funciones
-    print("[examen_20] OK — 20 preguntas por dirección")
+    print("[examen_20] OK — 20 preguntas · mínimo 70%")
