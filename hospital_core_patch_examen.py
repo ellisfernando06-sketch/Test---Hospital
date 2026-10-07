@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Carga examen_direccion + banco + modo respuestas escritas."""
+"""Carga examen completo: banco, escrito, felicitación."""
 from __future__ import annotations
 
 
@@ -13,6 +13,8 @@ def registrar(bot) -> None:
         "examen_direccion",
         "examen_direccion_20",
         "examen_direccion_escrito",
+        "examen_aprobacion_msg",
+        "examen_aprobacion_hook",
     ):
         try:
             if name in sys.modules:
