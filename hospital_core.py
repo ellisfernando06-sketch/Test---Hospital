@@ -77,6 +77,8 @@ _MODULOS = (
     "reglamento_menu_fix",
     "despidos",
     "inactividad",
+    "examen_direccion",
+    "hospital_core_patch_examen",
 )
 
 _QUITAR_DEL_NUCLEO = (
@@ -96,6 +98,7 @@ _CRITICOS_SLASH = (
     "reglamento_hospital", "publicar_reglamento_hospital",
     "agregar_reglamento", "publicar_reglamento", "registrar_firma", "panel_tickets",
     "panel_apelaciones", "estado_sancion", "configurar_log_apelaciones", "sancion",
+    "examen_direccion",
 )
 
 
@@ -188,6 +191,8 @@ def _asegurar_criticos(bot) -> None:
         "sanciones_apelacion_ui",
         "sanciones_comandos_hook",
         "hospital_core_patch_sancion_load",
+        "examen_direccion",
+        "hospital_core_patch_examen",
     ):
         _cargar_modulo(bot, m)
 
