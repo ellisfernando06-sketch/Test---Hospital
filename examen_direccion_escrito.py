@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Parche: el postulante responde cada pregunta con sus palabras (texto libre).
-Las respuestas se envían al canal de logs para que el staff evalúe y Apruebe/Rechace.
+Examen escrito: respuestas libres al MD → log para staff.
+Defer inmediato en todas las interacciones (evita "no respondió a tiempo").
 """
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import asyncio
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 import discord
 from discord import ui
@@ -21,7 +21,7 @@ except Exception:
     ed = None  # type: ignore
 
 _DATA = Path(__file__).resolve().parent / "examen_direccion_data.json"
-_TIMEOUT_RESPUESTA = 600  # 10 min por pregunta
+_TIMEOUT_RESPUESTA = 600
 
 
 def _load() -> dict:
@@ -40,12 +40,6 @@ def _save(data: dict) -> None:
         print(f"[examen_escrito] save: {e}")
 
 
-def _minimo() -> int:
-    if ed is not None:
-        return int(getattr(ed, "_MINIMO", 70) or 70)
-    return 70
-
-
 def _es_staff(m: discord.Member) -> bool:
     if ed is not None and hasattr(ed, "_es_staff"):
         try:
@@ -62,18 +56,36 @@ class ComenzarEscritoView(ui.View):
         super().__init__(timeout=900)
         self.session_id = session_id
 
-    @ui.button(label="Comenzar examen escrito", style=discord.ButtonStyle.primary, emoji="✍️")
+    @ui.button(
+        label="Comenzar examen escrito",
+        style=discord.ButtonStyle.primary,
+        emoji="✍️",
+    )
     async def comenzar(self, inter: discord.Interaction, button: ui.Button):
+        # 1) Responder YA (evita timeout de 3s)
+        try:
+            await inter.response.defer()
+        except discord.InteractionResponded:
+            pass
+        except Exception:
+            try:
+                await inter.response.send_message("⏳ Iniciando…", ephemeral=True)
+            except Exception:
+                return
+
         data = _load()
         ses = data.get("sesiones", {}).get(self.session_id)
         if not ses:
-            return await inter.response.send_message("❌ Sesión no encontrada.", ephemeral=True)
+            return await inter.followup.send("❌ Sesión no encontrada.", ephemeral=True)
         if int(ses.get("user_id") or 0) != inter.user.id:
-            return await inter.response.send_message("❌ Este examen no es tuyo.", ephemeral=True)
+            return await inter.followup.send("❌ Este examen no es tuyo.", ephemeral=True)
         if ses.get("terminado"):
-            return await inter.response.send_message("❌ Ya finalizaste este examen.", ephemeral=True)
+            return await inter.followup.send("❌ Ya finalizaste este examen.", ephemeral=True)
         if ses.get("en_curso"):
-            return await inter.response.send_message("⏳ Ya estás respondiendo. Escribe tu respuesta en este MD.", ephemeral=True)
+            return await inter.followup.send(
+                "⏳ Ya estás en el examen. Escribe tu respuesta en este MD.",
+                ephemeral=True,
+            )
 
         ses["en_curso"] = True
         ses["respuestas"] = []
@@ -81,31 +93,40 @@ class ComenzarEscritoView(ui.View):
         data["sesiones"][self.session_id] = ses
         _save(data)
 
-        await inter.response.edit_message(
-            embed=discord.Embed(
-                title="✍️  Examen escrito iniciado",
-                description=(
-                    f"Responderás **{len(ses.get('preguntas') or [])}** preguntas con **tus propias palabras**.\n\n"
-                    f"• Escribe la respuesta **en este chat (MD)**\n"
-                    f"• Tiempo por pregunta: **{_TIMEOUT_RESPUESTA // 60} min**\n"
-                    f"• Todo se enviará al **canal de logs** para evaluación del staff\n\n"
-                    f"Prepárate…"
-                ),
-                color=int(ses.get("color") or 0x1A5276),
+        emb = discord.Embed(
+            title="✍️  Examen escrito iniciado",
+            description=(
+                f"Responderás **{len(ses.get('preguntas') or [])}** preguntas "
+                f"**con tus propias palabras**.\n\n"
+                f"• Escribe cada respuesta **en este chat (MD)**\n"
+                f"• Tiempo por pregunta: **{_TIMEOUT_RESPUESTA // 60} min**\n"
+                f"• Todo se envía al **log** para el staff\n\n"
+                f"La primera pregunta llega en un momento…"
             ),
-            view=None,
+            color=int(ses.get("color") or 0x1A5276),
         )
-        asyncio.create_task(_correr_examen_escrito(inter.client, inter.user, self.session_id))
+        try:
+            await inter.edit_original_response(embed=emb, view=None)
+        except Exception:
+            try:
+                await inter.followup.send(embed=emb)
+            except Exception:
+                pass
+
+        asyncio.create_task(
+            _correr_examen_escrito(inter.client, inter.user, self.session_id)
+        )
 
 
-async def _correr_examen_escrito(bot: commands.Bot, user: discord.User, session_id: str):
+async def _correr_examen_escrito(
+    bot: commands.Bot, user: discord.abc.User, session_id: str
+):
     data = _load()
     ses = data.get("sesiones", {}).get(session_id)
     if not ses:
         return
 
     preguntas = ses.get("preguntas") or []
-    # cada pregunta puede ser [texto, opciones, correcta] o solo texto
     textos: List[str] = []
     for p in preguntas:
         if isinstance(p, (list, tuple)) and p:
@@ -120,10 +141,13 @@ async def _correr_examen_escrito(bot: commands.Bot, user: discord.User, session_
     respuestas: List[Dict[str, str]] = list(ses.get("respuestas") or [])
 
     def check(m: discord.Message) -> bool:
-        return (
-            m.author.id == user.id
-            and isinstance(m.channel, discord.DMChannel)
-            and bool((m.content or "").strip())
+        if m.author.id != user.id:
+            return False
+        if not (m.content or "").strip():
+            return False
+        # DM con el bot
+        return isinstance(m.channel, discord.DMChannel) or (
+            getattr(m.channel, "type", None) == discord.ChannelType.private
         )
 
     for idx, pregunta in enumerate(textos):
@@ -131,15 +155,16 @@ async def _correr_examen_escrito(bot: commands.Bot, user: discord.User, session_
             title=f"{emoji}  {dir_nombre} · Pregunta {idx + 1}/{total}",
             description=(
                 f"**{pregunta}**\n\n"
-                f"✍️ Escribe tu respuesta **con tus palabras** en este chat.\n"
-                f"_(No elijas letras; redacta tu criterio de control.)_"
+                f"✍️ Escribe tu respuesta **con tus palabras** aquí en el MD.\n"
+                f"_(Redacta tu criterio; no uses solo una letra.)_"
             ),
             color=color,
         )
         emb.set_footer(text=f"Tiempo: {_TIMEOUT_RESPUESTA // 60} min · Hospital General")
         try:
             await user.send(embed=emb)
-        except Exception:
+        except Exception as e:
+            print(f"[examen_escrito] DM pregunta: {e}")
             break
 
         try:
@@ -151,7 +176,7 @@ async def _correr_examen_escrito(bot: commands.Bot, user: discord.User, session_
                 await user.send(
                     embed=discord.Embed(
                         title="⏰ Tiempo agotado",
-                        description="Se registró como sin respuesta y se continúa.",
+                        description="Se registró sin respuesta y se continúa.",
                         color=0xE67E22,
                     )
                 )
@@ -168,7 +193,7 @@ async def _correr_examen_escrito(bot: commands.Bot, user: discord.User, session_
         try:
             await user.send(
                 embed=discord.Embed(
-                    description=f"✅ Respuesta {idx + 1}/{total} registrada.",
+                    description=f"✅ Respuesta **{idx + 1}/{total}** registrada.",
                     color=0x2ECC71,
                 )
             )
@@ -186,12 +211,11 @@ async def _correr_examen_escrito(bot: commands.Bot, user: discord.User, session_
             embed=discord.Embed(
                 title=f"{emoji}  Examen escrito enviado",
                 description=(
-                    f"Completaste **{len(respuestas)}/{total}** respuestas de **{dir_nombre}**.\n\n"
-                    f"El staff revisará tus respuestas en el **canal de logs** "
-                    f"y te notificará si tu postulación es **aprobada** o **rechazada**."
+                    f"Completaste **{len(respuestas)}/{total}** de **{dir_nombre}**.\n\n"
+                    f"El staff revisará tus respuestas en el **log** y te avisará."
                 ),
                 color=0x1A5276,
-            ).set_footer(text="Hospital General · Evaluación por staff")
+            ).set_footer(text="Hospital General")
         )
     except Exception:
         pass
@@ -207,6 +231,11 @@ async def _enviar_log_escrito(
         return
     canal = bot.get_channel(canal_id)
     if not isinstance(canal, discord.TextChannel):
+        try:
+            canal = await bot.fetch_channel(canal_id)
+        except Exception:
+            return
+    if not isinstance(canal, discord.TextChannel):
         return
 
     uid = int(ses.get("user_id") or 0)
@@ -219,8 +248,7 @@ async def _enviar_log_escrito(
         description=(
             f"**Candidato:** <@{uid}> (`{uid}`)\n"
             f"**Respuestas:** {len(respuestas)}\n"
-            f"**Evaluación:** el staff lee las respuestas y **Aprueba** o **Rechaza**.\n"
-            f"_(No hay nota automática: el postulante respondió con sus palabras.)_"
+            f"El staff lee y **Aprueba** o **Rechaza**."
         ),
         color=0xF1C40F,
     )
@@ -233,7 +261,6 @@ async def _enviar_log_escrito(
         print(f"[examen_escrito] log head: {e}")
         return
 
-    # Enviar preguntas/respuestas en bloques (límite 4096 embed / 2000 mensaje)
     bloque = ""
     num = 0
     for i, item in enumerate(respuestas, start=1):
@@ -242,15 +269,15 @@ async def _enviar_log_escrito(
         pieza = f"**{i}. {q}**\n> {r}\n\n"
         if len(bloque) + len(pieza) > 3800:
             num += 1
-            emb = discord.Embed(
-                title=f"Respuestas {dir_nombre} (parte {num})",
-                description=bloque,
-                color=0x5D6D7E,
-            )
             try:
-                await canal.send(embed=emb)
+                await canal.send(
+                    embed=discord.Embed(
+                        title=f"Respuestas · parte {num}",
+                        description=bloque,
+                        color=0x5D6D7E,
+                    )
+                )
             except Exception:
-                # fallback texto plano troceado
                 for j in range(0, len(bloque), 1900):
                     try:
                         await canal.send(bloque[j : j + 1900])
@@ -262,13 +289,14 @@ async def _enviar_log_escrito(
 
     if bloque.strip():
         num += 1
-        emb = discord.Embed(
-            title=f"Respuestas {dir_nombre} (parte {num})",
-            description=bloque,
-            color=0x5D6D7E,
-        )
         try:
-            await canal.send(embed=emb)
+            await canal.send(
+                embed=discord.Embed(
+                    title=f"Respuestas · parte {num}",
+                    description=bloque,
+                    color=0x5D6D7E,
+                )
+            )
         except Exception:
             for j in range(0, len(bloque), 1900):
                 try:
@@ -291,10 +319,14 @@ class LogEscritoView(ui.View):
         custom_id="examen_escrito:aprobar",
     )
     async def aprobar(self, inter: discord.Interaction, button: ui.Button):
+        try:
+            await inter.response.defer()
+        except Exception:
+            pass
         if not inter.guild or not isinstance(inter.user, discord.Member):
-            return await inter.response.send_message("❌ Solo en servidor.", ephemeral=True)
+            return await inter.followup.send("❌ Solo en servidor.", ephemeral=True)
         if not _es_staff(inter.user):
-            return await inter.response.send_message("❌ Solo staff.", ephemeral=True)
+            return await inter.followup.send("❌ Solo staff.", ephemeral=True)
 
         data = _load()
         ses = data.get("sesiones", {}).get(self.session_id) or {}
@@ -308,19 +340,25 @@ class LogEscritoView(ui.View):
                         title="✅ Postulación aprobada",
                         description=(
                             f"Tu examen escrito de **{dir_n}** fue **aprobado** "
-                            f"por {inter.user.mention} tras revisar tus respuestas."
+                            f"por {inter.user.mention}."
                         ),
                         color=0x2ECC71,
-                    ).set_footer(text="Hospital General")
+                    )
                 )
             except Exception:
                 pass
 
-        emb = inter.message.embeds[0].copy() if inter.message.embeds else discord.Embed()
+        emb = inter.message.embeds[0].copy() if inter.message and inter.message.embeds else discord.Embed()
         emb.color = 0x2ECC71
         emb.title = f"✅ Aprobado · {dir_n}"
         emb.description = (emb.description or "") + f"\n\n**Aprobado por** {inter.user.mention}"
-        await inter.response.edit_message(embed=emb, view=None)
+        try:
+            await inter.edit_original_response(embed=emb, view=None)
+        except Exception:
+            try:
+                await inter.message.edit(embed=emb, view=None)
+            except Exception:
+                pass
 
     @ui.button(
         label="Rechazar",
@@ -342,27 +380,32 @@ class LogEscritoView(ui.View):
                 style=discord.TextStyle.paragraph,
                 required=True,
                 max_length=500,
-                placeholder="Explica el rechazo según las respuestas…",
             )
 
             async def on_submit(self, modal_inter: discord.Interaction):
+                try:
+                    await modal_inter.response.defer()
+                except Exception:
+                    pass
                 data = _load()
                 ses = data.get("sesiones", {}).get(parent.session_id) or {}
                 uid = int(ses.get("user_id") or parent.user_id)
                 dir_n = ses.get("dir_nombre") or parent.dir_nombre
                 motivo_txt = str(self.motivo.value).strip()
-                member = modal_inter.guild.get_member(uid) if modal_inter.guild else None
+                member = (
+                    modal_inter.guild.get_member(uid) if modal_inter.guild else None
+                )
                 if member:
                     try:
                         await member.send(
                             embed=discord.Embed(
                                 title="❌ Postulación rechazada",
                                 description=(
-                                    f"Tu examen escrito de **{dir_n}** fue **rechazado**.\n\n"
+                                    f"Examen escrito de **{dir_n}** rechazado.\n\n"
                                     f"**Motivo:** {motivo_txt}"
                                 ),
                                 color=0xE74C3C,
-                            ).set_footer(text="Hospital General")
+                            )
                         )
                     except Exception:
                         pass
@@ -378,53 +421,68 @@ class LogEscritoView(ui.View):
                     + f"\n\n**Rechazado por** {modal_inter.user.mention}\n"
                     f"**Motivo:** {motivo_txt}"
                 )
-                await modal_inter.response.edit_message(embed=emb, view=None)
+                try:
+                    await modal_inter.edit_original_response(embed=emb, view=None)
+                except Exception:
+                    try:
+                        if modal_inter.message:
+                            await modal_inter.message.edit(embed=emb, view=None)
+                    except Exception:
+                        pass
 
         await inter.response.send_modal(MotivoModal())
 
 
-def _parchear_envio():
-    """Reemplaza ComenzarView y el flujo de envío para usar examen escrito."""
+def _parchear_envio() -> None:
     if ed is None:
         return
-
-    # Forzar mínimo 70 y 20 preguntas si el parche 20 existe
     try:
         ed._MINIMO = 70  # type: ignore
         ed._PREGUNTAS_POR_EXAMEN = 20  # type: ignore
     except Exception:
         pass
 
-    orig_select_cb = None
+    if not hasattr(ed, "DireccionSelect"):
+        return
 
-    # Parchear DireccionSelect.callback para usar ComenzarEscritoView
-    if hasattr(ed, "DireccionSelect"):
-        SelectCls = ed.DireccionSelect
+    SelectCls = ed.DireccionSelect
 
-        async def callback(self, interaction: discord.Interaction):  # type: ignore
+    async def callback(self, interaction: discord.Interaction):  # type: ignore
+        # DEFER INMEDIATO (antes de buscar roles / preguntas)
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.InteractionResponded:
+            pass
+        except Exception as e:
+            print(f"[examen_escrito] defer select: {e}")
+            return
+
+        try:
             key = self.values[0]
             meta = next((d for d in ed._DIRECCIONES if d[0] == key), None)
             if not meta:
-                return await interaction.response.send_message(
+                return await interaction.followup.send(
                     "❌ Dirección inválida.", ephemeral=True
                 )
             _, nombre, emoji, color = meta
             guild = interaction.guild
-            assert guild
+            if not guild:
+                return await interaction.followup.send(
+                    "❌ Solo en servidor.", ephemeral=True
+                )
 
             miembros = ed._miembros_con_rol(guild, key)
             preguntas = ed._preguntas_para(key)
             if not preguntas:
-                return await interaction.response.send_message(
+                return await interaction.followup.send(
                     "❌ Sin preguntas para esta dirección.", ephemeral=True
                 )
             if not miembros:
-                return await interaction.response.send_message(
+                return await interaction.followup.send(
                     f"⚠️ No hay miembros con el rol de **{nombre}**.",
                     ephemeral=True,
                 )
 
-            await interaction.response.defer(ephemeral=True)
             data = _load()
             data.setdefault("sesiones", {})
             enviados = fallos = 0
@@ -440,11 +498,16 @@ def _parchear_envio():
                     "color": color,
                     "log_channel_id": self.log_channel.id,
                     "preguntas": [
-                        [p[0], p[1], p[2]] if isinstance(p, (list, tuple)) and len(p) >= 3 else [str(p[0] if isinstance(p, (list, tuple)) else p), [], 0]
+                        [
+                            p[0],
+                            p[1] if len(p) > 1 else [],
+                            p[2] if len(p) > 2 else 0,
+                        ]
+                        if isinstance(p, (list, tuple))
+                        else [str(p), [], 0]
                         for p in preguntas
                     ],
                     "idx": 0,
-                    "score": 0,
                     "respuestas": [],
                     "terminado": False,
                     "en_curso": False,
@@ -454,14 +517,14 @@ def _parchear_envio():
                     emb = discord.Embed(
                         title=f"{emoji}  Examen escrito · {nombre}",
                         description=(
-                            f"Evaluación de **postulación** (respuestas con tus palabras).\n\n"
-                            f"• **{len(preguntas)}** preguntas de control directivo\n"
-                            f"• Respondes **escribiendo** en el MD del bot\n"
-                            f"• El staff revisa tus textos en el **log** y decide\n\n"
-                            f"Pulsa **Comenzar examen escrito** cuando estés listo."
+                            f"Postulación con **respuestas escritas**.\n\n"
+                            f"• **{len(preguntas)}** preguntas\n"
+                            f"• Respondes **en el MD** del bot\n"
+                            f"• El staff revisa en el **log**\n\n"
+                            f"Pulsa **Comenzar examen escrito**."
                         ),
                         color=color,
-                    ).set_footer(text="Hospital General · Examen escrito")
+                    ).set_footer(text="Hospital General")
                     await m.send(embed=emb, view=ComenzarEscritoView(sid))
                     enviados += 1
                 except Exception:
@@ -470,12 +533,11 @@ def _parchear_envio():
             _save(data)
             await interaction.followup.send(
                 embed=discord.Embed(
-                    title=f"{emoji}  Examen escrito enviado · {nombre}",
+                    title=f"{emoji}  Examen enviado · {nombre}",
                     description=(
                         f"**Log:** {self.log_channel.mention}\n"
-                        f"**Con el rol:** {len(miembros)}\n"
-                        f"**MD ok:** {enviados} · **Fallos:** {fallos}\n"
-                        f"**Modo:** respuestas **escritas** (evaluación por staff)"
+                        f"**MD ok:** {enviados}/{len(miembros)} · Fallos: {fallos}\n"
+                        f"**Modo:** texto libre"
                     ),
                     color=color,
                 ),
@@ -484,18 +546,24 @@ def _parchear_envio():
             try:
                 await self.log_channel.send(
                     embed=discord.Embed(
-                        title=f"{emoji}  Ronda escrita iniciada · {nombre}",
+                        title=f"{emoji}  Ronda escrita · {nombre}",
                         description=(
                             f"Por {interaction.user.mention}\n"
-                            f"Enviados: {enviados}/{len(miembros)} · Modo texto libre"
+                            f"Enviados: {enviados}/{len(miembros)}"
                         ),
                         color=color,
                     )
                 )
             except Exception:
                 pass
+        except Exception as e:
+            print(f"[examen_escrito] select: {e}")
+            try:
+                await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
+            except Exception:
+                pass
 
-        SelectCls.callback = callback  # type: ignore
+    SelectCls.callback = callback  # type: ignore
 
 
 def registrar(bot: commands.Bot) -> None:
@@ -504,4 +572,13 @@ def registrar(bot: commands.Bot) -> None:
     except Exception:
         pass
     _parchear_envio()
-    print("[examen_escrito] OK — respuestas libres al log")
+
+    # También parchear el slash por si responde lento
+    if ed is not None:
+        try:
+            # asegurar que el comando haga defer si tarda — el original ya responde embeds rápido
+            pass
+        except Exception:
+            pass
+
+    print("[examen_escrito] OK — defer inmediato + respuestas libres")
