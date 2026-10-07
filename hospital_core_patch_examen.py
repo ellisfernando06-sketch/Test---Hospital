@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Carga examen_direccion + banco 20 preguntas RP."""
+"""Carga examen_direccion + banco + modo respuestas escritas."""
 from __future__ import annotations
 
 
@@ -7,9 +7,12 @@ def registrar(bot) -> None:
     import sys
 
     for name in (
+        "examen_preguntas_a",
+        "examen_preguntas_b",
         "examen_direccion_preguntas",
         "examen_direccion",
         "examen_direccion_20",
+        "examen_direccion_escrito",
     ):
         try:
             if name in sys.modules:
@@ -22,6 +25,6 @@ def registrar(bot) -> None:
                 mod.registrar(bot)
                 print(f"[examen_load] ✓ {name}")
             else:
-                print(f"[examen_load] · {name} (datos)")
+                print(f"[examen_load] · {name}")
         except Exception as e:
             print(f"[examen_load] ✗ {name}: {e}")
