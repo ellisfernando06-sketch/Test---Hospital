@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Carga examen + restricción Owner/Co-Owner/Admin en jefe."""
+"""Carga examen + permisos + nombres autoridades."""
 from __future__ import annotations
 
 
@@ -7,6 +7,7 @@ def registrar(bot) -> None:
     import sys
 
     for name in (
+        "roles_nombres_autoridades",
         "examen_preguntas_a",
         "examen_preguntas_b",
         "examen_direccion_preguntas",
