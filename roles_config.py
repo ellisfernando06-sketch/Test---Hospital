@@ -4,8 +4,8 @@ from __future__ import annotations
 from typing import Dict, List, Tuple
 
 KEYS_NOMBRES: Dict[str, Tuple[str, str]] = {
-    "FUNDADOR_OWNER": ("👑 Fundador y Owner", "#E74C3C"),
-    "CO_OWNER": ("🤝 Co-Owner", "#C0392B"),
+    "FUNDADOR_OWNER": ("👑 Fundador del Hospital", "#E74C3C"),
+    "CO_OWNER": ("🤝 Gerente de Fundación", "#C0392B"),
     "ADMIN_JEFE": ("🛡️ Admin en Jefe", "#9B59B6"),
     "ADMIN": ("🛡️ Admin", "#8E44AD"),
     "ADMIN_PRUEBA": ("🛡️ Admin en Prueba", "#7D3C98"),
