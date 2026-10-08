@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Carga examen + permisos + nombres autoridades."""
+"""Carga examen + roles autoridades + paneles de mando."""
 from __future__ import annotations
 
 
@@ -8,6 +8,9 @@ def registrar(bot) -> None:
 
     for name in (
         "roles_nombres_autoridades",
+        "roles_cofundadores",
+        "mando_store",
+        "paneles_mando",
         "examen_preguntas_a",
         "examen_preguntas_b",
         "examen_direccion_preguntas",
