@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Carga segura del sistema de paneles de autoridades."""
+"""Carga paneles autoridades + canales con diseño."""
 from __future__ import annotations
 
 
@@ -11,6 +11,7 @@ def registrar(bot) -> None:
         "paneles_store",
         "paneles_permisos_auth",
         "roles_cofundadores",
+        "paneles_canales_setup",
         "paneles_autoridades_ui",
         "paneles_autoridades_loader",
     ):
