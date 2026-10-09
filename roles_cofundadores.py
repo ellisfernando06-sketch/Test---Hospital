@@ -1,7 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Roles de autoridades del Hospital General (detectar / renombrar / crear).
-Keys nuevas; no borra keys antiguas (CO_OWNER sigue existiendo como alias).
+Autoridades:
+  · Fundador del Hospital
+  · Co-Fundador · Gobernanza
+  · Co-Fundador · Interinstitucional
+  · Co-Fundador · Calidad
+
+Elimina / no usa el rol «Gerente de Fundación» (CO_OWNER legado).
 """
 from __future__ import annotations
 
@@ -10,16 +15,23 @@ from typing import Dict, List, Tuple
 import discord
 from discord.ext import commands
 
-# key → (nombre Discord, color hex)
 ROLES_AUTORIDAD: Dict[str, Tuple[str, str]] = {
-    "FUNDADOR_OWNER": ("👑 Fundador del Hospital", "#9B59B6"),  # morado mando
-    "COFUNDADOR_GOBERNANZA": ("🤝 Co-Fundador · Gobernanza", "#3498DB"),  # azul
-    "COFUNDADOR_INTERINSTITUCIONAL": ("🌐 Co-Fundador · Interinstitucional", "#1ABC9C"),  # verde azulado
-    "COFUNDADOR_CALIDAD": ("🏅 Co-Fundador · Calidad", "#E67E22"),  # coral/naranja
+    "FUNDADOR_OWNER": ("👑 Fundador del Hospital", "#9B59B6"),
+    "COFUNDADOR_GOBERNANZA": ("🤝 Co-Fundador · Gobernanza", "#3498DB"),
+    "COFUNDADOR_INTERINSTITUCIONAL": ("🌐 Co-Fundador · Interinstitucional", "#1ABC9C"),
+    "COFUNDADOR_CALIDAD": ("🏅 Co-Fundador · Calidad", "#E67E22"),
 }
 
-# Alias legados: Gerente de Fundación / Co-Owner → se trata como Gobernanza si no hay key nueva
-LEGACY_CO_OWNER = "CO_OWNER"
+# Nombres a eliminar del servidor si existen
+ROLES_ELIMINAR_NOMBRES = (
+    "gerente de fundación",
+    "gerente de fundacion",
+    "🤝 gerente de fundación",
+    "🤝 gerente de fundacion",
+    "co-owner",
+    "co owner",
+    "🤝 co-owner",
+)
 
 _NOMBRES_VIEJOS: Dict[str, List[str]] = {
     "FUNDADOR_OWNER": [
@@ -30,14 +42,9 @@ _NOMBRES_VIEJOS: Dict[str, List[str]] = {
         "gerente developer",
     ],
     "COFUNDADOR_GOBERNANZA": [
-        "co-owner",
-        "co owner",
-        "gerente de fundación",
-        "gerente de fundacion",
-        "🤝 co-owner",
-        "🤝 gerente",
         "co-fundador · gobernanza",
         "cofundador gobernanza",
+        "gobernanza",
     ],
     "COFUNDADOR_INTERINSTITUCIONAL": [
         "co-fundador · interinstitucional",
@@ -66,36 +73,57 @@ def _parche_roles_config() -> None:
         import roles_config as rc
 
         kn = getattr(rc, "KEYS_NOMBRES", None)
-        if not isinstance(kn, dict):
-            return
-        for key, (nombre, color) in ROLES_AUTORIDAD.items():
-            kn[key] = (nombre, color)
-        # legado: Co-Owner visible como Gerente / alias gobernanza
-        if "CO_OWNER" in kn:
-            kn["CO_OWNER"] = ("🤝 Gerente de Fundación", "#3498DB")
-        # jerarquía: insertar co-fundadores tras fundador
+        if isinstance(kn, dict):
+            for key, (nombre, color) in ROLES_AUTORIDAD.items():
+                kn[key] = (nombre, color)
+            # Quitar nombre "Gerente de Fundación" del legado
+            if "CO_OWNER" in kn:
+                # Dejar key técnica pero sin nombre de gerente; redirigir a Gobernanza
+                kn["CO_OWNER"] = kn.get(
+                    "COFUNDADOR_GOBERNANZA",
+                    ("🤝 Co-Fundador · Gobernanza", "#3498DB"),
+                )
+
         jer = getattr(rc, "JERARQUIA_KEYS", None)
         if isinstance(jer, list):
-            for k in (
-                "COFUNDADOR_GOBERNANZA",
-                "COFUNDADOR_INTERINSTITUCIONAL",
-                "COFUNDADOR_CALIDAD",
-            ):
+            for k in ROLES_AUTORIDAD:
                 if k not in jer:
                     try:
-                        idx = jer.index("CO_OWNER") + 1 if "CO_OWNER" in jer else 1
+                        idx = jer.index("FUNDADOR_OWNER") + 1
                     except Exception:
                         idx = 1
                     jer.insert(idx, k)
+            # No es necesario borrar CO_OWNER de jerarquía (compat), pero no se usa en UI
+
         sec = getattr(rc, "SECCIONES", None)
         if isinstance(sec, dict) and "autoridades" in sec:
-            keys = list(sec["autoridades"].get("keys") or [])
-            for k in ROLES_AUTORIDAD:
-                if k not in keys:
-                    keys.append(k)
+            keys = [
+                "FUNDADOR_OWNER",
+                "COFUNDADOR_GOBERNANZA",
+                "COFUNDADOR_INTERINSTITUCIONAL",
+                "COFUNDADOR_CALIDAD",
+            ]
             sec["autoridades"]["keys"] = keys
+            sec["autoridades"]["nombre"] = "Autoridades"
     except Exception as e:
         print(f"[roles_cofund] config: {e}")
+
+
+async def _eliminar_gerente(guild: discord.Guild) -> None:
+    """Borra roles con nombre Gerente de Fundación / Co-Owner legado."""
+    for role in list(guild.roles):
+        if role.is_default() or role.managed:
+            continue
+        n = (role.name or "").lower().strip()
+        if any(x in n for x in ROLES_ELIMINAR_NOMBRES):
+            # No borrar si ya es un Co-Fundador nuevo
+            if "co-fundador" in n or "cofundador" in n:
+                continue
+            try:
+                await role.delete(reason="Organigrama: eliminar Gerente de Fundación / Co-Owner")
+                print(f"[roles_cofund] eliminado rol legado: {role.name}")
+            except Exception as e:
+                print(f"[roles_cofund] no se pudo eliminar {role.name}: {e}")
 
 
 async def _asegurar_roles(guild: discord.Guild) -> None:
@@ -103,6 +131,8 @@ async def _asegurar_roles(guild: discord.Guild) -> None:
         import roles_store
     except Exception:
         roles_store = None
+
+    await _eliminar_gerente(guild)
 
     existing = {r.name.lower().strip(): r for r in guild.roles}
 
@@ -129,39 +159,29 @@ async def _asegurar_roles(guild: discord.Guild) -> None:
             else:
                 for viejo in _NOMBRES_VIEJOS.get(key, []):
                     for rn, r in existing.items():
-                        if viejo in rn:
+                        if viejo in rn and "gerente" not in rn:
                             role = r
                             break
                     if role:
                         break
-
-        # CO_OWNER legado → enlazar a Gobernanza si no hay rol propio aún
-        if role is None and key == "COFUNDADOR_GOBERNANZA" and roles_store:
-            try:
-                rid2 = roles_store.get_role_id(guild.id, "CO_OWNER")
-                if rid2:
-                    role = guild.get_role(int(rid2))
-            except Exception:
-                pass
 
         if role is None:
             try:
                 role = await guild.create_role(
                     name=nombre,
                     color=_hex_color(color),
-                    reason="Organigrama: Co-Fundadores / Fundador",
+                    reason="Organigrama autoridades Hospital General",
                     hoist=False,
                     mentionable=False,
                 )
-                print(f"[roles_cofund] creado {nombre} en {guild.name}")
+                print(f"[roles_cofund] creado {nombre}")
             except Exception as e:
                 print(f"[roles_cofund] create {key}: {e}")
                 continue
         else:
             if role.name != nombre and not role.managed and not role.is_default():
                 try:
-                    await role.edit(name=nombre, reason="Renombre organigrama autoridades")
-                    print(f"[roles_cofund] renombrado → {nombre}")
+                    await role.edit(name=nombre, reason="Renombre autoridades")
                 except Exception as e:
                     print(f"[roles_cofund] rename {key}: {e}")
 
@@ -173,11 +193,7 @@ async def _asegurar_roles(guild: discord.Guild) -> None:
                         f(guild.id, key, role.id)
                         break
                 except Exception:
-                    try:
-                        f(guild.id, key, role.id)  # type: ignore
-                        break
-                    except Exception:
-                        pass
+                    pass
 
 
 def member_es_fundador(m: discord.Member) -> bool:
@@ -186,31 +202,28 @@ def member_es_fundador(m: discord.Member) -> bool:
     try:
         import permisos
 
-        return bool(
-            permisos.member_tiene_alguna_key(m, "FUNDADOR_OWNER", "OWNER")
-        )
+        return bool(permisos.member_tiene_alguna_key(m, "FUNDADOR_OWNER", "OWNER"))
     except Exception:
         return False
 
 
 def member_es_cofundador(m: discord.Member, zona: str | None = None) -> bool:
-    keys = {
-        "gobernanza": ("COFUNDADOR_GOBERNANZA", "CO_OWNER"),
+    keys_map = {
+        "gobernanza": ("COFUNDADOR_GOBERNANZA",),
         "interinstitucional": ("COFUNDADOR_INTERINSTITUCIONAL",),
         "calidad": ("COFUNDADOR_CALIDAD",),
     }
     try:
         import permisos
 
-        if zona and zona in keys:
-            return bool(permisos.member_tiene_alguna_key(m, *keys[zona]))
+        if zona and zona in keys_map:
+            return bool(permisos.member_tiene_alguna_key(m, *keys_map[zona]))
         return bool(
             permisos.member_tiene_alguna_key(
                 m,
                 "COFUNDADOR_GOBERNANZA",
                 "COFUNDADOR_INTERINSTITUCIONAL",
                 "COFUNDADOR_CALIDAD",
-                "CO_OWNER",
             )
         )
     except Exception:
@@ -231,4 +244,4 @@ def registrar(bot: commands.Bot) -> None:
             except Exception as e:
                 print(f"[roles_cofund] guild: {e}")
 
-    print("[roles_cofund] OK — Fundador + 3 Co-Fundadores")
+    print("[roles_cofund] OK — sin Gerente de Fundación; 3 Co-Fundadores")
