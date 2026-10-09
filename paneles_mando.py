@@ -1,19 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-Paneles de autoridad del Hospital General.
-- Fundador: Mando General (morado)
-- Co-Fundador Gobernanza: Orden y Legitimidad (azul)
-- Co-Fundador Interinstitucional: Puentes y Alianzas (verde)
-- Co-Fundador Calidad: Excelencia y Seguridad (coral)
+Paneles de autoridades — Hospital General
 
-/enviar_panel_mando — solo Fundador
-No modifica comandos existentes; módulo aditivo.
+Fundador · Mando General
+Co-Fundador Gobernanza · Orden y Legitimidad
+Co-Fundador Interinstitucional · Puentes y Alianzas
+Co-Fundador Calidad · Excelencia y Seguridad
+
+UX: solo menús desplegables → el bot procesa interno → un solo embed de resultado.
 """
 from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
-from typing import Callable, List, Optional, Sequence
+from typing import Dict, List, Optional, Tuple
 
 import discord
 from discord import app_commands, ui
@@ -22,10 +22,7 @@ from discord.ext import commands
 import mando_store as store
 
 try:
-    from roles_cofundadores import (
-        member_es_cofundador,
-        member_es_fundador,
-    )
+    from roles_cofundadores import member_es_cofundador, member_es_fundador
 except Exception:
 
     def member_es_fundador(m: discord.Member) -> bool:
@@ -35,11 +32,10 @@ except Exception:
         return False
 
 
-# ── Colores oficiales ──────────────────────────────────────────
-C_FUNDADOR = 0x9B59B6
-C_GOB = 0x3498DB
-C_INT = 0x1ABC9C
-C_CAL = 0xE67E22
+C_F = 0x9B59B6
+C_G = 0x3498DB
+C_I = 0x1ABC9C
+C_C = 0xE67E22
 C_OK = 0x2ECC71
 C_ERR = 0xE74C3C
 C_WARN = 0xF1C40F
@@ -49,848 +45,864 @@ def _ts() -> str:
     return datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
 
 
-def _banner_emergencia(guild_id: int) -> str:
-    em = store.emergencia_activa(guild_id)
+def _banner(gid: int) -> str:
+    em = store.emergencia_activa(gid)
     if not em:
         return ""
-    return (
-        f"\n\n🚨 **EMERGENCIA ACTIVA** · {em.get('tipo', '—')}\n"
-        f"{em.get('descripcion', '')[:200]}\n"
+    return f"\n🚨 **EMERGENCIA:** {em.get('tipo', '—')} — {str(em.get('descripcion', ''))[:120]}\n"
+
+
+async def _resultado(
+    inter: discord.Interaction,
+    *,
+    titulo: str,
+    descripcion: str,
+    color: int = C_OK,
+    defer_done: bool = False,
+) -> None:
+    emb = discord.Embed(title=titulo, description=descripcion, color=color)
+    emb.set_footer(text=f"Hospital General · {_ts()}")
+    try:
+        if defer_done or inter.response.is_done():
+            await inter.followup.send(embed=emb, ephemeral=True)
+        else:
+            await inter.response.send_message(embed=emb, ephemeral=True)
+    except Exception:
+        try:
+            await inter.followup.send(embed=emb, ephemeral=True)
+        except Exception:
+            pass
+
+
+def _audit(inter: discord.Interaction, rol: str, accion: str, afectado: str = "—", resultado: str = "ok", extra=None):
+    if not inter.guild:
+        return
+    store.auditar(
+        guild_id=inter.guild.id,
+        actor_id=inter.user.id,
+        actor_name=str(inter.user),
+        rol=rol,
+        accion=accion,
+        afectado=afectado,
+        resultado=resultado,
+        extra=extra or {},
     )
 
 
-async def _aviso_usuario(bot: commands.Bot, user_id: int, embed: discord.Embed) -> None:
+# ═══════════════════════════════════════════════════════════════
+# Catálogo completo de acciones por panel (value = zona:cat:accion)
+# ═══════════════════════════════════════════════════════════════
+
+# Fundador: categorías → acciones
+FUNDADOR_MENU: Dict[str, List[Tuple[str, str]]] = {
+    "📋 Decisiones": [
+        ("ver_pendientes", "Ver pendientes"),
+        ("aprobar", "Aprobar decisión"),
+        ("vetar", "Vetar decisión"),
+        ("devolver", "Devolver decisión"),
+    ],
+    "🔑 Delegaciones": [
+        ("ver_delegaciones", "Ver delegaciones activas"),
+        ("delegar", "Delegar poder"),
+        ("revocar_delegacion", "Revocar delegación"),
+    ],
+    "👑 Autoridades": [
+        ("listar_autoridades", "Listar autoridades"),
+        ("nombrar_cofundador", "Nombrar Co-Fundador"),
+        ("destituir_cofundador", "Destituir Co-Fundador"),
+        ("reasignar_zona", "Reasignar zona"),
+    ],
+    "🏛️ Consejo": [
+        ("convocar_consejo", "Convocar consejo"),
+        ("anuncio_oficial", "Anuncio oficial"),
+        ("sellar_documento", "Sellar documento"),
+    ],
+    "🚨 Emergencia": [
+        ("estado_emergencia", "Estado de emergencia"),
+        ("declarar_emergencia", "Declarar emergencia"),
+        ("cerrar_emergencia", "Cerrar emergencia"),
+    ],
+    "👁️ Supervisión": [
+        ("ver_zona_gob", "Ver zona Gobernanza"),
+        ("ver_zona_int", "Ver zona Interinstitucional"),
+        ("ver_zona_cal", "Ver zona Calidad"),
+        ("auditoria_total", "Auditoría total"),
+        ("fijar_prioridad", "Fijar prioridad estratégica"),
+    ],
+    "📊 Informes": [
+        ("informe_ejecutivo", "Informe ejecutivo"),
+    ],
+}
+
+ZONA_MENUS: Dict[str, Dict[str, List[Tuple[str, str]]]] = {
+    "gobernanza": {
+        "📘 Políticas": [
+            ("pol_crear", "Crear política"),
+            ("pol_publicar", "Publicar política"),
+            ("pol_derogar", "Derogar política"),
+            ("pol_ver", "Ver políticas"),
+        ],
+        "📝 Actas": [
+            ("acta_redactar", "Redactar acta"),
+            ("acta_ver", "Consultar actas"),
+        ],
+        "⚖️ Ética": [
+            ("etica_abrir", "Abrir caso"),
+            ("etica_resolver", "Resolver caso"),
+            ("etica_ver", "Ver casos"),
+        ],
+        "⚠️ Disciplina": [
+            ("disc_advertir", "Advertir"),
+            ("disc_silenciar", "Silenciar"),
+            ("disc_expulsar", "Expulsar (aprobación)"),
+            ("disc_historial", "Historial"),
+        ],
+        "🧑‍⚕️ Talento humano": [
+            ("tal_contratar", "Contratar"),
+            ("tal_desvincular", "Desvincular"),
+            ("tal_evaluar", "Evaluar desempeño"),
+            ("tal_ascender", "Ascender o trasladar"),
+        ],
+        "🔍 Auditoría interna": [
+            ("aud_lanzar", "Lanzar auditoría"),
+            ("aud_hallazgo", "Registrar hallazgo"),
+            ("aud_cerrar", "Cerrar auditoría"),
+        ],
+        "🎯 Estrategia": [
+            ("est_objetivo", "Nuevo objetivo"),
+            ("est_avance", "Actualizar avance"),
+            ("est_ver", "Ver objetivos"),
+        ],
+        "🧾 Transparencia": [
+            ("tra_informe", "Informe transparencia (aprobación)"),
+            ("tra_riesgo", "Registrar riesgo legal"),
+            ("tra_contrato", "Revisar contrato"),
+        ],
+    },
+    "interinstitucional": {
+        "🤝 Convenios": [
+            ("con_crear", "Crear convenio"),
+            ("con_renovar", "Renovar convenio"),
+            ("con_terminar", "Terminar convenio"),
+            ("con_mayor", "Proponer convenio mayor (aprobación)"),
+            ("con_ver", "Ver convenios"),
+        ],
+        "🏢 Aliados": [
+            ("ali_registrar", "Registrar aliado"),
+            ("ali_directorio", "Directorio"),
+        ],
+        "📅 Reuniones": [
+            ("reu_agendar", "Agendar reunión"),
+        ],
+        "🎗️ Donaciones": [
+            ("don_campana", "Lanzar campaña"),
+            ("don_registrar", "Registrar donación"),
+            ("don_agradecer", "Agradecimiento"),
+        ],
+        "🏦 Financiamiento": [
+            ("fin_solicitud", "Solicitud (aprobación si monto alto)"),
+        ],
+        "📰 Comunicación": [
+            ("com_oficial", "Comunicado oficial"),
+            ("com_prensa", "Gestión de prensa"),
+        ],
+        "🌎 Comunidad": [
+            ("comu_jornada", "Jornada comunitaria"),
+        ],
+        "🚑 Referencias": [
+            ("ref_hospital", "Referencia a otro hospital"),
+        ],
+        "📊 Informes": [
+            ("inf_alianzas", "Informe de alianzas"),
+        ],
+    },
+    "calidad": {
+        "🩺 Seguridad del paciente": [
+            ("seg_evento", "Registrar evento adverso"),
+            ("seg_investigacion", "Abrir investigación"),
+            ("seg_alerta", "Alerta de seguridad"),
+        ],
+        "🧪 Auditorías": [
+            ("cau_procesos", "Auditar procesos"),
+            ("cau_hc", "Auditar historias clínicas"),
+            ("cau_ver", "Ver auditorías"),
+        ],
+        "🛠️ Mejora continua": [
+            ("mej_plan", "Plan de mejora"),
+            ("mej_cerrar", "Cerrar acción correctiva"),
+            ("mej_ver", "Ver planes abiertos"),
+        ],
+        "🏅 Acreditaciones": [
+            ("acr_iniciar", "Iniciar acreditación"),
+            ("acr_estado", "Estado por entidad"),
+            ("acr_simulacro", "Programar simulacro"),
+        ],
+        "📈 Indicadores": [
+            ("ind_ver", "Ver indicadores"),
+        ],
+        "😀 Satisfacción": [
+            ("sat_encuesta", "Lanzar encuesta"),
+        ],
+        "👥 Comités": [
+            ("com_convocar", "Convocar comité"),
+        ],
+        "📘 Protocolos": [
+            ("pro_aprobar", "Aprobar protocolo"),
+            ("pro_suspender", "Suspender protocolo (aprobación)"),
+        ],
+        "📊 Informes": [
+            ("inf_calidad", "Informe de calidad"),
+        ],
+    },
+}
+
+ZONA_META = {
+    "gobernanza": ("Orden y Legitimidad", "⚖️", C_G, "Co-Fundador · Gobernanza"),
+    "interinstitucional": ("Puentes y Alianzas", "🤝", C_I, "Co-Fundador · Interinstitucional"),
+    "calidad": ("Excelencia y Seguridad", "🏅", C_C, "Co-Fundador · Calidad"),
+}
+
+# Acciones que van a cola del Fundador
+_APROBACION = {
+    "disc_expulsar",
+    "tra_informe",
+    "con_mayor",
+    "fin_solicitud",
+    "pro_suspender",
+}
+
+
+# ═══════════════════════════════════════════════════════════════
+# Procesamiento interno unificado
+# ═══════════════════════════════════════════════════════════════
+
+
+async def _procesar(
+    inter: discord.Interaction,
+    *,
+    panel: str,
+    accion: str,
+    label: str,
+    valores: Optional[dict] = None,
+) -> None:
+    """Ejecuta la acción en silencio y devuelve un solo resultado."""
+    valores = valores or {}
+    if not inter.guild or not isinstance(inter.user, discord.Member):
+        return await _resultado(
+            inter, titulo="❌ Error", descripcion="Solo en el servidor.", color=C_ERR
+        )
+
     try:
-        u = bot.get_user(user_id) or await bot.fetch_user(user_id)
-        await u.send(embed=embed)
+        if not inter.response.is_done():
+            await inter.response.defer(ephemeral=True)
     except Exception:
         pass
 
+    gid = inter.guild.id
+    uid = inter.user.id
+    data = store.load()
 
-def _check_fundador(inter: discord.Interaction) -> bool:
-    return isinstance(inter.user, discord.Member) and member_es_fundador(inter.user)
+    # —— Fundador: consultas ——
+    if panel == "fundador":
+        if accion == "ver_pendientes":
+            pend = store.listar_pendientes(gid)
+            if not pend:
+                txt = "No hay decisiones pendientes."
+            else:
+                txt = "\n".join(
+                    f"`{p['id']}` · **{p.get('titulo')}** · zona `{p.get('origen_zona')}`"
+                    for p in pend[:20]
+                )
+            _audit(inter, "Fundador", accion)
+            return await _resultado(
+                inter, titulo="📋 Decisiones pendientes", descripcion=txt, color=C_F, defer_done=True
+            )
+
+        if accion in ("aprobar", "vetar", "devolver"):
+            pid = (valores.get("id") or "").strip()
+            com = (valores.get("comentario") or "").strip()
+            if not pid:
+                return await _resultado(
+                    inter, titulo="❌ Datos incompletos", descripcion="Falta el ID de la decisión.", color=C_ERR, defer_done=True
+                )
+            if accion == "vetar" and not com:
+                return await _resultado(
+                    inter, titulo="❌ Datos incompletos", descripcion="El motivo es obligatorio al vetar.", color=C_ERR, defer_done=True
+                )
+            estado = {"aprobar": "aprobado", "vetar": "vetado", "devolver": "devuelto"}[accion]
+            it = store.actualizar_pendiente(pid, estado, com)
+            if not it:
+                return await _resultado(
+                    inter, titulo="❌ No encontrado", descripcion=f"No existe la decisión `{pid}`.", color=C_ERR, defer_done=True
+                )
+            _audit(inter, "Fundador", f"decision:{estado}", pid)
+            try:
+                u = inter.client.get_user(int(it.get("origen_id") or 0))
+                if u:
+                    await u.send(
+                        embed=discord.Embed(
+                            title=f"Decisión {estado}",
+                            description=f"**{it.get('titulo')}**\n{com or '—'}",
+                            color=C_OK if estado == "aprobado" else C_ERR,
+                        )
+                    )
+            except Exception:
+                pass
+            return await _resultado(
+                inter,
+                titulo=f"✅ Decisión {estado}",
+                descripcion=f"**ID:** `{pid}`\n**Título:** {it.get('titulo')}\n**Comentario:** {com or '—'}",
+                color=C_OK if estado == "aprobado" else C_ERR,
+                defer_done=True,
+            )
+
+        if accion == "ver_delegaciones":
+            dels = store.listar_delegaciones(gid)
+            txt = (
+                "\n".join(
+                    f"`{d['id']}` <@{d['user_id']}> · **{d.get('poder')}** · vence <t:{d.get('vence_ts')}:R>"
+                    for d in dels[:20]
+                )
+                or "Sin delegaciones activas."
+            )
+            _audit(inter, "Fundador", accion)
+            return await _resultado(
+                inter, titulo="🔑 Delegaciones activas", descripcion=txt, color=C_F, defer_done=True
+            )
+
+        if accion == "delegar":
+            try:
+                tid = int(
+                    str(valores.get("user_id", ""))
+                    .replace("<@", "")
+                    .replace(">", "")
+                    .replace("!", "")
+                    .strip()
+                )
+                horas = int(valores.get("horas") or "24")
+            except Exception:
+                return await _resultado(
+                    inter, titulo="❌ Datos inválidos", descripcion="Usuario u horas incorrectos.", color=C_ERR, defer_done=True
+                )
+            poder = valores.get("poder") or "general"
+            item = {
+                "id": store.nuevo_id("DEL"),
+                "guild_id": gid,
+                "user_id": tid,
+                "poder": poder,
+                "condiciones": valores.get("condiciones") or "",
+                "vence_ts": int(time.time()) + max(1, horas) * 3600,
+                "revocada": False,
+                "por": uid,
+            }
+            data.setdefault("delegaciones", []).insert(0, item)
+            store.save(data)
+            _audit(inter, "Fundador", "delegar", str(tid))
+            return await _resultado(
+                inter,
+                titulo="✅ Poder delegado",
+                descripcion=f"**A:** <@{tid}>\n**Poder:** {poder}\n**Duración:** {horas}h\n**ID:** `{item['id']}`",
+                defer_done=True,
+            )
+
+        if accion == "revocar_delegacion":
+            did = (valores.get("id") or "").strip()
+            found = None
+            for d in data.get("delegaciones") or []:
+                if d.get("id") == did:
+                    d["revocada"] = True
+                    d["motivo_revoca"] = valores.get("motivo") or ""
+                    found = d
+                    break
+            if not found:
+                return await _resultado(
+                    inter, titulo="❌ No encontrado", descripcion=f"Delegación `{did}` inexistente.", color=C_ERR, defer_done=True
+                )
+            store.save(data)
+            _audit(inter, "Fundador", "revocar_delegacion", did)
+            return await _resultado(
+                inter, titulo="✅ Delegación revocada", descripcion=f"**ID:** `{did}`", defer_done=True
+            )
+
+        if accion == "listar_autoridades":
+            lines = []
+            mapping = [
+                ("FUNDADOR_OWNER", "Fundador del Hospital"),
+                ("COFUNDADOR_GOBERNANZA", "Co-Fundador · Gobernanza"),
+                ("COFUNDADOR_INTERINSTITUCIONAL", "Co-Fundador · Interinstitucional"),
+                ("COFUNDADOR_CALIDAD", "Co-Fundador · Calidad"),
+            ]
+            try:
+                import permisos
+            except Exception:
+                permisos = None
+            for key, nombre in mapping:
+                miembros = []
+                if permisos:
+                    try:
+                        for m in inter.guild.members:
+                            if permisos.member_tiene_alguna_key(m, key):
+                                miembros.append(m.mention)
+                    except Exception:
+                        pass
+                lines.append(f"**{nombre}:** {', '.join(miembros) or '_Nadie_'}")
+            _audit(inter, "Fundador", accion)
+            return await _resultado(
+                inter, titulo="👑 Autoridades", descripcion="\n".join(lines), color=C_F, defer_done=True
+            )
+
+        if accion == "estado_emergencia":
+            em = store.emergencia_activa(gid)
+            if not em:
+                txt = "🟢 Sin emergencia activa."
+            else:
+                txt = f"🚨 **{em.get('tipo')}**\n{em.get('descripcion')}\nAlcance: {em.get('alcance')}"
+            _audit(inter, "Fundador", accion)
+            return await _resultado(
+                inter, titulo="Estado de emergencia", descripcion=txt, color=C_ERR if em else C_OK, defer_done=True
+            )
+
+        if accion == "declarar_emergencia":
+            data["emergencia"] = {
+                "guild_id": gid,
+                "activa": True,
+                "tipo": valores.get("tipo") or "General",
+                "descripcion": valores.get("descripcion") or "",
+                "alcance": valores.get("alcance") or "hospital",
+                "por": uid,
+                "ts": int(time.time()),
+            }
+            store.save(data)
+            _audit(inter, "Fundador", "emergencia_on", valores.get("tipo", ""))
+            return await _resultado(
+                inter,
+                titulo="🚨 Emergencia declarada",
+                descripcion=f"**Tipo:** {valores.get('tipo')}\n{valores.get('descripcion')}",
+                color=C_ERR,
+                defer_done=True,
+            )
+
+        if accion == "cerrar_emergencia":
+            if data.get("emergencia"):
+                data["emergencia"]["activa"] = False
+                data["emergencia"]["cierre"] = valores.get("resumen") or ""
+                data["emergencia"]["cierre_ts"] = int(time.time())
+            store.save(data)
+            _audit(inter, "Fundador", "emergencia_off")
+            return await _resultado(
+                inter, titulo="🟢 Emergencia cerrada", descripcion=valores.get("resumen") or "Archivada.", defer_done=True
+            )
+
+        if accion == "auditoria_total":
+            aud = [a for a in (data.get("auditoria") or []) if int(a.get("guild_id") or 0) == gid][:25]
+            txt = (
+                "\n".join(
+                    f"`{a.get('id')}` **{a.get('accion')}** · {a.get('actor_name')} · {a.get('resultado')}"
+                    for a in aud
+                )
+                or "_Sin registros_"
+            )
+            _audit(inter, "Fundador", accion)
+            return await _resultado(
+                inter, titulo="🔎 Auditoría total", descripcion=txt[:3900], color=C_F, defer_done=True
+            )
+
+        if accion == "informe_ejecutivo":
+            pend = len(store.listar_pendientes(gid))
+            dels = len(store.listar_delegaciones(gid))
+            em = store.emergencia_activa(gid)
+            txt = (
+                f"**Pendientes de aprobación:** {pend}\n"
+                f"**Delegaciones activas:** {dels}\n"
+                f"**Emergencia:** {'Sí — ' + str(em.get('tipo')) if em else 'No'}\n\n"
+                f"**Políticas:** {len(data.get('politicas') or [])}\n"
+                f"**Convenios:** {len(data.get('convenios') or [])}\n"
+                f"**Eventos adversos:** {len(data.get('eventos_adversos') or [])}\n"
+                f"**Planes de mejora:** {len(data.get('planes_mejora') or [])}"
+            )
+            _audit(inter, "Fundador", accion)
+            return await _resultado(
+                inter, titulo="📊 Informe ejecutivo", descripcion=txt, color=C_F, defer_done=True
+            )
+
+        if accion.startswith("ver_zona_"):
+            z = {"ver_zona_gob": "gobernanza", "ver_zona_int": "interinstitucional", "ver_zona_cal": "calidad"}[accion]
+            titulo, emoji, color, _ = ZONA_META[z]
+            _audit(inter, "Fundador", accion, z)
+            return await _resultado(
+                inter,
+                titulo=f"{emoji} Vista · {titulo}",
+                descripcion=embed_zona_resumen(gid, z),
+                color=color,
+                defer_done=True,
+            )
+
+    # —— Zonas: listados ——
+    listados = {
+        "pol_ver": ("politicas", "Políticas"),
+        "acta_ver": ("actas", "Actas"),
+        "etica_ver": ("casos_etica", "Casos de ética"),
+        "est_ver": ("objetivos", "Objetivos"),
+        "con_ver": ("convenios", "Convenios"),
+        "ali_directorio": ("aliados", "Aliados"),
+        "cau_ver": ("auditorias_calidad", "Auditorías"),
+        "mej_ver": ("planes_mejora", "Planes de mejora"),
+        "acr_estado": ("acreditaciones", "Acreditaciones"),
+    }
+    if accion in listados:
+        bkey, titulo = listados[accion]
+        items = [x for x in (data.get(bkey) or []) if int(x.get("guild_id") or 0) == gid][:20]
+        txt = (
+            "\n".join(
+                f"`{i.get('id')}` {i.get('titulo') or i.get('nombre') or i.get('detalle') or i.get('entidad') or '—'}"
+                for i in items
+            )
+            or "_Sin registros_"
+        )
+        _audit(inter, panel, accion)
+        color = ZONA_META.get(panel, ("", "", C_OK, ""))[2] if panel in ZONA_META else C_OK
+        return await _resultado(
+            inter, titulo=f"📋 {titulo}", descripcion=txt[:3900], color=color, defer_done=True
+        )
+
+    if accion in ("informe_ejecutivo", "inf_alianzas", "inf_calidad", "ind_ver"):
+        resumen = embed_zona_resumen(gid, panel if panel in ZONA_META else "gobernanza")
+        _audit(inter, panel, accion)
+        color = ZONA_META.get(panel, ("", "", C_OK, ""))[2] if panel in ZONA_META else C_F
+        return await _resultado(
+            inter, titulo="📊 Informe", descripcion=resumen, color=color, defer_done=True
+        )
+
+    # —— Crear / registrar genérico ——
+    buckets = {
+        "pol_crear": "politicas",
+        "acta_redactar": "actas",
+        "etica_abrir": "casos_etica",
+        "est_objetivo": "objetivos",
+        "con_crear": "convenios",
+        "ali_registrar": "aliados",
+        "don_campana": "campanas",
+        "seg_evento": "eventos_adversos",
+        "mej_plan": "planes_mejora",
+        "acr_iniciar": "acreditaciones",
+        "aud_lanzar": "auditorias_calidad",
+        "cau_procesos": "auditorias_calidad",
+        "cau_hc": "auditorias_calidad",
+    }
+
+    if accion in _APROBACION:
+        item = store.encolar_aprobacion(
+            guild_id=gid,
+            origen_id=uid,
+            origen_zona=panel if panel != "fundador" else "fundador",
+            titulo=f"{panel}/{accion}",
+            detalle=str(valores)[:500],
+            payload={"vals": valores, "accion": accion},
+        )
+        _audit(inter, panel, accion, item["id"], "en_cola")
+        return await _resultado(
+            inter,
+            titulo="⏳ Enviado al Fundador",
+            descripcion=f"La acción **{label}** requiere aprobación.\n**ID:** `{item['id']}`",
+            color=C_WARN,
+            defer_done=True,
+        )
+
+    bkey = buckets.get(accion)
+    ref = "—"
+    if bkey:
+        entry = {
+            "id": store.nuevo_id(bkey[:3].upper()),
+            "guild_id": gid,
+            "ts": int(time.time()),
+            "por": uid,
+            "estado": "activo",
+            **{k: v for k, v in valores.items() if k},
+        }
+        data.setdefault(bkey, []).insert(0, entry)
+        store.save(data)
+        ref = entry["id"]
+
+    _audit(inter, panel, accion, ref, "ok", valores)
+    color = ZONA_META.get(panel, ("", "", C_OK, ""))[2] if panel in ZONA_META else C_F
+    detalle = "\n".join(f"**{k}:** {str(v)[:200]}" for k, v in valores.items() if v) or "Acción completada."
+    return await _resultado(
+        inter,
+        titulo=f"✅ {label}",
+        descripcion=(f"**Ref:** `{ref}`\n" if ref != "—" else "") + detalle,
+        color=color,
+        defer_done=True,
+    )
 
 
-def _check_zona(inter: discord.Interaction, zona: str) -> bool:
-    if not isinstance(inter.user, discord.Member):
-        return False
-    if member_es_fundador(inter.user):
-        return True
-    return member_es_cofundador(inter.user, zona)
+def embed_zona_resumen(gid: int, zona: str) -> str:
+    data = store.load()
+    if zona == "gobernanza":
+        return (
+            f"Políticas: **{len(data.get('politicas') or [])}**\n"
+            f"Casos ética: **{len(data.get('casos_etica') or [])}**\n"
+            f"Objetivos: **{len(data.get('objetivos') or [])}**\n"
+            f"Pendientes aprobación: **{len(store.listar_pendientes(gid, 'gobernanza'))}**"
+            f"{_banner(gid)}"
+        )
+    if zona == "interinstitucional":
+        return (
+            f"Convenios: **{len(data.get('convenios') or [])}**\n"
+            f"Aliados: **{len(data.get('aliados') or [])}**\n"
+            f"Campañas: **{len(data.get('campanas') or [])}**"
+            f"{_banner(gid)}"
+        )
+    return (
+        f"Eventos adversos: **{len(data.get('eventos_adversos') or [])}**\n"
+        f"Planes mejora: **{len(data.get('planes_mejora') or [])}**\n"
+        f"Acreditaciones: **{len(data.get('acreditaciones') or [])}**"
+        f"{_banner(gid)}"
+    )
 
 
 # ═══════════════════════════════════════════════════════════════
-# Formularios genéricos
+# Modales mínimos (solo cuando hace falta texto)
 # ═══════════════════════════════════════════════════════════════
 
+_NECESITA_MODAL = {
+    "aprobar": [("id", "ID decisión", True), ("comentario", "Comentario", False)],
+    "vetar": [("id", "ID decisión", True), ("comentario", "Motivo (obligatorio)", True)],
+    "devolver": [("id", "ID decisión", True), ("comentario", "Observaciones", False)],
+    "delegar": [
+        ("user_id", "ID usuario", True),
+        ("poder", "Poder", True),
+        ("horas", "Horas", True),
+        ("condiciones", "Condiciones", False),
+    ],
+    "revocar_delegacion": [("id", "ID delegación", True), ("motivo", "Motivo", True)],
+    "declarar_emergencia": [
+        ("tipo", "Tipo", True),
+        ("descripcion", "Descripción", True),
+        ("alcance", "Alcance", False),
+    ],
+    "cerrar_emergencia": [("resumen", "Resumen de cierre", True)],
+    "pol_crear": [
+        ("titulo", "Título", True),
+        ("categoria", "Categoría", True),
+        ("contenido", "Contenido", True),
+    ],
+    "seg_evento": [
+        ("servicio", "Servicio", True),
+        ("gravedad", "Gravedad", True),
+        ("descripcion", "Descripción", True),
+    ],
+    "con_crear": [
+        ("entidad", "Entidad", True),
+        ("tipo", "Tipo", True),
+        ("objeto", "Objeto", True),
+    ],
+    "disc_advertir": [("usuario", "ID usuario", True), ("motivo", "Motivo", True)],
+    "disc_silenciar": [("usuario", "ID usuario", True), ("duracion", "Minutos", True), ("motivo", "Motivo", True)],
+    "disc_expulsar": [("usuario", "ID usuario", True), ("motivo", "Motivo", True)],
+    "tal_contratar": [("usuario", "ID usuario", True), ("cargo", "Cargo", True), ("area", "Área", True)],
+    "tal_desvincular": [("usuario", "ID usuario", True), ("motivo", "Motivo", True)],
+    "fijar_prioridad": [("zona", "Zona", True), ("prioridad", "Prioridad", True), ("plazo", "Plazo", False)],
+    "nombrar_cofundador": [("usuario", "ID usuario", True), ("zona", "Zona (gobernanza/interinstitucional/calidad)", True)],
+    "destituir_cofundador": [("usuario", "ID usuario", True), ("motivo", "Motivo", True)],
+    "reasignar_zona": [("usuario", "ID usuario", True), ("zona", "Zona nueva", True)],
+    "anuncio_oficial": [("titulo", "Título", True), ("mensaje", "Mensaje", True)],
+    "convocar_consejo": [("fecha", "Fecha", True), ("agenda", "Agenda", True)],
+    "sellar_documento": [("tipo", "Tipo", True), ("doc_id", "ID documento", True)],
+}
 
-class ModalTexto(ui.Modal):
-    def __init__(
-        self,
-        *,
-        title: str,
-        fields: List[tuple],  # (custom_id, label, required, style, max, placeholder)
-        on_submit_cb: Callable,
-    ):
-        super().__init__(title=title[:45])
-        self._cb = on_submit_cb
+# Default modal for actions not listed
+def _fields_for(accion: str) -> List[tuple]:
+    if accion in _NECESITA_MODAL:
+        return _NECESITA_MODAL[accion]
+    return [("detalle", "Detalle", True)]
+
+
+class AccionModal(ui.Modal):
+    def __init__(self, panel: str, accion: str, label: str):
+        super().__init__(title=label[:45])
+        self.panel = panel
+        self.accion = accion
+        self.label = label
         self._inputs: List[ui.TextInput] = []
-        for cid, label, req, style, mx, ph in fields[:5]:
+        for i, (cid, lab, req) in enumerate(_fields_for(accion)[:5]):
             tin = ui.TextInput(
-                label=label[:45],
+                label=lab[:45],
                 custom_id=cid,
                 required=req,
-                style=style,
-                max_length=mx,
-                placeholder=(ph or "")[:100],
+                style=discord.TextStyle.paragraph if cid in ("contenido", "descripcion", "mensaje", "motivo", "detalle", "resumen", "comentario") else discord.TextStyle.short,
+                max_length=1000 if cid in ("contenido", "descripcion", "mensaje") else 200,
             )
             self._inputs.append(tin)
             self.add_item(tin)
 
     async def on_submit(self, inter: discord.Interaction):
-        try:
-            await inter.response.defer(ephemeral=True)
-        except Exception:
-            pass
-        valores = {t.custom_id: str(t.value).strip() for t in self._inputs}
+        vals = {t.custom_id: str(t.value).strip() for t in self._inputs}
         for t in self._inputs:
-            if t.required and not valores.get(t.custom_id):
-                return await inter.followup.send(
-                    f"❌ Falta el campo **{t.label}**.", ephemeral=True
+            if t.required and not vals.get(t.custom_id):
+                return await inter.response.send_message(
+                    embed=discord.Embed(
+                        title="❌ Campo obligatorio",
+                        description=f"Completa **{t.label}**.",
+                        color=C_ERR,
+                    ),
+                    ephemeral=True,
                 )
-        await self._cb(inter, valores)
+        await _procesar(inter, panel=self.panel, accion=self.accion, label=self.label, valores=vals)
 
 
 # ═══════════════════════════════════════════════════════════════
-# PANEL FUNDADOR — Mando General
+# UI: solo menús
 # ═══════════════════════════════════════════════════════════════
-
-
-def embed_fundador(guild: discord.Guild) -> discord.Embed:
-    pend = store.listar_pendientes(guild.id)
-    dels = store.listar_delegaciones(guild.id)
-    em = store.emergencia_activa(guild.id)
-    data = store.load()
-    aud = [a for a in (data.get("auditoria") or []) if int(a.get("guild_id") or 0) == guild.id][
-        :5
-    ]
-    lineas_aud = "\n".join(
-        f"• `{a.get('accion')}` — {a.get('actor_name')} → {a.get('afectado')} ({a.get('resultado')})"
-        for a in aud
-    ) or "_Sin acciones recientes_"
-    emb = discord.Embed(
-        title="👑  Mando General · Fundador del Hospital",
-        description=(
-            f"**Decisiones pendientes:** {len(pend)}\n"
-            f"**Delegaciones activas:** {len(dels)}\n"
-            f"**Emergencia:** {'🚨 ACTIVA — ' + str(em.get('tipo')) if em else '🟢 Normal'}\n"
-            f"**Semáforo zonas:** Gobernanza · Interinstitucional · Calidad\n"
-            f"{_banner_emergencia(guild.id)}\n"
-            f"**Últimas 5 acciones**\n{lineas_aud}"
-        ),
-        color=C_FUNDADOR,
-    )
-    emb.set_footer(text=f"Hospital General · {_ts()}")
-    return emb
 
 
 class FundadorCatSelect(ui.Select):
     def __init__(self):
         opts = [
-            discord.SelectOption(label="Decisiones", value="decisiones", emoji="📋"),
-            discord.SelectOption(label="Delegaciones", value="delegaciones", emoji="🔑"),
-            discord.SelectOption(label="Autoridades", value="autoridades", emoji="👑"),
-            discord.SelectOption(label="Consejo", value="consejo", emoji="🏛️"),
-            discord.SelectOption(label="Emergencia", value="emergencia", emoji="🚨"),
-            discord.SelectOption(label="Supervisión", value="supervision", emoji="👁️"),
-            discord.SelectOption(label="Informes", value="informes", emoji="📊"),
+            discord.SelectOption(label=cat.split(" ", 1)[-1] if " " in cat else cat, value=cat, emoji=cat.split(" ")[0] if cat[0] > "\u2000" else None)
+            for cat in FUNDADOR_MENU
         ]
-        super().__init__(placeholder="Categoría del Mando General…", options=opts, row=0)
+        # clean emojis in labels
+        opts = []
+        for cat in FUNDADOR_MENU:
+            parts = cat.split(" ", 1)
+            emoji = parts[0] if len(parts) > 1 else None
+            lab = parts[1] if len(parts) > 1 else cat
+            opts.append(discord.SelectOption(label=lab[:100], value=cat, emoji=emoji))
+        super().__init__(placeholder="Categoría · Mando General…", options=opts, custom_id="mando:f:cat", row=0)
 
     async def callback(self, inter: discord.Interaction):
-        if not _check_fundador(inter):
+        if not isinstance(inter.user, discord.Member) or not member_es_fundador(inter.user):
             return await inter.response.send_message(
-                "❌ Solo el **Fundador del Hospital**.", ephemeral=True
+                embed=discord.Embed(title="❌ Sin permiso", description="Solo el **Fundador del Hospital**.", color=C_ERR),
+                ephemeral=True,
             )
         cat = self.values[0]
-        view = FundadorAccionesView(cat)
+        view = ui.View(timeout=120)
+        view.add_item(FundadorAccionSelect(cat))
         await inter.response.send_message(
             embed=discord.Embed(
-                title=f"Mando General · {cat.title()}",
-                description="Elige una acción:",
-                color=C_FUNDADOR,
+                title="👑 Mando General",
+                description=f"Categoría: **{cat}**\nElige la acción:",
+                color=C_F,
             ),
             view=view,
             ephemeral=True,
         )
 
 
-class FundadorAccionesView(ui.View):
+class FundadorAccionSelect(ui.Select):
     def __init__(self, categoria: str):
-        super().__init__(timeout=180)
         self.categoria = categoria
-        botones = {
-            "decisiones": [
-                ("✅ Aprobar", "apr", discord.ButtonStyle.success),
-                ("⛔ Vetar", "vet", discord.ButtonStyle.danger),
-                ("↩️ Devolver", "dev", discord.ButtonStyle.secondary),
-                ("📋 Ver pendientes", "ver", discord.ButtonStyle.primary),
-            ],
-            "delegaciones": [
-                ("🔑 Delegar poder", "del", discord.ButtonStyle.success),
-                ("🚫 Revocar", "rev", discord.ButtonStyle.danger),
-                ("📜 Ver activas", "vdel", discord.ButtonStyle.primary),
-            ],
-            "autoridades": [
-                ("👑 Nombrar Co-Fundador", "nom", discord.ButtonStyle.success),
-                ("⚠️ Destituir", "des", discord.ButtonStyle.danger),
-                ("🔁 Reasignar zona", "rea", discord.ButtonStyle.primary),
-            ],
-            "consejo": [
-                ("🏛️ Convocar consejo", "con", discord.ButtonStyle.primary),
-                ("📢 Anuncio oficial", "anu", discord.ButtonStyle.success),
-                ("🖋️ Sellar documento", "sel", discord.ButtonStyle.secondary),
-            ],
-            "emergencia": [
-                ("🚨 Declarar emergencia", "eme", discord.ButtonStyle.danger),
-                ("🟢 Cerrar emergencia", "cem", discord.ButtonStyle.success),
-            ],
-            "supervision": [
-                ("👁️ Ver zona", "vzo", discord.ButtonStyle.primary),
-                ("🔎 Auditoría total", "aud", discord.ButtonStyle.primary),
-                ("↩️ Revertir acción", "revac", discord.ButtonStyle.danger),
-                ("🎯 Fijar prioridades", "pri", discord.ButtonStyle.success),
-            ],
-            "informes": [
-                ("📊 Informe ejecutivo", "inf", discord.ButtonStyle.primary),
-            ],
-        }
-        for label, key, style in botones.get(categoria, []):
-            self.add_item(_FundadorBtn(label, key, style, categoria))
-
-
-class _FundadorBtn(ui.Button):
-    def __init__(self, label: str, key: str, style: discord.ButtonStyle, cat: str):
-        super().__init__(label=label, style=style)
-        self.key = key
-        self.cat = cat
+        acciones = FUNDADOR_MENU.get(categoria, [])
+        opts = [
+            discord.SelectOption(label=lab[:100], value=val)
+            for val, lab in acciones[:25]
+        ]
+        super().__init__(placeholder="Acción…", options=opts, row=0)
 
     async def callback(self, inter: discord.Interaction):
-        if not _check_fundador(inter):
-            return await inter.response.send_message("❌ Sin permiso.", ephemeral=True)
-        assert inter.guild and isinstance(inter.user, discord.Member)
-        gid = inter.guild.id
-        uid = inter.user.id
-
-        async def ok(msg: str):
-            store.auditar(
-                guild_id=gid,
-                actor_id=uid,
-                actor_name=str(inter.user),
-                rol="Fundador",
-                accion=f"{self.cat}:{self.key}",
-                afectado=msg[:120],
-                resultado="ok",
-            )
-            await inter.followup.send(
-                embed=discord.Embed(description=f"✅ {msg}", color=C_OK),
+        if not isinstance(inter.user, discord.Member) or not member_es_fundador(inter.user):
+            return await inter.response.send_message(
+                embed=discord.Embed(title="❌ Sin permiso", description="Solo el Fundador.", color=C_ERR),
                 ephemeral=True,
             )
+        accion = self.values[0]
+        label = next((l for v, l in FUNDADOR_MENU.get(self.categoria, []) if v == accion), accion)
+        # consultas directas sin modal
+        if accion in (
+            "ver_pendientes",
+            "ver_delegaciones",
+            "listar_autoridades",
+            "estado_emergencia",
+            "auditoria_total",
+            "informe_ejecutivo",
+            "ver_zona_gob",
+            "ver_zona_int",
+            "ver_zona_cal",
+        ):
+            return await _procesar(inter, panel="fundador", accion=accion, label=label)
+        await inter.response.send_modal(AccionModal("fundador", accion, label))
 
-        # ── Decisiones ──
-        if self.key == "ver":
-            await inter.response.defer(ephemeral=True)
-            pend = store.listar_pendientes(gid)
-            if not pend:
-                return await inter.followup.send("No hay decisiones pendientes.", ephemeral=True)
-            txt = "\n".join(
-                f"**{p['id']}** · {p.get('titulo')} (zona: {p.get('origen_zona')})"
-                for p in pend[:15]
-            )
-            return await inter.followup.send(
-                embed=discord.Embed(
-                    title="📋 Decisiones pendientes",
-                    description=txt,
-                    color=C_FUNDADOR,
-                ),
-                ephemeral=True,
-            )
 
-        if self.key in ("apr", "vet", "dev"):
-
-            async def _res(inter2: discord.Interaction, vals: dict):
-                pid = vals.get("id", "")
-                com = vals.get("comentario", "")
-                estado = {"apr": "aprobado", "vet": "vetado", "dev": "devuelto"}[self.key]
-                if self.key == "vet" and not com:
-                    return await inter2.followup.send(
-                        "❌ El motivo es obligatorio al vetar.", ephemeral=True
-                    )
-                it = store.actualizar_pendiente(pid, estado, com)
-                if not it:
-                    return await inter2.followup.send("❌ ID no encontrado.", ephemeral=True)
-                store.auditar(
-                    guild_id=gid,
-                    actor_id=uid,
-                    actor_name=str(inter.user),
-                    rol="Fundador",
-                    accion=f"decision:{estado}",
-                    afectado=pid,
-                    resultado="ok",
-                )
-                await _aviso_usuario(
-                    inter2.client,  # type: ignore
-                    int(it.get("origen_id") or 0),
-                    discord.Embed(
-                        title=f"Decisión {estado}",
-                        description=f"**{it.get('titulo')}**\n{com or '—'}",
-                        color=C_OK if estado == "aprobado" else C_ERR,
-                    ),
-                )
-                await inter2.followup.send(
-                    f"✅ Decisión **{pid}** → **{estado}**.", ephemeral=True
-                )
-
-            fields = [
-                ("id", "ID de la decisión", True, discord.TextStyle.short, 20, "APR-XXXXXXXX"),
-                (
-                    "comentario",
-                    "Comentario / motivo",
-                    self.key == "vet",
-                    discord.TextStyle.paragraph,
-                    500,
-                    "Opcional salvo veto",
-                ),
-            ]
-            return await inter.response.send_modal(
-                ModalTexto(
-                    title={"apr": "Aprobar", "vet": "Vetar", "dev": "Devolver"}[self.key],
-                    fields=fields,
-                    on_submit_cb=_res,
-                )
-            )
-
-        # ── Delegaciones ──
-        if self.key == "vdel":
-            await inter.response.defer(ephemeral=True)
-            dels = store.listar_delegaciones(gid)
-            if not dels:
-                return await inter.followup.send("Sin delegaciones activas.", ephemeral=True)
-            txt = "\n".join(
-                f"• <@{d['user_id']}> · **{d.get('poder')}** · vence <t:{d.get('vence_ts')}:R>"
-                for d in dels[:15]
-            )
-            return await inter.followup.send(
-                embed=discord.Embed(title="📜 Delegaciones activas", description=txt, color=C_FUNDADOR),
-                ephemeral=True,
-            )
-
-        if self.key == "del":
-
-            async def _del(inter2: discord.Interaction, vals: dict):
-                try:
-                    tid = int(vals["user_id"].strip().replace("<@", "").replace(">", "").replace("!", ""))
-                    horas = int(vals.get("horas") or "24")
-                except Exception:
-                    return await inter2.followup.send("❌ Usuario o horas inválidos.", ephemeral=True)
-                poder = vals.get("poder") or "general"
-                data = store.load()
-                item = {
-                    "id": store.nuevo_id("DEL"),
-                    "guild_id": gid,
-                    "user_id": tid,
-                    "poder": poder,
-                    "condiciones": vals.get("condiciones") or "",
-                    "vence_ts": int(time.time()) + max(1, horas) * 3600,
-                    "revocada": False,
-                    "por": uid,
-                }
-                data.setdefault("delegaciones", []).insert(0, item)
-                store.save(data)
-                store.auditar(
-                    guild_id=gid, actor_id=uid, actor_name=str(inter.user),
-                    rol="Fundador", accion="delegar", afectado=str(tid), resultado="ok",
-                )
-                await _aviso_usuario(
-                    inter2.client,  # type: ignore
-                    tid,
-                    discord.Embed(
-                        title="🔑 Poder delegado",
-                        description=f"**{poder}** por {horas}h.\n{vals.get('condiciones') or ''}",
-                        color=C_FUNDADOR,
-                    ),
-                )
-                await inter2.followup.send(f"✅ Delegado a <@{tid}> ({poder}, {horas}h).", ephemeral=True)
-
-            return await inter.response.send_modal(
-                ModalTexto(
-                    title="Delegar poder",
-                    fields=[
-                        ("user_id", "ID o mención del Co-Fundador", True, discord.TextStyle.short, 30, "123…"),
-                        ("poder", "Poder (ej. sanciones, convenios)", True, discord.TextStyle.short, 40, "general"),
-                        ("horas", "Duración en horas", True, discord.TextStyle.short, 6, "24"),
-                        ("condiciones", "Condiciones", False, discord.TextStyle.paragraph, 300, "Opcional"),
-                    ],
-                    on_submit_cb=_del,
-                )
-            )
-
-        if self.key == "rev":
-
-            async def _rev(inter2: discord.Interaction, vals: dict):
-                did = vals.get("id", "")
-                data = store.load()
-                found = None
-                for d in data.get("delegaciones") or []:
-                    if d.get("id") == did:
-                        d["revocada"] = True
-                        d["motivo_revoca"] = vals.get("motivo") or ""
-                        found = d
-                        break
-                if not found:
-                    return await inter2.followup.send("❌ Delegación no encontrada.", ephemeral=True)
-                store.save(data)
-                store.auditar(
-                    guild_id=gid, actor_id=uid, actor_name=str(inter.user),
-                    rol="Fundador", accion="revocar_delegacion", afectado=did, resultado="ok",
-                )
-                await inter2.followup.send(f"✅ Delegación **{did}** revocada.", ephemeral=True)
-
-            return await inter.response.send_modal(
-                ModalTexto(
-                    title="Revocar delegación",
-                    fields=[
-                        ("id", "ID de delegación", True, discord.TextStyle.short, 20, "DEL-…"),
-                        ("motivo", "Motivo", True, discord.TextStyle.paragraph, 300, "…"),
-                    ],
-                    on_submit_cb=_rev,
-                )
-            )
-
-        # ── Emergencia ──
-        if self.key == "eme":
-
-            async def _eme(inter2: discord.Interaction, vals: dict):
-                data = store.load()
-                data["emergencia"] = {
-                    "guild_id": gid,
-                    "activa": True,
-                    "tipo": vals.get("tipo") or "General",
-                    "descripcion": vals.get("descripcion") or "",
-                    "alcance": vals.get("alcance") or "hospital",
-                    "por": uid,
-                    "ts": int(time.time()),
-                }
-                store.save(data)
-                store.auditar(
-                    guild_id=gid, actor_id=uid, actor_name=str(inter.user),
-                    rol="Fundador", accion="emergencia_on", afectado=vals.get("tipo", ""), resultado="ok",
-                )
-                await inter2.followup.send(
-                    embed=discord.Embed(
-                        title="🚨 Emergencia declarada",
-                        description=vals.get("descripcion") or "—",
-                        color=C_ERR,
-                    ),
-                    ephemeral=True,
-                )
-
-            return await inter.response.send_modal(
-                ModalTexto(
-                    title="Declarar emergencia",
-                    fields=[
-                        ("tipo", "Tipo", True, discord.TextStyle.short, 40, "Operativa / Imagen / …"),
-                        ("descripcion", "Descripción", True, discord.TextStyle.paragraph, 500, "…"),
-                        ("alcance", "Alcance", False, discord.TextStyle.short, 40, "hospital"),
-                    ],
-                    on_submit_cb=_eme,
-                )
-            )
-
-        if self.key == "cem":
-
-            async def _cem(inter2: discord.Interaction, vals: dict):
-                data = store.load()
-                if data.get("emergencia"):
-                    data["emergencia"]["activa"] = False
-                    data["emergencia"]["cierre"] = vals.get("resumen") or ""
-                    data["emergencia"]["cierre_ts"] = int(time.time())
-                store.save(data)
-                store.auditar(
-                    guild_id=gid, actor_id=uid, actor_name=str(inter.user),
-                    rol="Fundador", accion="emergencia_off", afectado="—", resultado="ok",
-                )
-                await inter2.followup.send("✅ Emergencia cerrada y archivada.", ephemeral=True)
-
-            return await inter.response.send_modal(
-                ModalTexto(
-                    title="Cerrar emergencia",
-                    fields=[("resumen", "Resumen de cierre", True, discord.TextStyle.paragraph, 500, "…")],
-                    on_submit_cb=_cem,
-                )
-            )
-
-        # ── Auditoría / informe ──
-        if self.key == "aud":
-            await inter.response.defer(ephemeral=True)
-            data = store.load()
-            aud = [a for a in (data.get("auditoria") or []) if int(a.get("guild_id") or 0) == gid][:20]
-            txt = "\n".join(
-                f"`{a.get('id')}` {a.get('accion')} · {a.get('actor_name')} · {a.get('resultado')}"
-                for a in aud
-            ) or "_Vacío_"
-            return await inter.followup.send(
-                embed=discord.Embed(title="🔎 Auditoría", description=txt[:3900], color=C_FUNDADOR),
-                ephemeral=True,
-            )
-
-        if self.key == "inf":
-            await inter.response.defer(ephemeral=True)
-            pend = len(store.listar_pendientes(gid))
-            dels = len(store.listar_delegaciones(gid))
-            em = store.emergencia_activa(gid)
-            return await inter.followup.send(
-                embed=discord.Embed(
-                    title="📊 Informe ejecutivo",
-                    description=(
-                        f"Pendientes de aprobación: **{pend}**\n"
-                        f"Delegaciones activas: **{dels}**\n"
-                        f"Emergencia: **{'Sí' if em else 'No'}**\n"
-                        f"Zonas: Gobernanza · Interinstitucional · Calidad"
-                    ),
-                    color=C_FUNDADOR,
-                ),
-                ephemeral=True,
-            )
-
-        # ── Resto: modal genérico de registro ──
-        async def _gen(inter2: discord.Interaction, vals: dict):
-            store.auditar(
-                guild_id=gid, actor_id=uid, actor_name=str(inter.user),
-                rol="Fundador", accion=f"{self.cat}:{self.key}",
-                afectado=str(vals)[:120], resultado="ok", extra=vals,
-            )
-            await inter2.followup.send(
-                embed=discord.Embed(
-                    title="✅ Acción registrada",
-                    description="\n".join(f"**{k}:** {v}" for k, v in vals.items()),
-                    color=C_OK,
-                ),
-                ephemeral=True,
-            )
-
-        return await inter.response.send_modal(
-            ModalTexto(
-                title=self.label[:45],
-                fields=[
-                    ("detalle", "Detalle / notas", True, discord.TextStyle.paragraph, 800, "Describe la acción…"),
-                    ("extra", "Dato adicional", False, discord.TextStyle.short, 100, "Opcional"),
-                ],
-                on_submit_cb=_gen,
-            )
+class ZonaCatSelect(ui.Select):
+    def __init__(self, zona: str):
+        self.zona = zona
+        menus = ZONA_MENUS[zona]
+        opts = []
+        for cat in menus:
+            parts = cat.split(" ", 1)
+            emoji = parts[0] if len(parts) > 1 else None
+            lab = parts[1] if len(parts) > 1 else cat
+            opts.append(discord.SelectOption(label=lab[:100], value=cat, emoji=emoji))
+        super().__init__(
+            placeholder="Categoría…",
+            options=opts[:25],
+            custom_id=f"mando:z:{zona}:cat",
+            row=0,
         )
+
+    async def callback(self, inter: discord.Interaction):
+        if not isinstance(inter.user, discord.Member) or not (
+            member_es_fundador(inter.user) or member_es_cofundador(inter.user, self.zona)
+        ):
+            return await inter.response.send_message(
+                embed=discord.Embed(
+                    title="❌ Sin permiso",
+                    description="Solo el Co-Fundador de esta zona o el Fundador.",
+                    color=C_ERR,
+                ),
+                ephemeral=True,
+            )
+        cat = self.values[0]
+        view = ui.View(timeout=120)
+        view.add_item(ZonaAccionSelect(self.zona, cat))
+        titulo, emoji, color, _ = ZONA_META[self.zona]
+        await inter.response.send_message(
+            embed=discord.Embed(
+                title=f"{emoji} {titulo}",
+                description=f"Categoría: **{cat}**\nElige la acción:",
+                color=color,
+            ),
+            view=view,
+            ephemeral=True,
+        )
+
+
+class ZonaAccionSelect(ui.Select):
+    def __init__(self, zona: str, categoria: str):
+        self.zona = zona
+        self.categoria = categoria
+        acciones = ZONA_MENUS[zona].get(categoria, [])
+        opts = [discord.SelectOption(label=lab[:100], value=val) for val, lab in acciones[:25]]
+        super().__init__(placeholder="Acción…", options=opts, row=0)
+
+    async def callback(self, inter: discord.Interaction):
+        if not isinstance(inter.user, discord.Member) or not (
+            member_es_fundador(inter.user) or member_es_cofundador(inter.user, self.zona)
+        ):
+            return await inter.response.send_message(
+                embed=discord.Embed(title="❌ Sin permiso", description="Sin permiso.", color=C_ERR),
+                ephemeral=True,
+            )
+        accion = self.values[0]
+        label = next((l for v, l in ZONA_MENUS[self.zona].get(self.categoria, []) if v == accion), accion)
+        if accion.endswith("_ver") or accion in (
+            "ali_directorio",
+            "inf_alianzas",
+            "inf_calidad",
+            "ind_ver",
+            "acr_estado",
+            "est_ver",
+            "disc_historial",
+        ):
+            return await _procesar(inter, panel=self.zona, accion=accion, label=label)
+        await inter.response.send_modal(AccionModal(self.zona, accion, label))
 
 
 class FundadorPanelView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(FundadorCatSelect())
-
-    @ui.button(
-        label="Actualizar resumen",
-        style=discord.ButtonStyle.secondary,
-        emoji="🔄",
-        custom_id="mando:fundador:refresh",
-        row=1,
-    )
-    async def refresh(self, inter: discord.Interaction, button: ui.Button):
-        if not inter.guild or not _check_fundador(inter):
-            return await inter.response.send_message("❌ Sin permiso.", ephemeral=True)
-        await inter.response.edit_message(embed=embed_fundador(inter.guild), view=self)
-
-
-# ═══════════════════════════════════════════════════════════════
-# PANEL CO-FUNDADOR (plantilla por zona)
-# ═══════════════════════════════════════════════════════════════
-
-_ZONAS = {
-    "gobernanza": {
-        "titulo": "Orden y Legitimidad · Gobernanza",
-        "emoji": "⚖️",
-        "color": C_GOB,
-        "cats": [
-            ("Políticas", "politicas", "📘"),
-            ("Actas", "actas", "📝"),
-            ("Ética", "etica", "⚖️"),
-            ("Disciplina", "disciplina", "⚠️"),
-            ("Talento humano", "talento", "🧑‍⚕️"),
-            ("Auditoría interna", "auditoria", "🔍"),
-            ("Estrategia", "estrategia", "🎯"),
-            ("Transparencia", "transparencia", "🧾"),
-        ],
-        "acciones": {
-            "politicas": [("📘 Crear política", "crear"), ("📢 Publicar política", "pub"), ("🗑️ Derogar", "der"), ("📚 Ver políticas", "ver")],
-            "actas": [("📝 Redactar acta", "red"), ("🗂️ Consultar actas", "ver")],
-            "etica": [("⚖️ Abrir caso", "abrir"), ("🔨 Resolver caso", "res"), ("📂 Ver casos", "ver")],
-            "disciplina": [("⚠️ Advertir", "adv"), ("🔇 Silenciar", "sil"), ("🚪 Expulsar", "exp"), ("📖 Historial", "his")],
-            "talento": [("🧑‍⚕️ Contratar", "con"), ("👋 Desvincular", "des"), ("⭐ Evaluar", "eva"), ("🔼 Ascender/trasladar", "asc")],
-            "auditoria": [("🔍 Lanzar auditoría", "lan"), ("📌 Hallazgo", "hal"), ("✔️ Cerrar auditoría", "cer")],
-            "estrategia": [("🎯 Nuevo objetivo", "obj"), ("📈 Actualizar avance", "ava")],
-            "transparencia": [("🧾 Informe transparencia", "inf"), ("🛡️ Riesgo legal", "rie"), ("📄 Revisar contrato", "con")],
-        },
-    },
-    "interinstitucional": {
-        "titulo": "Puentes y Alianzas · Interinstitucional",
-        "emoji": "🤝",
-        "color": C_INT,
-        "cats": [
-            ("Convenios", "convenios", "🤝"),
-            ("Aliados", "aliados", "🏢"),
-            ("Reuniones", "reuniones", "📅"),
-            ("Donaciones", "donaciones", "🎗️"),
-            ("Financiamiento", "financiamiento", "🏦"),
-            ("Comunicación", "comunicacion", "📰"),
-            ("Comunidad", "comunidad", "🌎"),
-            ("Referencias", "referencias", "🚑"),
-            ("Informes", "informes", "📊"),
-        ],
-        "acciones": {
-            "convenios": [("🤝 Crear convenio", "crear"), ("🔄 Renovar", "ren"), ("❌ Terminar", "ter"), ("⬆️ Proponer mayor", "may"), ("📚 Ver convenios", "ver")],
-            "aliados": [("🏢 Registrar aliado", "reg"), ("🗒️ Directorio", "dir")],
-            "reuniones": [("📅 Agendar reunión", "age")],
-            "donaciones": [("🎗️ Lanzar campaña", "cam"), ("💰 Registrar donación", "don"), ("💌 Agradecimiento", "agr")],
-            "financiamiento": [("🏦 Solicitud", "sol")],
-            "comunicacion": [("📰 Comunicado oficial", "com"), ("🎙️ Gestión de prensa", "pre")],
-            "comunidad": [("🌎 Jornada comunitaria", "jor")],
-            "referencias": [("🚑 Referencia hospital", "ref")],
-            "informes": [("📊 Informe de alianzas", "inf")],
-        },
-    },
-    "calidad": {
-        "titulo": "Excelencia y Seguridad · Calidad",
-        "emoji": "🏅",
-        "color": C_CAL,
-        "cats": [
-            ("Seguridad paciente", "seguridad", "🩺"),
-            ("Auditorías", "auditorias", "🧪"),
-            ("Mejora continua", "mejora", "🛠️"),
-            ("Acreditaciones", "acreditaciones", "🏅"),
-            ("Indicadores", "indicadores", "📈"),
-            ("Satisfacción", "satisfaccion", "😀"),
-            ("Comités", "comites", "👥"),
-            ("Protocolos", "protocolos", "📘"),
-            ("Informes", "informes", "📊"),
-        ],
-        "acciones": {
-            "seguridad": [("🩺 Evento adverso", "evt"), ("🔬 Investigación", "inv"), ("🚧 Alerta seguridad", "ale")],
-            "auditorias": [("🧪 Auditar procesos", "pro"), ("📑 Auditar HC", "hc"), ("📋 Ver auditorías", "ver")],
-            "mejora": [("🛠️ Plan de mejora", "plan"), ("✅ Cerrar acción", "cer"), ("📂 Ver planes", "ver")],
-            "acreditaciones": [("🏅 Iniciar acreditación", "ini"), ("🧭 Estado entidad", "est"), ("🎭 Simulacro", "sim")],
-            "indicadores": [("📈 Ver indicadores", "ver")],
-            "satisfaccion": [("😀 Lanzar encuesta", "enc")],
-            "comites": [("👥 Convocar comité", "com")],
-            "protocolos": [("📘 Aprobar protocolo", "apr"), ("🛑 Suspender protocolo", "sus")],
-            "informes": [("📊 Informe de calidad", "inf")],
-        },
-    },
-}
-
-
-def embed_zona(guild: discord.Guild, zona: str) -> discord.Embed:
-    meta = _ZONAS[zona]
-    data = store.load()
-    extra = ""
-    if zona == "gobernanza":
-        extra = (
-            f"Políticas: {len(data.get('politicas') or [])} · "
-            f"Casos ética abiertos: {sum(1 for c in (data.get('casos_etica') or []) if c.get('estado')=='abierto')} · "
-            f"Objetivos: {len(data.get('objetivos') or [])}"
-        )
-    elif zona == "interinstitucional":
-        extra = (
-            f"Convenios: {len(data.get('convenios') or [])} · "
-            f"Aliados: {len(data.get('aliados') or [])} · "
-            f"Campañas: {len(data.get('campanas') or [])}"
-        )
-    else:
-        extra = (
-            f"Eventos adversos: {len(data.get('eventos_adversos') or [])} · "
-            f"Planes mejora: {len(data.get('planes_mejora') or [])} · "
-            f"Acreditaciones: {len(data.get('acreditaciones') or [])}"
-        )
-    return discord.Embed(
-        title=f"{meta['emoji']}  {meta['titulo']}",
-        description=(
-            f"{extra}\n{_banner_emergencia(guild.id)}\n"
-            f"Elige una **categoría** para ver las acciones."
-        ),
-        color=meta["color"],
-    ).set_footer(text=f"Hospital General · {_ts()}")
-
-
-class ZonaCatSelect(ui.Select):
-    def __init__(self, zona: str):
-        self.zona = zona
-        meta = _ZONAS[zona]
-        opts = [
-            discord.SelectOption(label=lab, value=val, emoji=emo)
-            for lab, val, emo in meta["cats"]
-        ]
-        super().__init__(placeholder="Categoría…", options=opts[:25], row=0)
-
-    async def callback(self, inter: discord.Interaction):
-        if not _check_zona(inter, self.zona):
-            return await inter.response.send_message(
-                "❌ Solo el Co-Fundador de esta zona (o el Fundador).", ephemeral=True
-            )
-        cat = self.values[0]
-        meta = _ZONAS[self.zona]
-        view = ui.View(timeout=180)
-        for label, key in meta["acciones"].get(cat, []):
-            style = discord.ButtonStyle.primary
-            if any(x in label for x in ("Derogar", "Expulsar", "Desvincular", "Suspender", "Terminar")):
-                style = discord.ButtonStyle.danger
-            elif any(x in label for x in ("Crear", "Publicar", "Aprobar", "Contratar", "Lanzar", "Registrar")):
-                style = discord.ButtonStyle.success
-            view.add_item(_ZonaBtn(self.zona, cat, key, label, style))
-        await inter.response.send_message(
-            embed=discord.Embed(
-                title=f"{meta['emoji']} {cat.title()}",
-                description="Elige una acción:",
-                color=meta["color"],
-            ),
-            view=view,
-            ephemeral=True,
-        )
-
-
-class _ZonaBtn(ui.Button):
-    def __init__(self, zona: str, cat: str, key: str, label: str, style: discord.ButtonStyle):
-        super().__init__(label=label[:80], style=style)
-        self.zona = zona
-        self.cat = cat
-        self.key = key
-
-    async def callback(self, inter: discord.Interaction):
-        if not _check_zona(inter, self.zona):
-            return await inter.response.send_message("❌ Sin permiso.", ephemeral=True)
-        assert inter.guild and isinstance(inter.user, discord.Member)
-        gid = inter.guild.id
-        uid = inter.user.id
-        meta = _ZONAS[self.zona]
-
-        # Acciones que requieren aprobación del Fundador
-        requiere_aprobacion = (
-            (self.zona == "gobernanza" and self.cat == "disciplina" and self.key == "exp")
-            or (self.zona == "gobernanza" and self.cat == "transparencia" and self.key == "inf")
-            or (self.zona == "interinstitucional" and self.cat == "convenios" and self.key == "may")
-            or (self.zona == "interinstitucional" and self.cat == "financiamiento" and self.key == "sol")
-            or (self.zona == "interinstitucional" and self.cat == "comunicacion" and self.key == "com")
-            or (self.zona == "calidad" and self.cat == "protocolos" and self.key == "sus")
-        )
-
-        async def _submit(inter2: discord.Interaction, vals: dict):
-            titulo = f"{self.zona}/{self.cat}/{self.key}"
-            if requiere_aprobacion:
-                item = store.encolar_aprobacion(
-                    guild_id=gid,
-                    origen_id=uid,
-                    origen_zona=self.zona,
-                    titulo=titulo,
-                    detalle=str(vals)[:500],
-                    payload={"vals": vals, "accion": titulo},
-                )
-                store.auditar(
-                    guild_id=gid, actor_id=uid, actor_name=str(inter.user),
-                    rol=f"Co-Fundador {self.zona}", accion=titulo,
-                    afectado=item["id"], resultado="en_cola",
-                )
-                return await inter2.followup.send(
-                    embed=discord.Embed(
-                        title="⏳ Enviado a aprobación del Fundador",
-                        description=f"ID: **{item['id']}**\n{titulo}",
-                        color=C_WARN,
-                    ),
-                    ephemeral=True,
-                )
-
-            # Persistencia simple por categoría
-            data = store.load()
-            bucket_map = {
-                ("gobernanza", "politicas"): "politicas",
-                ("gobernanza", "actas"): "actas",
-                ("gobernanza", "etica"): "casos_etica",
-                ("gobernanza", "estrategia"): "objetivos",
-                ("interinstitucional", "convenios"): "convenios",
-                ("interinstitucional", "aliados"): "aliados",
-                ("interinstitucional", "donaciones"): "campanas",
-                ("calidad", "seguridad"): "eventos_adversos",
-                ("calidad", "mejora"): "planes_mejora",
-                ("calidad", "acreditaciones"): "acreditaciones",
-            }
-            bkey = bucket_map.get((self.zona, self.cat))
-            if bkey and self.key in ("crear", "abrir", "reg", "cam", "evt", "plan", "ini", "obj", "red"):
-                entry = {
-                    "id": store.nuevo_id(bkey[:3].upper()),
-                    "guild_id": gid,
-                    "ts": int(time.time()),
-                    "por": uid,
-                    "estado": "abierto",
-                    **vals,
-                }
-                data.setdefault(bkey, []).insert(0, entry)
-                store.save(data)
-                ref = entry["id"]
-            else:
-                ref = "—"
-
-            store.auditar(
-                guild_id=gid, actor_id=uid, actor_name=str(inter.user),
-                rol=f"Co-Fundador {self.zona}", accion=titulo,
-                afectado=ref, resultado="ok", extra=vals,
-            )
-
-            # Avisos cruzados (simplificado)
-            if self.zona == "calidad" and self.cat == "seguridad" and self.key == "evt":
-                # aviso fundador si menciona grave
-                if "grave" in (vals.get("gravedad") or "").lower():
-                    pass  # cola opcional
-
-            await inter2.followup.send(
-                embed=discord.Embed(
-                    title="✅ Acción registrada",
-                    description=(
-                        f"**Zona:** {self.zona}\n**Acción:** {self.label}\n"
-                        + (f"**ID:** `{ref}`\n" if ref != "—" else "")
-                        + "\n".join(f"**{k}:** {v[:200]}" for k, v in vals.items())
-                    ),
-                    color=meta["color"],
-                ),
-                ephemeral=True,
-            )
-
-        # Campos según acción
-        fields = [
-            ("detalle", "Detalle principal", True, discord.TextStyle.paragraph, 800, "Describe…"),
-        ]
-        if self.key in ("adv", "sil", "exp", "des", "con", "asc", "his"):
-            fields.insert(
-                0,
-                ("usuario", "ID o mención de usuario", True, discord.TextStyle.short, 40, "123…"),
-            )
-        if self.key in ("sil",):
-            fields.append(("duracion", "Duración (minutos)", True, discord.TextStyle.short, 6, "60"))
-        if self.key in ("evt",):
-            fields = [
-                ("servicio", "Servicio", True, discord.TextStyle.short, 60, "Urgencias…"),
-                ("gravedad", "Gravedad", True, discord.TextStyle.short, 20, "leve/moderada/grave"),
-                ("descripcion", "Descripción", True, discord.TextStyle.paragraph, 800, "…"),
-            ]
-        if self.key in ("crear",) and self.cat == "politicas":
-            fields = [
-                ("titulo", "Título", True, discord.TextStyle.short, 100, "…"),
-                ("categoria", "Categoría", True, discord.TextStyle.short, 40, "…"),
-                ("contenido", "Contenido", True, discord.TextStyle.paragraph, 1000, "…"),
-                ("vigencia", "Vigencia", False, discord.TextStyle.short, 40, "indefinida"),
-            ]
-        if self.key in ("ver", "dir", "inf", "his"):
-            await inter.response.defer(ephemeral=True)
-            data = store.load()
-            bucket_map = {
-                "politicas": "politicas",
-                "actas": "actas",
-                "etica": "casos_etica",
-                "convenios": "convenios",
-                "aliados": "aliados",
-                "donaciones": "campanas",
-                "seguridad": "eventos_adversos",
-                "mejora": "planes_mejora",
-                "acreditaciones": "acreditaciones",
-                "estrategia": "objetivos",
-            }
-            b = bucket_map.get(self.cat)
-            items = [x for x in (data.get(b) or []) if int(x.get("guild_id") or 0) == gid][:15] if b else []
-            txt = "\n".join(
-                f"`{i.get('id')}` {i.get('titulo') or i.get('detalle') or i.get('nombre') or '—'}"
-                for i in items
-            ) or "_Sin registros_"
-            store.auditar(
-                guild_id=gid, actor_id=uid, actor_name=str(inter.user),
-                rol=f"Co-Fundador {self.zona}", accion=f"{self.cat}:ver",
-                afectado="—", resultado="ok",
-            )
-            return await inter.followup.send(
-                embed=discord.Embed(title=f"📋 {self.cat.title()}", description=txt[:3900], color=meta["color"]),
-                ephemeral=True,
-            )
-
-        await inter.response.send_modal(
-            ModalTexto(
-                title=self.label[:45],
-                fields=fields,
-                on_submit_cb=_submit,
-            )
-        )
 
 
 class ZonaPanelView(ui.View):
@@ -899,33 +911,60 @@ class ZonaPanelView(ui.View):
         self.zona = zona
         self.add_item(ZonaCatSelect(zona))
 
-    @ui.button(label="Actualizar", style=discord.ButtonStyle.secondary, emoji="🔄", row=1)
-    async def refresh(self, inter: discord.Interaction, button: ui.Button):
-        if not inter.guild or not _check_zona(inter, self.zona):
-            return await inter.response.send_message("❌ Sin permiso.", ephemeral=True)
-        # custom_id dinámico no persistente en este botón — ok en mismo mensaje
-        await inter.response.edit_message(embed=embed_zona(inter.guild, self.zona), view=self)
+
+def embed_fundador(guild: discord.Guild) -> discord.Embed:
+    pend = store.listar_pendientes(guild.id)
+    dels = store.listar_delegaciones(guild.id)
+    em = store.emergencia_activa(guild.id)
+    data = store.load()
+    aud = [a for a in (data.get("auditoria") or []) if int(a.get("guild_id") or 0) == guild.id][:5]
+    lineas = "\n".join(
+        f"• `{a.get('accion')}` — {a.get('actor_name')}" for a in aud
+    ) or "_Sin acciones_"
+    return discord.Embed(
+        title="👑  Mando General · Fundador del Hospital",
+        description=(
+            f"**Pendientes:** {len(pend)} · **Delegaciones:** {len(dels)}\n"
+            f"**Emergencia:** {'🚨 ' + str(em.get('tipo')) if em else '🟢 Normal'}\n"
+            f"{_banner(guild.id)}\n"
+            f"**Últimas acciones**\n{lineas}\n\n"
+            f"Usa el **menú** para actuar. Todo se procesa interno; solo verás el resultado."
+        ),
+        color=C_F,
+    ).set_footer(text=f"Hospital General · {_ts()}")
 
 
-# ═══════════════════════════════════════════════════════════════
-# Comando de envío
-# ═══════════════════════════════════════════════════════════════
+def embed_zona(guild: discord.Guild, zona: str) -> discord.Embed:
+    titulo, emoji, color, rol = ZONA_META[zona]
+    return discord.Embed(
+        title=f"{emoji}  {titulo}",
+        description=(
+            f"**Rol:** {rol}\n"
+            f"{embed_zona_resumen(guild.id, zona)}\n\n"
+            f"Menú de categorías → acción → **solo el resultado**."
+        ),
+        color=color,
+    ).set_footer(text=f"Hospital General · {_ts()}")
 
 
 def registrar(bot: commands.Bot) -> None:
     try:
         bot.add_view(FundadorPanelView())
+        for z in ZONA_MENUS:
+            bot.add_view(ZonaPanelView(z))
+    except Exception:
+        pass
+
+    try:
+        bot.tree.remove_command("enviar_panel_mando")
     except Exception:
         pass
 
     @bot.tree.command(
         name="enviar_panel_mando",
-        description="[Fundador] Envía los paneles de Mando / Co-Fundadores a un canal",
+        description="[Fundador] Publica paneles de autoridades (menús, solo resultado)",
     )
-    @app_commands.describe(
-        canal="Canal donde publicar los paneles",
-        cual="Qué panel enviar",
-    )
+    @app_commands.describe(canal="Canal", cual="Panel a enviar")
     @app_commands.choices(
         cual=[
             app_commands.Choice(name="Fundador · Mando General", value="fundador"),
@@ -941,47 +980,43 @@ def registrar(bot: commands.Bot) -> None:
         cual: app_commands.Choice[str],
     ):
         if not inter.guild or not isinstance(inter.user, discord.Member):
-            return await inter.response.send_message("❌ Solo en servidor.", ephemeral=True)
+            return await inter.response.send_message(
+                embed=discord.Embed(title="❌", description="Solo en servidor.", color=C_ERR),
+                ephemeral=True,
+            )
         if not member_es_fundador(inter.user):
             return await inter.response.send_message(
-                "❌ Solo el **Fundador del Hospital**.", ephemeral=True
+                embed=discord.Embed(
+                    title="❌ Sin permiso",
+                    description="Solo el **Fundador del Hospital**.",
+                    color=C_ERR,
+                ),
+                ephemeral=True,
             )
         await inter.response.defer(ephemeral=True)
-        enviados = []
         val = cual.value
-
-        async def send_one(kind: str):
-            if kind == "fundador":
-                await canal.send(embed=embed_fundador(inter.guild), view=FundadorPanelView())
-            else:
-                await canal.send(
-                    embed=embed_zona(inter.guild, kind),
-                    view=ZonaPanelView(kind),
-                )
-            enviados.append(kind)
-
+        enviados = []
         try:
-            if val == "todos":
-                for k in ("fundador", "gobernanza", "interinstitucional", "calidad"):
-                    await send_one(k)
-            else:
-                await send_one(val)
+            if val in ("fundador", "todos"):
+                await canal.send(embed=embed_fundador(inter.guild), view=FundadorPanelView())
+                enviados.append("Fundador")
+            for z in ("gobernanza", "interinstitucional", "calidad"):
+                if val in (z, "todos"):
+                    await canal.send(embed=embed_zona(inter.guild, z), view=ZonaPanelView(z))
+                    enviados.append(z)
         except Exception as e:
-            return await inter.followup.send(f"❌ Error al enviar: {e}", ephemeral=True)
-
-        store.auditar(
-            guild_id=inter.guild.id,
-            actor_id=inter.user.id,
-            actor_name=str(inter.user),
-            rol="Fundador",
-            accion="enviar_panel_mando",
-            afectado=canal.mention,
-            resultado="ok",
-            extra={"cual": val},
-        )
+            return await inter.followup.send(
+                embed=discord.Embed(title="❌ Error", description=str(e), color=C_ERR),
+                ephemeral=True,
+            )
+        _audit(inter, "Fundador", "enviar_panel_mando", canal.mention, "ok", {"cual": val})
         await inter.followup.send(
-            f"✅ Panel(es) enviado(s) a {canal.mention}: {', '.join(enviados)}",
+            embed=discord.Embed(
+                title="✅ Paneles publicados",
+                description=f"{canal.mention}\n{', '.join(enviados)}",
+                color=C_OK,
+            ),
             ephemeral=True,
         )
 
-    print("[paneles_mando] OK — Mando General + 3 zonas")
+    print("[paneles_mando] OK — menús + proceso interno + solo resultado")
